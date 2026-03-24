@@ -1,0 +1,46 @@
+Excel Template for Flow Pressure Dashboard
+
+### 1) Raw Flow Data Tab
+- Use dedicated columns for:
+  - Timestamp
+  - Flow Rate (e.g., in L/min)
+  - Comments
+
+### 2) Raw Pressure Data Tab
+- Use dedicated columns for:
+  - Timestamp
+  - Pressure (e.g., in PSI)
+  - Comments
+
+### 3) Dashboard Tab
+- Controls:
+  - **Search Box**: For searching specific flow records.
+  - **Dropdown**: For selecting flow type (use a dynamic list linked to flow data).
+  - **Flow Scaling Input**: To input adjustment factor for scaling flow data.
+  - **Pressure Offset Input**: To input offset value to be added to pressure data.
+
+- **Dual-axis Chart**: 
+  - X-axis: Timestamp (from Raw Flow or Pressure Data)
+  - Y1-axis: Flow Rate
+  - Y2-axis: Pressure
+
+- **Adjusted Data Table**:
+  - Columns for selected flow, adjusted flow (using scaling), adjusted pressure (using offset).
+
+### 4) MOD Flow Tab
+- Automatically filter raw flow data based on selected flow from Dashboard and adjust using scaling.
+
+### 5) MOD Pressure Tab
+- Automatically filter raw pressure data based on the selected flow and apply pressure offset adjustment.
+
+### Save Button Functionality
+- The button triggers a script that:
+  - Writes adjusted data from the Dashboard to the MOD Flow and MOD Pressure tabs.
+  
+### Formulas and Functions:
+- Use Excel filters to display data based on selections.
+- Scaling and offsets applied using standard Excel formulas (e.g., `=A2*ScalingFactor` for flow).
+
+### Usage:
+- Populate Raw Flow and Pressure tabs with data.
+- Use Dashboard for data adjustments and visual analysis.
