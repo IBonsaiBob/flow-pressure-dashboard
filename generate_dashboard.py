@@ -456,9 +456,9 @@ def build_dashboard(ws, flow_names):
         ac = ws.cell(r, COL_DATE)
         ac.value = (
             f"=IFERROR("
-            f"IF(${_ic}${_sr}+ROW()-{DATA_START_ROW}>${_ic}${_er},\"\","
-            f"IF(INDEX('Raw Flow Data'!$A:$A,${_ic}${_sr}+ROW()-{DATA_START_ROW})=\"\",\"\","
-            f"INDEX('Raw Flow Data'!$A:$A,${_ic}${_sr}+ROW()-{DATA_START_ROW}))),\"\")"
+            f"IF(${_ic}${_sr}+ROW()-{DATA_START_ROW}>${_ic}${_er},NA(),"
+            f"IF(INDEX('Raw Flow Data'!$A:$A,${_ic}${_sr}+ROW()-{DATA_START_ROW})=\"\",NA(),"
+            f"INDEX('Raw Flow Data'!$A:$A,${_ic}${_sr}+ROW()-{DATA_START_ROW}))),NA())"
         )
         ac.number_format = "DD/MM/YYYY HH:MM"
         ac.alignment = Alignment(horizontal="center")
@@ -472,12 +472,12 @@ def build_dashboard(ws, flow_names):
             c = ws.cell(r, col)
             c.value = (
                 f"=IFERROR("
-                f"IF($B${sel_row}=\"\",\"\","
-                f"IF(${_ic}${_sr}+ROW()-{DATA_START_ROW}>${_ic}${_er},\"\","
+                f"IF($B${sel_row}=\"\",NA(),"
+                f"IF(${_ic}${_sr}+ROW()-{DATA_START_ROW}>${_ic}${_er},NA(),"
                 f"IF(INDEX('Raw Flow Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}-${_fd}${sel_row},"
-                f"MATCH($B${sel_row},'Raw Flow Data'!$1:$1,0))=-999,\"\","
+                f"MATCH($B${sel_row},'Raw Flow Data'!$1:$1,0))=-999,NA(),"
                 f"INDEX('Raw Flow Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}-${_fd}${sel_row},"
-                f"MATCH($B${sel_row},'Raw Flow Data'!$1:$1,0))*$C${sel_row}))),\"\")"
+                f"MATCH($B${sel_row},'Raw Flow Data'!$1:$1,0))*$C${sel_row}))),NA())"
             )
             c.number_format = "0.000"
             c.alignment = Alignment(horizontal="right")
@@ -491,17 +491,31 @@ def build_dashboard(ws, flow_names):
             c = ws.cell(r, col)
             c.value = (
                 f"=IFERROR("
-                f"IF($F${sel_row}=\"\",\"\","
-                f"IF(${_ic}${_sr}+ROW()-{DATA_START_ROW}>${_ic}${_er},\"\","
+                f"IF($F${sel_row}=\"\",NA(),"
+                f"IF(${_ic}${_sr}+ROW()-{DATA_START_ROW}>${_ic}${_er},NA(),"
                 f"IF(INDEX('Raw Pressure Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}-${_pd}${sel_row},"
-                f"MATCH($F${sel_row},'Raw Pressure Data'!$1:$1,0))=-999,\"\","
+                f"MATCH($F${sel_row},'Raw Pressure Data'!$1:$1,0))=-999,NA(),"
                 f"INDEX('Raw Pressure Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}-${_pd}${sel_row},"
-                f"MATCH($F${sel_row},'Raw Pressure Data'!$1:$1,0))+$G${sel_row}))),\"\")"
+                f"MATCH($F${sel_row},'Raw Pressure Data'!$1:$1,0))+$G${sel_row}))),NA())"
             )
             c.number_format = "0.000"
             c.alignment = Alignment(horizontal="right")
             if alt_fill:
                 c.fill = alt_fill
+
+    # ── Conditional formatting: hide #N/A cells in the data table ─────────────
+    # Formulas return NA() instead of "" for empty/out-of-range cells so scatter
+    # charts treat them as gaps (not x=0).  This CF rule makes those cells appear
+    # blank by applying white text + white fill, overriding the alternating rows.
+    cf_last_col = get_column_letter(COL_PRES_ADJ_BASE + MAX_PRES - 1)
+    ws.conditional_formatting.add(
+        f'A{DATA_START_ROW}:{cf_last_col}{DATA_START_ROW + DATA_ROWS - 1}',
+        FormulaRule(
+            formula=[f'ISNA($A{DATA_START_ROW})'],
+            font=Font(color='FFFFFF'),
+            fill=PatternFill(fill_type='solid', fgColor='FFFFFF'),
+        )
+    )
 
     # ── Copy-down hint ────────────────────────────────────────────────────────
     hint_r = DATA_START_ROW + DATA_ROWS
@@ -649,7 +663,9 @@ def _build_correct_chart_xml():
         <c:scaling><c:orientation val="minMax"/></c:scaling>
         <c:delete val="0"/>
         <c:axPos val="l"/>
-        <c:majorGridlines/>
+        <c:majorGridlines>
+          <c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="D9D9D9"/></a:solidFill></a:ln></c:spPr>
+        </c:majorGridlines>
         <c:title>
           <c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Flow Adjusted</a:t></a:r></a:p></c:rich></c:tx>
           <c:overlay val="0"/>
@@ -667,7 +683,9 @@ def _build_correct_chart_xml():
         <c:scaling><c:orientation val="minMax"/></c:scaling>
         <c:delete val="0"/>
         <c:axPos val="r"/>
-        <c:majorGridlines/>
+        <c:majorGridlines>
+          <c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="F4B183"/></a:solidFill><a:prstDash val="dash"/></a:ln></c:spPr>
+        </c:majorGridlines>
         <c:title>
           <c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Pressure Adjusted</a:t></a:r></a:p></c:rich></c:tx>
           <c:overlay val="0"/>
@@ -944,7 +962,7 @@ def build_instructions(ws):
         "NOTE:  After pasting your own data, right-click each Name cell → Data Validation",
         "       → update the Source to cover your column range, e.g. 'Raw Flow Data'!$B$1:$BZ$1",
         "",
-        "NOTE:  The formula table covers 200 rows. For longer datasets, select",
+        f"NOTE:  The formula table covers {DATA_ROWS} rows. For longer datasets, select",
         f"       that range and copy-paste downward as far as needed.",
         "",
         "NOTE:  -999 values are treated as no-data and are excluded from all calculations.",
