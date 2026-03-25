@@ -517,6 +517,8 @@ def _build_correct_chart_xml():
     openpyxl emits broken axis cross-references and omits the required
     category axis (<c:catAx>) when merging two LineChart objects.  This
     function produces the correct XML directly so that Excel accepts the file.
+    The structure closely matches what Excel itself generates for a dual-axis
+    line chart.
     """
     last_data_row = DATA_START_ROW + DATA_ROWS - 1
     flow_col   = get_column_letter(COL_SPACER)    # C  – Flow Adjusted
@@ -534,14 +536,16 @@ def _build_correct_chart_xml():
 <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
               xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
               xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <c:lang val="en-US"/>
   <c:style val="10"/>
   <c:chart>
     <c:title>
-      <c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Flow &amp; Pressure Analysis</a:t></a:r></a:p></c:rich></c:tx>
+      <c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr/></a:pPr><a:r><a:t>Flow &amp; Pressure Analysis</a:t></a:r></a:p></c:rich></c:tx>
       <c:overlay val="0"/>
     </c:title>
     <c:autoTitleDeleted val="0"/>
     <c:plotArea>
+      <c:layout/>
       <c:lineChart>
         <c:grouping val="standard"/>
         <c:varyColors val="0"/>
@@ -551,9 +555,12 @@ def _build_correct_chart_xml():
           <c:tx><c:strRef><c:f>{flow_title_ref}</c:f></c:strRef></c:tx>
           <c:spPr><a:ln w="20000"><a:solidFill><a:srgbClr val="{MID_BLUE}"/></a:solidFill></a:ln></c:spPr>
           <c:marker><c:symbol val="none"/></c:marker>
+          <c:smooth val="0"/>
           <c:cat><c:numRef><c:f>{dates_ref}</c:f></c:numRef></c:cat>
           <c:val><c:numRef><c:f>{flow_ref}</c:f></c:numRef></c:val>
         </c:ser>
+        <c:marker><c:symbol val="none"/></c:marker>
+        <c:smooth val="0"/>
         <c:axId val="1001"/>
         <c:axId val="1002"/>
       </c:lineChart>
@@ -566,9 +573,12 @@ def _build_correct_chart_xml():
           <c:tx><c:strRef><c:f>{pres_title_ref}</c:f></c:strRef></c:tx>
           <c:spPr><a:ln w="20000"><a:solidFill><a:srgbClr val="{DARK_ORANGE}"/></a:solidFill></a:ln></c:spPr>
           <c:marker><c:symbol val="none"/></c:marker>
+          <c:smooth val="0"/>
           <c:cat><c:numRef><c:f>{dates_ref}</c:f></c:numRef></c:cat>
           <c:val><c:numRef><c:f>{pres_ref}</c:f></c:numRef></c:val>
         </c:ser>
+        <c:marker><c:symbol val="none"/></c:marker>
+        <c:smooth val="0"/>
         <c:axId val="1001"/>
         <c:axId val="1003"/>
       </c:lineChart>
@@ -578,9 +588,14 @@ def _build_correct_chart_xml():
         <c:delete val="0"/>
         <c:axPos val="b"/>
         <c:numFmt formatCode="m/d/yy" sourceLinked="1"/>
-        <c:majorTickMark val="none"/>
+        <c:majorTickMark val="out"/>
         <c:minorTickMark val="none"/>
+        <c:tickLblPos val="nextTo"/>
         <c:crossAx val="1002"/>
+        <c:auto val="1"/>
+        <c:lblAlign val="ctr"/>
+        <c:lblOffset val="100"/>
+        <c:noMultiLvlLbl val="0"/>
       </c:catAx>
       <c:valAx>
         <c:axId val="1002"/>
@@ -589,12 +604,16 @@ def _build_correct_chart_xml():
         <c:axPos val="l"/>
         <c:majorGridlines/>
         <c:title>
-          <c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Flow Adjusted</a:t></a:r></a:p></c:rich></c:tx>
+          <c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr/></a:pPr><a:r><a:t>Flow Adjusted</a:t></a:r></a:p></c:rich></c:tx>
           <c:overlay val="0"/>
         </c:title>
-        <c:majorTickMark val="none"/>
+        <c:numFmt formatCode="General" sourceLinked="1"/>
+        <c:majorTickMark val="out"/>
         <c:minorTickMark val="none"/>
+        <c:tickLblPos val="nextTo"/>
         <c:crossAx val="1001"/>
+        <c:crosses val="autoZero"/>
+        <c:crossBetween val="between"/>
       </c:valAx>
       <c:valAx>
         <c:axId val="1003"/>
@@ -603,29 +622,51 @@ def _build_correct_chart_xml():
         <c:axPos val="r"/>
         <c:majorGridlines/>
         <c:title>
-          <c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Pressure Adjusted</a:t></a:r></a:p></c:rich></c:tx>
+          <c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr/></a:pPr><a:r><a:t>Pressure Adjusted</a:t></a:r></a:p></c:rich></c:tx>
           <c:overlay val="0"/>
         </c:title>
-        <c:majorTickMark val="none"/>
+        <c:numFmt formatCode="General" sourceLinked="1"/>
+        <c:majorTickMark val="out"/>
         <c:minorTickMark val="none"/>
-        <c:crosses val="max"/>
+        <c:tickLblPos val="nextTo"/>
         <c:crossAx val="1001"/>
+        <c:crosses val="max"/>
+        <c:crossBetween val="between"/>
       </c:valAx>
     </c:plotArea>
-    <c:legend><c:legendPos val="r"/></c:legend>
+    <c:legend>
+      <c:legendPos val="r"/>
+      <c:overlay val="0"/>
+    </c:legend>
     <c:plotVisOnly val="1"/>
     <c:dispBlanksAs val="gap"/>
+    <c:showDLblsOverMax val="0"/>
   </c:chart>
 </c:chartSpace>"""
 
 
 def _patch_chart_xml(xlsx_path):
-    """Replace the broken chart XML written by openpyxl with a valid version."""
+    """Replace the broken chart XML written by openpyxl with a valid version.
+
+    Also writes [Content_Types].xml first in the ZIP, as required by the
+    Open Packaging Convention (OPC/OOXML) specification.
+    """
     correct_xml = _build_correct_chart_xml().encode("utf-8")
     tmp_path = xlsx_path + ".patching"
     with zipfile.ZipFile(xlsx_path, "r") as zin:
         with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zout:
+            # OPC spec requires [Content_Types].xml to be the first entry
+            ct_item = None
             for item in zin.infolist():
+                if item.filename == "[Content_Types].xml":
+                    ct_item = item
+                    break
+            if ct_item:
+                zout.writestr(ct_item, zin.read(ct_item.filename))
+
+            for item in zin.infolist():
+                if item.filename == "[Content_Types].xml":
+                    continue  # already written first
                 if item.filename == "xl/charts/chart1.xml":
                     zout.writestr(item, correct_xml)
                 else:
