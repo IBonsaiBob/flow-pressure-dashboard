@@ -738,19 +738,26 @@ def _build_correct_drawing_rels():
 
 
 def _patch_chart_xml(xlsx_path):
-    """Replace only chart1.xml written by openpyxl with our correct 30-series version.
+    """Replace chart1.xml, drawing1.xml, and drawing1.xml.rels in the xlsx.
 
-    openpyxl's drawing1.xml (oneCellAnchor with empty xfrm) is accepted by Excel
-    as-is when the chart XML it references is valid.  Previous attempts to also
-    replace drawing1.xml were unnecessary and masked the real problem: the chart
-    XML had <c:smooth> in the wrong position inside <c:ser>, violating the
-    CT_LineSer element-order constraint in the OOXML schema.  Excel's strict
-    validator then rejected chart1.xml and cascade-removed drawing1.xml.
+    Two separate OOXML issues must both be fixed for Excel to accept the chart:
 
-    Now we only replace chart1.xml (correct element order) and leave the drawing
-    files untouched.
+    Issue 1 — chart1.xml: CT_LineSer element order
+      The OOXML schema requires <c:smooth> to appear AFTER <c:cat> and <c:val>
+      inside <c:ser>.  If it appears before them Excel's strict validator rejects
+      chart1.xml and cascade-removes drawing1.xml (which references the rejected
+      chart part).  _build_correct_chart_xml() places <c:smooth> correctly.
+
+    Issue 2 — drawing1.xml: missing required macro attribute
+      openpyxl's native drawing omits the required macro="" attribute on
+      <graphicFrame>.  The OOXML CT_GraphicalObjectFrame schema declares this
+      attribute as use="required".  Without it Excel discards the drawing.
+      _build_correct_drawing_xml() generates a conformant twoCellAnchor with
+      macro="", <a:graphicFrameLocks noGrp="1"/>, and proper xfrm children.
     """
-    correct_chart = _build_correct_chart_xml().encode("utf-8")
+    correct_chart   = _build_correct_chart_xml().encode("utf-8")
+    correct_drawing = _build_correct_drawing_xml().encode("utf-8")
+    correct_drel    = _build_correct_drawing_rels().encode("utf-8")
 
     tmp_path = xlsx_path + ".patching"
     with zipfile.ZipFile(xlsx_path, "r") as zin:
@@ -769,6 +776,10 @@ def _patch_chart_xml(xlsx_path):
                     continue  # already written first
                 if item.filename == "xl/charts/chart1.xml":
                     zout.writestr(item, correct_chart)
+                elif item.filename == "xl/drawings/drawing1.xml":
+                    zout.writestr(item, correct_drawing)
+                elif item.filename == "xl/drawings/_rels/drawing1.xml.rels":
+                    zout.writestr(item, correct_drel)
                 else:
                     zout.writestr(item, zin.read(item.filename))
     os.replace(tmp_path, xlsx_path)
