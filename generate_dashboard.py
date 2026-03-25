@@ -119,19 +119,18 @@ PRES_ROWS = [
 
 # ── Layout constants ───────────────────────────────────────────────────────────
 #
-#  Dashboard selector area  (rows 1-22, cols A-F):
+#  Dashboard selector area  (rows 1-22, cols A-H):
 #
 #    Row 1  : Title banner
 #    Row 2  : Column sub-headers
 #    Rows 3-22: 20 selector rows  (rows 3-12 serve both flow[0-9] and pres[0-9];
 #                                   rows 13-22 serve pres[10-19] only)
-#      Col A  row-number  |  Col B  flow dropdown  |  Col C  scaling factor
-#      Col D  row-number  |  Col E  pressure dropdown  |  Col F  offset
+#      Col A  row-number  |  Col B  flow dropdown  |  Col C  scale  |  Col D  flow Δt
+#      Col E  row-number  |  Col F  pressure dropdown  |  Col G  offset  |  Col H  pres Δt
 #
-#  Chart controls  (rows 2-9, cols H-I — right of selector, left of chart):
-#      I3  Start Date filter  |  I4  End Date filter
-#      I5  Flow Δt (timestep offset)  |  I6  Pres Δt (timestep offset)
-#      I8  MATCH helper – start raw row  |  I9  MATCH helper – end raw row
+#  Chart controls  (rows 2-6, cols J-K — right of selector, left of chart):
+#      K3  Start Date filter  |  K4  End Date filter
+#      K5  MATCH helper – start raw row  |  K6  MATCH helper – end raw row
 #
 #    Row 23 : Note / instructions
 #    Row 24 : DATA TABLE section banner
@@ -140,10 +139,10 @@ PRES_ROWS = [
 #
 #  Data table  (rows 25+, cols A-AE  — same sheet, different rows):
 #    A     = Date
-#    B-K   = Flow 1-10 Adjusted  (driven by B3-B12 name selector + C3-C12 scale)
-#    L-AE  = Pres 1-20 Adjusted  (driven by E3-E22 name selector + F3-F22 offset)
+#    B-K   = Flow 1-10 Adjusted  (driven by B3-B12 name + C3-C12 scale + D3-D12 Δt)
+#    L-AE  = Pres 1-20 Adjusted  (driven by F3-F22 name + G3-G22 offset + H3-H22 Δt)
 #
-#  Chart: anchored at K1, floats to the right — does not overlap control area.
+#  Chart: anchored at M1, floats to the right — does not overlap control area.
 
 MAX_FLOW = 10
 MAX_PRES = 20
@@ -163,28 +162,28 @@ DATA_ROWS       = 200
 COL_FLOW_LABEL  = 1   # A  row number
 COL_FLOW_SEL    = 2   # B  flow name dropdown
 COL_FLOW_SCALE  = 3   # C  scaling factor
-COL_PRES_LABEL  = 4   # D  row number
-COL_PRES_SEL    = 5   # E  pressure name dropdown
-COL_PRES_OFFSET = 6   # F  offset
+COL_FLOW_DT     = 4   # D  per-row timestep offset (NEW)
+COL_PRES_LABEL  = 5   # E  row number           (was D=4)
+COL_PRES_SEL    = 6   # F  pressure name dropdown  (was E=5)
+COL_PRES_OFFSET = 7   # G  offset               (was F=6)
+COL_PRES_DT     = 8   # H  per-row timestep offset (NEW)
 
 # Data table column indices (rows DATA_HDR_ROW+, same sheet)
 COL_DATE          = 1   # A
 COL_FLOW_ADJ_BASE = 2   # B = Flow 1 Adj … K = Flow 10 Adj   (index = base + n)
 COL_PRES_ADJ_BASE = 12  # L = Pres 1 Adj … AE = Pres 20 Adj  (index = base + n)
 
-CHART_ANCHOR     = "K1"   # moved right to make room for control area at H-I
+CHART_ANCHOR     = "M1"   # moved right to make room for control area at J-K
 CHART_WIDTH_CM   = 20
 CHART_HEIGHT_CM  = 14
 
-# ── Control area (cols H-I, right of selector, rows 2-9) ──────────────────────
-CTRL_LABEL_COL      = 8                        # H
-CTRL_INPUT_COL      = 9                        # I
+# ── Control area (cols J-K, right of selector, rows 2-6) ──────────────────────
+CTRL_LABEL_COL      = 10                       # J
+CTRL_INPUT_COL      = 11                       # K
 CTRL_START_DATE_ROW  = SEL_START_ROW           # 3  – Start Date filter
 CTRL_END_DATE_ROW    = SEL_START_ROW + 1       # 4  – End Date filter
-CTRL_FLOW_OFS_ROW    = SEL_START_ROW + 2       # 5  – Flow Δt (timestep offset)
-CTRL_PRES_OFS_ROW    = SEL_START_ROW + 3       # 6  – Pres Δt (timestep offset)
-CTRL_HELP_START_ROW  = SEL_START_ROW + 5       # 8  – MATCH helper: start raw row
-CTRL_HELP_END_ROW    = SEL_START_ROW + 6       # 9  – MATCH helper: end raw row
+CTRL_HELP_START_ROW  = SEL_START_ROW + 2       # 5  – MATCH helper: start raw row
+CTRL_HELP_END_ROW    = SEL_START_ROW + 3       # 6  – MATCH helper: end raw row
 
 
 # ── Style helpers ──────────────────────────────────────────────────────────────
@@ -267,17 +266,19 @@ def build_dashboard(ws, flow_names):
     ws.sheet_view.showGridLines = False
 
     # ── Column widths ──────────────────────────────────────────────────────────
-    ws.column_dimensions["A"].width = 6    # row number (was 18 for "Flow N ▼")
-    ws.column_dimensions["B"].width = 15   # flow dropdown + flow adj values
-    ws.column_dimensions["C"].width = 10   # scale factor + flow adj
-    ws.column_dimensions["D"].width = 6    # row number (was 18 for "Pres N ▼")
-    ws.column_dimensions["E"].width = 15   # pres dropdown + flow adj
-    ws.column_dimensions["F"].width = 10   # offset + flow adj
-    ws.column_dimensions["G"].width = 13   # flow adj 6
-    ws.column_dimensions["H"].width = 20   # control area labels
-    ws.column_dimensions["I"].width = 14   # control area inputs
-    ws.column_dimensions["J"].width = 3    # buffer between controls and chart
-    for col in list("KLMNOPQRSTUVWXYZ") + [
+    ws.column_dimensions["A"].width = 6    # flow row # / Date
+    ws.column_dimensions["B"].width = 15   # flow dropdown / flow 1 adj
+    ws.column_dimensions["C"].width = 10   # scale / flow 2 adj
+    ws.column_dimensions["D"].width = 8    # flow Δt / flow 3 adj
+    ws.column_dimensions["E"].width = 6    # pres row # / flow 4 adj
+    ws.column_dimensions["F"].width = 15   # pres dropdown / flow 5 adj
+    ws.column_dimensions["G"].width = 10   # pres offset / flow 6 adj
+    ws.column_dimensions["H"].width = 8    # pres Δt / flow 7 adj
+    ws.column_dimensions["I"].width = 13   # flow 8 adj
+    ws.column_dimensions["J"].width = 20   # chart control labels / flow 9 adj
+    ws.column_dimensions["K"].width = 14   # chart control inputs / flow 10 adj
+    ws.column_dimensions["L"].width = 3    # buffer / pres 1 adj
+    for col in list("MNOPQRSTUVWXYZ") + [
         get_column_letter(i) for i in range(27, COL_PRES_ADJ_BASE + MAX_PRES + 1)
     ]:
         ws.column_dimensions[col].width = 13
@@ -288,7 +289,7 @@ def build_dashboard(ws, flow_names):
     tc.font = Font(bold=True, color=WHITE, size=14)
     tc.fill = PatternFill(fill_type="solid", fgColor=DARK_BLUE)
     tc.alignment = Alignment(horizontal="left", vertical="center", indent=1)
-    ws.merge_cells("A1:J1")
+    ws.merge_cells("A1:L1")
 
     # ── Row 2: Sub-headers ────────────────────────────────────────────────────
     ws.row_dimensions[SEL_HDR_ROW].height = 22
@@ -296,17 +297,19 @@ def build_dashboard(ws, flow_names):
         ("#",       MID_BLUE),
         ("Flow  ▼", MID_BLUE),
         ("Scale",   MID_BLUE),
+        ("Δt",      MID_BLUE),
         ("#",       DARK_ORANGE),
         ("Pres  ▼", DARK_ORANGE),
         ("Offset",  DARK_ORANGE),
+        ("Δt",      DARK_ORANGE),
     ], start=1):
         c = ws.cell(SEL_HDR_ROW, ci, value=txt)
         c.font = Font(bold=True, color=WHITE, size=9)
         c.fill = PatternFill(fill_type="solid", fgColor=bg)
         c.alignment = Alignment(horizontal="center", vertical="center")
         c.border = _thin()
-    # "Chart Controls" header spanning H2:I2
-    ws.merge_cells(f"H{SEL_HDR_ROW}:I{SEL_HDR_ROW}")
+    # "Chart Controls" header spanning J2:K2
+    ws.merge_cells(f"J{SEL_HDR_ROW}:K{SEL_HDR_ROW}")
     cc = ws.cell(SEL_HDR_ROW, CTRL_LABEL_COL, value="Chart Controls")
     cc.font = Font(bold=True, color=WHITE, size=9)
     cc.fill = PatternFill(fill_type="solid", fgColor=PURPLE)
@@ -346,6 +349,9 @@ def build_dashboard(ws, flow_names):
             sc = ws.cell(r, COL_FLOW_SCALE)
             style_input(sc, 1.0, bg=LIGHT_ORANGE, num_fmt="0.000")
 
+            dtf = ws.cell(r, COL_FLOW_DT)
+            style_input(dtf, 0, bg=YELLOW_BG, num_fmt="0")
+
         # ── Pressure side ──────────────────────────────────────────────────
         if n < MAX_PRES:
             lp = ws.cell(r, COL_PRES_LABEL, value=n + 1)
@@ -361,12 +367,13 @@ def build_dashboard(ws, flow_names):
             oc = ws.cell(r, COL_PRES_OFFSET)
             style_input(oc, 0.0, bg=LIGHT_GREEN, num_fmt="0.000")
 
-    # ── Control area (cols H-I, rows 3-9) ────────────────────────────────────
+            dtp = ws.cell(r, COL_PRES_DT)
+            style_input(dtp, 0, bg=YELLOW_BG, num_fmt="0")
+
+    # ── Control area (cols J-K, rows 3-6) ────────────────────────────────────
     _ctrl_rows = [
-        (CTRL_START_DATE_ROW, "Start Date  ▶",       "",  "DD/MM/YYYY HH:MM", LIGHT_BLUE),
-        (CTRL_END_DATE_ROW,   "End Date  ▶",          "",  "DD/MM/YYYY HH:MM", LIGHT_BLUE),
-        (CTRL_FLOW_OFS_ROW,   "Flow Δt (steps)  ▶",   0,   "0",               LIGHT_ORANGE),
-        (CTRL_PRES_OFS_ROW,   "Pres Δt (steps)  ▶",   0,   "0",               LIGHT_GREEN),
+        (CTRL_START_DATE_ROW, "Start Date  ▶", "", "DD/MM/YYYY HH:MM", LIGHT_BLUE),
+        (CTRL_END_DATE_ROW,   "End Date  ▶",   "", "DD/MM/YYYY HH:MM", LIGHT_BLUE),
     ]
     for (row, label_txt, default_val, num_fmt, inp_bg) in _ctrl_rows:
         lc = ws.cell(row, CTRL_LABEL_COL, value=label_txt)
@@ -378,13 +385,13 @@ def build_dashboard(ws, flow_names):
     # Helper formulas — derived from Start/End Date; users should not edit these
     _help_rows = [
         (CTRL_HELP_START_ROW, "▸ start row:",
-         f"=IF($I${CTRL_START_DATE_ROW}=\"\",2,"
-         f"IFERROR(MATCH($I${CTRL_START_DATE_ROW},"
+         f"=IF($K${CTRL_START_DATE_ROW}=\"\",2,"
+         f"IFERROR(MATCH($K${CTRL_START_DATE_ROW},"
          f"'Raw Flow Data'!$A$2:$A$50001,1)+1,2))"),
         (CTRL_HELP_END_ROW, "▸ end row:",
-         f"=IF($I${CTRL_END_DATE_ROW}=\"\",9999999,"
-         f"IFERROR(MATCH($I${CTRL_END_DATE_ROW},"
-         f"'Raw Flow Data'!$A$2:$A$50001,1)+1,1))"),
+         f"=IF($K${CTRL_END_DATE_ROW}=\"\",9999999,"
+         f"IFERROR(MATCH($K${CTRL_END_DATE_ROW},"
+         f"'Raw Flow Data'!$A$2:$A$50001,1)+1,9999999))"),
     ]
     for (row, label_txt, formula) in _help_rows:
         lc = ws.cell(row, CTRL_LABEL_COL, value=label_txt)
@@ -400,7 +407,9 @@ def build_dashboard(ws, flow_names):
     nc = ws.cell(NOTE_ROW, 1,
                  value=("ℹ  Up to 10 flow and 20 pressure series.  "
                         "Leave a Name cell blank to hide that series.  "
-                        "Each row has its own Scale (flow multiplier) and Offset (pressure addend).  "
+                        "Each row has its own Scale (flow multiplier), Offset (pressure addend) "
+                        "and Δt (integer timestep offset — positive shifts the series later, "
+                        "negative shifts it earlier).  "
                         "After pasting your own data, right-click a Name cell → Data Validation "
                         "→ update the Source range to match your column headers.  "
                         "Values of -999 are treated as no-data and excluded."))
@@ -430,33 +439,35 @@ def build_dashboard(ws, flow_names):
         sel_row = SEL_START_ROW + n
         style_header(ws.cell(DATA_HDR_ROW, COL_PRES_ADJ_BASE + n), "", bg=GREEN_DARK)
         ws.cell(DATA_HDR_ROW, COL_PRES_ADJ_BASE + n).value = (
-            f'=IF($E${sel_row}="","Pres {n + 1} Adj.",$E${sel_row})'
+            f'=IF($F${sel_row}="","Pres {n + 1} Adj.",$F${sel_row})'
         )
 
     # ── DATA TABLE formula rows ────────────────────────────────────────────────
-    _sr = CTRL_HELP_START_ROW   # I8 – start raw-data row
-    _er = CTRL_HELP_END_ROW     # I9 – end raw-data row
-    _fo = CTRL_FLOW_OFS_ROW     # I5 – flow timestep offset
-    _po = CTRL_PRES_OFS_ROW     # I6 – pres timestep offset
+    _sr = CTRL_HELP_START_ROW   # K5 – start raw-data row
+    _er = CTRL_HELP_END_ROW     # K6 – end raw-data row
+    # Per-series Δt: flow uses $D${sel_row}, pres uses $H${sel_row}
+    _ic = get_column_letter(CTRL_INPUT_COL)   # "K"
+    _fd = get_column_letter(COL_FLOW_DT)      # "D"
+    _pd = get_column_letter(COL_PRES_DT)      # "H"
     for r in range(DATA_START_ROW, DATA_START_ROW + DATA_ROWS):
         ws.row_dimensions[r].height = 15
         alt = (r % 2 == 0)
         alt_fill = PatternFill(fill_type="solid", fgColor=LIGHT_GRAY) if alt else None
 
-        # Col A: Date  (base row = $I$8 + ROW() - DATA_START_ROW)
+        # Col A: Date  (base row = $K$5 + ROW() - DATA_START_ROW)
         ac = ws.cell(r, COL_DATE)
         ac.value = (
             f"=IFERROR("
-            f"IF($I${_sr}+ROW()-{DATA_START_ROW}>$I${_er},\"\","
-            f"IF(INDEX('Raw Flow Data'!$A:$A,$I${_sr}+ROW()-{DATA_START_ROW})=\"\",\"\","
-            f"INDEX('Raw Flow Data'!$A:$A,$I${_sr}+ROW()-{DATA_START_ROW}))),\"\")"
+            f"IF(${_ic}${_sr}+ROW()-{DATA_START_ROW}>${_ic}${_er},\"\","
+            f"IF(INDEX('Raw Flow Data'!$A:$A,${_ic}${_sr}+ROW()-{DATA_START_ROW})=\"\",\"\","
+            f"INDEX('Raw Flow Data'!$A:$A,${_ic}${_sr}+ROW()-{DATA_START_ROW}))),\"\")"
         )
         ac.number_format = "DD/MM/YYYY HH:MM"
         ac.alignment = Alignment(horizontal="center")
         if alt_fill:
             ac.fill = alt_fill
 
-        # Cols B-K: Flow 1-10 Adjusted  (row offset shifted by $I$5)
+        # Cols B-K: Flow 1-10 Adjusted  (row offset per-series from col D)
         for n in range(MAX_FLOW):
             sel_row = SEL_START_ROW + n
             col = COL_FLOW_ADJ_BASE + n
@@ -464,10 +475,10 @@ def build_dashboard(ws, flow_names):
             c.value = (
                 f"=IFERROR("
                 f"IF($B${sel_row}=\"\",\"\","
-                f"IF($I${_sr}+ROW()-{DATA_START_ROW}>$I${_er},\"\","
-                f"IF(INDEX('Raw Flow Data'!$A:$ZZ,$I${_sr}+ROW()-{DATA_START_ROW}+$I${_fo},"
+                f"IF(${_ic}${_sr}+ROW()-{DATA_START_ROW}>${_ic}${_er},\"\","
+                f"IF(INDEX('Raw Flow Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}+${_fd}${sel_row},"
                 f"MATCH($B${sel_row},'Raw Flow Data'!$1:$1,0))=-999,\"\","
-                f"INDEX('Raw Flow Data'!$A:$ZZ,$I${_sr}+ROW()-{DATA_START_ROW}+$I${_fo},"
+                f"INDEX('Raw Flow Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}+${_fd}${sel_row},"
                 f"MATCH($B${sel_row},'Raw Flow Data'!$1:$1,0))*$C${sel_row}))),\"\")"
             )
             c.number_format = "0.000"
@@ -475,19 +486,19 @@ def build_dashboard(ws, flow_names):
             if alt_fill:
                 c.fill = alt_fill
 
-        # Cols L-AE: Pressure 1-20 Adjusted  (row offset shifted by $I$6)
+        # Cols L-AE: Pressure 1-20 Adjusted  (row offset per-series from col H)
         for n in range(MAX_PRES):
             sel_row = SEL_START_ROW + n
             col = COL_PRES_ADJ_BASE + n
             c = ws.cell(r, col)
             c.value = (
                 f"=IFERROR("
-                f"IF($E${sel_row}=\"\",\"\","
-                f"IF($I${_sr}+ROW()-{DATA_START_ROW}>$I${_er},\"\","
-                f"IF(INDEX('Raw Pressure Data'!$A:$ZZ,$I${_sr}+ROW()-{DATA_START_ROW}+$I${_po},"
-                f"MATCH($E${sel_row},'Raw Pressure Data'!$1:$1,0))=-999,\"\","
-                f"INDEX('Raw Pressure Data'!$A:$ZZ,$I${_sr}+ROW()-{DATA_START_ROW}+$I${_po},"
-                f"MATCH($E${sel_row},'Raw Pressure Data'!$1:$1,0))+$F${sel_row}))),\"\")"
+                f"IF($F${sel_row}=\"\",\"\","
+                f"IF(${_ic}${_sr}+ROW()-{DATA_START_ROW}>${_ic}${_er},\"\","
+                f"IF(INDEX('Raw Pressure Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}+${_pd}${sel_row},"
+                f"MATCH($F${sel_row},'Raw Pressure Data'!$1:$1,0))=-999,\"\","
+                f"INDEX('Raw Pressure Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}+${_pd}${sel_row},"
+                f"MATCH($F${sel_row},'Raw Pressure Data'!$1:$1,0))+$G${sel_row}))),\"\")"
             )
             c.number_format = "0.000"
             c.alignment = Alignment(horizontal="right")
@@ -915,14 +926,14 @@ def build_instructions(ws):
         "         each pressure row independently.  Default Scale = 1.000, Offset = 0.000.",
         "Step 7:  The chart legend shows the sensor code you selected (e.g. 'AL012').",
         "         If a selector is blank the legend falls back to 'Flow N Adj.' / 'Pres N Adj.'.",
-        "Step 8:  Use the Chart Controls panel (cols H-I, top right of the Dashboard):",
+        "Step 8:  Use the Chart Controls panel (cols J-K, top right of the Dashboard):",
         "         • Start Date / End Date  — enter dates to filter the formula table and chart.",
         "           Leave blank to show all available data.  Dates must exist in 'Raw Flow Data'.",
-        "         • Flow Δt (steps)        — integer offset for flow data (e.g. +2 shows flow",
-        "           from 2 timesteps later; -3 shows 3 timesteps earlier). Default 0.",
-        "         • Pres Δt (steps)        — same for pressure data.",
-        "           Use these to align sensor readings that have different transit times.",
-        "Step 9:  When satisfied, run the SaveToMOD macro to store the adjusted data.",
+        "Step 9:  Each flow row (col D) and each pressure row (col H) has its own Δt cell.",
+        "         Enter an integer to shift that series in time:",
+        "         +2 = read from 2 timesteps later;  -3 = read from 3 timesteps earlier.",
+        "         Use this to align sensors with different transit / delay times.",
+        "Step 10: When satisfied, run the SaveToMOD macro to store the adjusted data.",
         "         MOD Flow and MOD Pressure are cleared and rewritten each run in the same",
         "         wide format as the raw sheets (Date | SensorCode1 | SensorCode2 | …).",
         "",
@@ -997,9 +1008,9 @@ def build_instructions(ws):
 '               The sheet is cleared and rewritten on every run.
 '
 ' Data table on Dashboard: row 26 onwards
-'   Col A (1)     = Date
+'   Col A (1)        = Date
 '   Cols B-K (2-11)  = Flow 1-10 Adjusted  (driven by selectors B3-B12)
-'   Cols L-AE (12-31)= Pres 1-20 Adjusted  (driven by selectors E3-E22)
+'   Cols L-AE (12-31)= Pres 1-20 Adjusted  (driven by selectors F3-F22)
 ' ═══════════════════════════════════════════════════════════════════════════
 Sub SaveToMOD()
 
@@ -1008,7 +1019,7 @@ Sub SaveToMOD()
     Const MAX_PRES_ROWS  As Long = 20   ' selector rows 3-22
     Const DATA_START     As Long = 26
     Const FLOW_SEL_COL   As Long = 2    ' col B — flow name selector
-    Const PRES_SEL_COL   As Long = 5    ' col E — pressure name selector
+    Const PRES_SEL_COL   As Long = 6    ' col F — pressure name selector (was col E)
     Const FLOW_ADJ_BASE  As Long = 2    ' col B = Flow 1 Adj
     Const PRES_ADJ_BASE  As Long = 12   ' col L = Pres 1 Adj
 
@@ -1160,8 +1171,8 @@ End Sub"""
         "",
         "Dashboard data table (rows 26+):",
         "  Col A     = Date",
-        "  Cols B-K  = Flow 1-10 Adjusted  (driven by Name in B3-B12 × Scale in C3-C12)",
-        "  Cols L-AE = Pres 1-20 Adjusted  (driven by Name in E3-E22 + Offset in F3-F22)",
+        "  Cols B-K  = Flow 1-10 Adjusted  (Name in B3-B12 × Scale in C3-C12 + Δt in D3-D12)",
+        "  Cols L-AE = Pres 1-20 Adjusted  (Name in F3-F22 + Offset in G3-G22 + Δt in H3-H22)",
         "",
         "MOD Flow / MOD Pressure (written by SaveToMOD):",
         "  Row 1  = Date | SensorCode1 | SensorCode2 | ...  (headers)",
