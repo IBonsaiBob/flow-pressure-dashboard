@@ -266,7 +266,7 @@ def build_dashboard(ws, flow_names):
     ws.sheet_view.showGridLines = False
 
     # ── Column widths ──────────────────────────────────────────────────────────
-    ws.column_dimensions["A"].width = 6    # flow row # / Date
+    ws.column_dimensions["A"].width = 18   # flow row # (rows 1-22) / Date (rows 26+)
     ws.column_dimensions["B"].width = 15   # flow dropdown / flow 1 adj
     ws.column_dimensions["C"].width = 10   # scale / flow 2 adj
     ws.column_dimensions["D"].width = 8    # flow Δt / flow 3 adj
@@ -433,13 +433,13 @@ def build_dashboard(ws, flow_names):
         sel_row = SEL_START_ROW + n
         style_header(ws.cell(DATA_HDR_ROW, COL_FLOW_ADJ_BASE + n), "", bg=MID_BLUE)
         ws.cell(DATA_HDR_ROW, COL_FLOW_ADJ_BASE + n).value = (
-            f'=IF($B${sel_row}="","Flow {n + 1} Adj.",$B${sel_row})'
+            f'=IF($B${sel_row}="","",$B${sel_row})'
         )
     for n in range(MAX_PRES):
         sel_row = SEL_START_ROW + n
         style_header(ws.cell(DATA_HDR_ROW, COL_PRES_ADJ_BASE + n), "", bg=GREEN_DARK)
         ws.cell(DATA_HDR_ROW, COL_PRES_ADJ_BASE + n).value = (
-            f'=IF($F${sel_row}="","Pres {n + 1} Adj.",$F${sel_row})'
+            f'=IF($F${sel_row}="","",$F${sel_row})'
         )
 
     # ── DATA TABLE formula rows ────────────────────────────────────────────────
@@ -536,15 +536,23 @@ def _add_chart(ws):
 
 
 def _build_correct_chart_xml():
-    """Return a valid dual-axis line-chart XML with up to 10 flow (primary left)
-    and 20 pressure (secondary right) series.
+    """Return a valid dual-axis scatter-with-smooth-lines chart XML.
+
+    Scatter (XY) charts require:
+      • <c:scatterChart> instead of <c:lineChart>
+      • Per-series <c:xVal> (date column) and <c:yVal> (data column)
+        instead of <c:cat> and <c:val>
+      • X axis defined as <c:valAx> (numeric) rather than <c:catAx>
+      • <c:smooth val="1"/> per series for smooth lines
 
     Data table layout (Dashboard sheet):
-      Col A            = Date
-      Cols B-K (2-11)  = Flow 1-10 Adjusted   (selector B3-B12, scale C3-C12)
-      Cols L-AE (12-31)= Pres 1-20 Adjusted   (selector E3-E22, offset F3-F22)
+      Col A            = Date  (rows DATA_START_ROW – DATA_START_ROW+DATA_ROWS-1)
+      Cols B-K (2-11)  = Flow 1-10 Adjusted
+      Cols L-AE (12-31)= Pres 1-20 Adjusted
 
-    Leave a selector name blank to hide that series (formula returns "").
+    The chart title of each series is driven by the header-row formula in
+    DATA_HDR_ROW, which returns "" when the selector is blank, causing Excel
+    to show no legend entry text for that series.
     """
     last_row  = DATA_START_ROW + DATA_ROWS - 1
     date_col  = get_column_letter(COL_DATE)   # A
@@ -573,13 +581,13 @@ def _build_correct_chart_xml():
             f'<a:solidFill><a:srgbClr val="{color}"/></a:solidFill>'
             f'</a:ln></c:spPr>\n'
             f'          <c:marker><c:symbol val="none"/></c:marker>\n'
-            f'          <c:cat>'
+            f'          <c:xVal>'
             f'<c:numRef><c:f>{_ref(date_col)}</c:f>{empty_cache}</c:numRef>'
-            f'</c:cat>\n'
-            f'          <c:val>'
+            f'</c:xVal>\n'
+            f'          <c:yVal>'
             f'<c:numRef><c:f>{_ref(col_ltr)}</c:f>{empty_cache}</c:numRef>'
-            f'</c:val>\n'
-            f'          <c:smooth val="0"/>\n'
+            f'</c:yVal>\n'
+            f'          <c:smooth val="1"/>\n'
             f'        </c:ser>'
         )
 
@@ -608,37 +616,33 @@ def _build_correct_chart_xml():
     <c:autoTitleDeleted val="0"/>
     <c:plotArea>
       <c:layout/>
-      <c:lineChart>
-        <c:grouping val="standard"/>
+      <c:scatterChart>
+        <c:scatterStyle val="smoothMarker"/>
         <c:varyColors val="0"/>
 {flow_xml}
-        <c:smooth val="0"/>
         <c:axId val="1001"/>
         <c:axId val="1002"/>
-      </c:lineChart>
-      <c:lineChart>
-        <c:grouping val="standard"/>
+      </c:scatterChart>
+      <c:scatterChart>
+        <c:scatterStyle val="smoothMarker"/>
         <c:varyColors val="0"/>
 {pres_xml}
-        <c:smooth val="0"/>
         <c:axId val="1001"/>
         <c:axId val="1003"/>
-      </c:lineChart>
-      <c:catAx>
+      </c:scatterChart>
+      <c:valAx>
         <c:axId val="1001"/>
         <c:scaling><c:orientation val="minMax"/></c:scaling>
         <c:delete val="0"/>
         <c:axPos val="b"/>
-        <c:numFmt formatCode="d/m/yy h:mm" sourceLinked="1"/>
+        <c:numFmt formatCode="d/m/yy h:mm" sourceLinked="0"/>
         <c:majorTickMark val="out"/>
         <c:minorTickMark val="none"/>
         <c:tickLblPos val="nextTo"/>
         <c:crossAx val="1002"/>
-        <c:auto val="1"/>
-        <c:lblAlign val="ctr"/>
-        <c:lblOffset val="100"/>
-        <c:noMultiLvlLbl val="0"/>
-      </c:catAx>
+        <c:crosses val="autoZero"/>
+        <c:crossBetween val="midCat"/>
+      </c:valAx>
       <c:valAx>
         <c:axId val="1002"/>
         <c:scaling><c:orientation val="minMax"/></c:scaling>
@@ -655,7 +659,7 @@ def _build_correct_chart_xml():
         <c:tickLblPos val="nextTo"/>
         <c:crossAx val="1001"/>
         <c:crosses val="autoZero"/>
-        <c:crossBetween val="between"/>
+        <c:crossBetween val="midCat"/>
       </c:valAx>
       <c:valAx>
         <c:axId val="1003"/>
@@ -673,7 +677,7 @@ def _build_correct_chart_xml():
         <c:tickLblPos val="nextTo"/>
         <c:crossAx val="1001"/>
         <c:crosses val="max"/>
-        <c:crossBetween val="between"/>
+        <c:crossBetween val="midCat"/>
       </c:valAx>
     </c:plotArea>
     <c:legend>
