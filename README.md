@@ -47,13 +47,13 @@ Date              | AL012       | AL013       | AL014       | ...
 ### Daily use
 1. **Select flows** — rows 3-12 each have a `Flow N ▼` dropdown (col **B**).  
    Pick up to 10 flow meters; leave unused rows blank.
-2. **Select pressures** — rows 3-12 each have a `Pres N ▼` dropdown (col **E**).  
-   Pick up to 10 pressure points; leave unused rows blank.
+2. **Select pressures** — rows 3-22 each have a `Pres N ▼` dropdown (col **E**).  
+   Pick up to 20 pressure points; leave unused rows blank.
 3. **Adjust per-series values**:
    - `Scale` (col **C**, rows 3-12) — multiplies each flow by its own factor (default 1.000)
-   - `Offset` (col **F**, rows 3-12) — adds a constant to each pressure (default 0.000)
-4. The **dual-axis chart** (10 flow series on left axis, 10 pressure on right) and
-   **formula table** (rows 16+, cols A-U) update instantly
+   - `Offset` (col **F**, rows 3-22) — adds a constant to each pressure (default 0.000)
+4. The **dual-axis chart** (10 flow series on left axis, 20 pressure on right) and
+   **formula table** (rows 26+, cols A-AE) update instantly
 5. When satisfied, run the **SaveToMOD** macro to append all active series to the MOD tabs
 
 ### After pasting your own data
@@ -61,7 +61,7 @@ Each Name dropdown reads directly from the Raw tab headers.
 If your column range extends beyond the default, update the source:
 - Right-click any **Flow Name** cell (B3-B12) → Data Validation → change Source to
   e.g. `'Raw Flow Data'!$B$1:$BZ$1`
-- Do the same for any **Pressure Name** cell (E3-E12) using `'Raw Pressure Data'`
+- Do the same for any **Pressure Name** cell (E3-E22) using `'Raw Pressure Data'`
 
 ---
 

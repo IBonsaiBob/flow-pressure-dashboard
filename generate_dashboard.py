@@ -13,16 +13,16 @@ Dashboard layout
     Rows 3-12: 10 selector rows — one per flow/pressure slot
       Col A  "Flow N ▼" label  |  Col B  flow dropdown  |  Col C  scaling factor
       Col D  "Pres N ▼" label  |  Col E  pressure dropdown  |  Col F  offset
-    Row 13 : Notes
-    Row 14 : DATA TABLE banner
-    Row 15 : Data table column headers
-    Row 16+: Formula rows
+    Row 23 : Notes
+    Row 24 : DATA TABLE banner
+    Row 25 : Data table column headers
+    Row 26+: Formula rows
 
-  Data table (rows 15+, cols A-U — same sheet, different rows)
+  Data table (rows 25+, cols A-AE — same sheet, different rows)
   ─────────────────────────────────────────────────────────────────────────
     A     = Date
     B-K   = Flow 1-10 Adjusted   (name from B3-B12 × scale from C3-C12)
-    L-U   = Pres 1-10 Adjusted   (name from E3-E12 + offset from F3-F12)
+    L-AE  = Pres 1-20 Adjusted   (name from E3-E22 + offset from F3-F22)
 
   Chart: anchored at H1, floats right — does not overlap selector area.
 
@@ -65,6 +65,8 @@ FLOW_COLORS = [
 PRES_COLORS = [
     "C55A11", "E67E22", "F39C12", "7030A0", "9B59B6",
     "E74C3C", "922B21", "00695C", "26A69A", "FF6B35",
+    "D4380D", "FA8C16", "FFC53D", "52C41A", "13C2C2",
+    "1890FF", "722ED1", "EB2F96", "A0522D", "2F4F4F",
 ]
 
 # ── Sample data (taken directly from the problem statement) ────────────────────
@@ -117,38 +119,39 @@ PRES_ROWS = [
 
 # ── Layout constants ───────────────────────────────────────────────────────────
 #
-#  Dashboard selector area  (rows 1-12, cols A-F):
+#  Dashboard selector area  (rows 1-22, cols A-F):
 #
 #    Row 1  : Title banner
 #    Row 2  : Column sub-headers  ("Flow Name ▼" | "Scale" | "Pressure Name ▼" | "Offset")
-#    Rows 3-12: 10 selector rows  (one per flow/pressure slot, all allow blank)
+#    Rows 3-22: 20 selector rows  (rows 3-12 serve both flow[0-9] and pres[0-9];
+#                                   rows 13-22 serve pres[10-19] only)
 #      Col A  "Flow N ▼" label  |  Col B  flow dropdown  |  Col C  scaling factor
 #      Col D  "Pres N ▼" label  |  Col E  pressure dropdown  |  Col F  offset
 #
-#    Row 13 : Note / instructions
-#    Row 14 : DATA TABLE section banner
-#    Row 15 : Data table column headers
-#    Row 16+: Formula rows  (DATE | Flow 1-10 Adj | Pres 1-10 Adj)
+#    Row 23 : Note / instructions
+#    Row 24 : DATA TABLE section banner
+#    Row 25 : Data table column headers
+#    Row 26+: Formula rows  (DATE | Flow 1-10 Adj | Pres 1-20 Adj)
 #
-#  Data table  (rows 15+, cols A-U  — same sheet, different rows):
-#    A = Date
-#    B-K = Flow 1-10 Adjusted  (driven by B3-B12 name selector + C3-C12 scale)
-#    L-U = Pres 1-10 Adjusted  (driven by E3-E12 name selector + F3-F12 offset)
+#  Data table  (rows 25+, cols A-AE  — same sheet, different rows):
+#    A     = Date
+#    B-K   = Flow 1-10 Adjusted  (driven by B3-B12 name selector + C3-C12 scale)
+#    L-AE  = Pres 1-20 Adjusted  (driven by E3-E22 name selector + F3-F22 offset)
 #
 #  Chart: anchored at H1, floats to the right — does not overlap selector area.
 
 MAX_FLOW = 10
-MAX_PRES = 10
+MAX_PRES = 20
 
 TITLE_ROW       = 1
 SEL_HDR_ROW     = 2
 SEL_START_ROW   = 3                                        # first selector row
-SEL_END_ROW     = SEL_START_ROW + max(MAX_FLOW, MAX_PRES) - 1  # = 12
-NOTE_ROW        = SEL_END_ROW + 1                          # = 13
-DATA_BANNER_ROW = NOTE_ROW + 1                             # = 14
-DATA_HDR_ROW    = DATA_BANNER_ROW + 1                      # = 15
-DATA_START_ROW  = DATA_HDR_ROW + 1                         # = 16
-DATA_OFFSET     = DATA_START_ROW - 2                       # = 14  → ROW()-14=2 at row 16
+SEL_END_ROW     = SEL_START_ROW + max(MAX_FLOW, MAX_PRES) - 1  # = 22
+NOTE_ROW        = SEL_END_ROW + 1                          # = 23
+DATA_BANNER_ROW = NOTE_ROW + 1                             # = 24
+DATA_HDR_ROW    = DATA_BANNER_ROW + 1                      # = 25
+DATA_START_ROW  = DATA_HDR_ROW + 1                         # = 26
+DATA_OFFSET     = DATA_START_ROW - 2                       # = 24  → ROW()-24=2 at row 26
 DATA_ROWS       = 200
 
 # Selector column indices (1-based)
@@ -162,7 +165,7 @@ COL_PRES_OFFSET = 6   # F  offset
 # Data table column indices (rows DATA_HDR_ROW+, same sheet)
 COL_DATE          = 1   # A
 COL_FLOW_ADJ_BASE = 2   # B = Flow 1 Adj … K = Flow 10 Adj   (index = base + n)
-COL_PRES_ADJ_BASE = 12  # L = Pres 1 Adj … U = Pres 10 Adj  (index = base + n)
+COL_PRES_ADJ_BASE = 12  # L = Pres 1 Adj … AE = Pres 20 Adj  (index = base + n)
 
 CHART_ANCHOR     = "H1"
 CHART_WIDTH_CM   = 20
@@ -267,7 +270,9 @@ def build_dashboard(ws, flow_names):
     ws.column_dimensions["E"].width = 15   # pres dropdown + flow adj
     ws.column_dimensions["F"].width = 10   # offset + flow adj
     ws.column_dimensions["G"].width = 13   # flow adj 6
-    for col in list("HIJKLMNOPQRSTU"):
+    for col in list("HIJKLMNOPQRSTUVWXYZ") + [
+        get_column_letter(i) for i in range(27, COL_PRES_ADJ_BASE + MAX_PRES + 1)
+    ]:
         ws.column_dimensions[col].width = 13
 
     # ── Row 1: Title ──────────────────────────────────────────────────────────
@@ -294,7 +299,7 @@ def build_dashboard(ws, flow_names):
         c.alignment = Alignment(horizontal="center", vertical="center")
         c.border = _thin()
 
-    # ── Rows SEL_START_ROW … SEL_END_ROW: 10 selector rows ───────────────────
+    # ── Rows SEL_START_ROW … SEL_END_ROW: up to 20 selector rows ─────────────
     dv_flow = DataValidation(
         type="list",
         formula1="'Raw Flow Data'!$B$1:$GR$1",
@@ -345,7 +350,7 @@ def build_dashboard(ws, flow_names):
     # ── Note row ──────────────────────────────────────────────────────────────
     ws.row_dimensions[NOTE_ROW].height = 44
     nc = ws.cell(NOTE_ROW, 1,
-                 value=("ℹ  Up to 10 flow and 10 pressure series.  "
+                 value=("ℹ  Up to 10 flow and 20 pressure series.  "
                         "Leave a Name cell blank to hide that series.  "
                         "Each row has its own Scale (flow multiplier) and Offset (pressure addend).  "
                         "After pasting your own data, right-click a Name cell → Data Validation "
@@ -353,7 +358,7 @@ def build_dashboard(ws, flow_names):
                         "Values of -999 are treated as no-data and excluded."))
     nc.font = Font(italic=True, color=DARK_GRAY, size=9)
     nc.alignment = Alignment(wrap_text=True)
-    ws.merge_cells(f"A{NOTE_ROW}:U{NOTE_ROW}")
+    ws.merge_cells(f"A{NOTE_ROW}:AE{NOTE_ROW}")
 
     # ── DATA TABLE section banner ──────────────────────────────────────────────
     ws.row_dimensions[DATA_BANNER_ROW].height = 20
@@ -362,7 +367,7 @@ def build_dashboard(ws, flow_names):
     sc.font = Font(bold=True, color=WHITE, size=9)
     sc.fill = PatternFill(fill_type="solid", fgColor=DARK_BLUE)
     sc.alignment = Alignment(horizontal="left", vertical="center", indent=1)
-    ws.merge_cells(f"A{DATA_BANNER_ROW}:U{DATA_BANNER_ROW}")
+    ws.merge_cells(f"A{DATA_BANNER_ROW}:AE{DATA_BANNER_ROW}")
 
     # ── DATA TABLE column headers ──────────────────────────────────────────────
     ws.row_dimensions[DATA_HDR_ROW].height = 22
@@ -410,7 +415,7 @@ def build_dashboard(ws, flow_names):
             if alt_fill:
                 c.fill = alt_fill
 
-        # Cols L-U: Pressure 1-10 Adjusted  (each driven by its own selector row)
+        # Cols L-AE: Pressure 1-20 Adjusted  (each driven by its own selector row)
         for n in range(MAX_PRES):
             sel_row = SEL_START_ROW + n
             col = COL_PRES_ADJ_BASE + n
@@ -434,10 +439,10 @@ def build_dashboard(ws, flow_names):
     last_data = DATA_START_ROW + DATA_ROWS - 1
     hc = ws.cell(hint_r, 1,
                  value=(f"↑ Formulas cover {DATA_ROWS} rows (row {DATA_START_ROW}–{last_data}). "
-                        "For more data: select A16:U215 and copy-paste downward."))
+                        f"For more data: select A{DATA_START_ROW}:AE{last_data} and copy-paste downward."))
     hc.font = Font(italic=True, color=DARK_GRAY, size=9)
     hc.alignment = Alignment(wrap_text=True)
-    ws.merge_cells(f"A{hint_r}:U{hint_r}")
+    ws.merge_cells(f"A{hint_r}:AE{hint_r}")
 
     # ── Chart ──────────────────────────────────────────────────────────────────
     _add_chart(ws)
@@ -460,12 +465,12 @@ def _add_chart(ws):
 
 def _build_correct_chart_xml():
     """Return a valid dual-axis line-chart XML with up to 10 flow (primary left)
-    and 10 pressure (secondary right) series.
+    and 20 pressure (secondary right) series.
 
     Data table layout (Dashboard sheet):
       Col A            = Date
       Cols B-K (2-11)  = Flow 1-10 Adjusted   (selector B3-B12, scale C3-C12)
-      Cols L-U (12-21) = Pres 1-10 Adjusted   (selector E3-E12, offset F3-F12)
+      Cols L-AE (12-31)= Pres 1-20 Adjusted   (selector E3-E22, offset F3-F22)
 
     Leave a selector name blank to hide that series (formula returns "").
     """
@@ -496,17 +501,17 @@ def _build_correct_chart_xml():
             f'<a:solidFill><a:srgbClr val="{color}"/></a:solidFill>'
             f'</a:ln></c:spPr>\n'
             f'          <c:marker><c:symbol val="none"/></c:marker>\n'
-            f'          <c:smooth val="0"/>\n'
             f'          <c:cat>'
             f'<c:numRef><c:f>{_ref(date_col)}</c:f>{empty_cache}</c:numRef>'
             f'</c:cat>\n'
             f'          <c:val>'
             f'<c:numRef><c:f>{_ref(col_ltr)}</c:f>{empty_cache}</c:numRef>'
             f'</c:val>\n'
+            f'          <c:smooth val="0"/>\n'
             f'        </c:ser>'
         )
 
-    # Build the 10 flow series (primary axis) and 10 pressure series (secondary axis)
+    # Build the 10 flow series (primary axis) and 20 pressure series (secondary axis)
     flow_xml = "\n".join(
         _ser(n, FLOW_COLORS[n], get_column_letter(COL_FLOW_ADJ_BASE + n))
         for n in range(MAX_FLOW)
@@ -649,19 +654,19 @@ def _build_correct_drawing_xml():
 
     # Row heights used in build_dashboard (in points → EMU = pt * 12700):
     #   Row 1  (TITLE_ROW)      : 30 pt
-    #   Rows 2-12 (SEL_HDR–SEL_END): 22 pt (hdr) + 24 pt each × 10 rows
-    #   Row 13 (NOTE_ROW)       : 44 pt
-    #   Row 14 (DATA_BANNER)    : 20 pt
-    #   Row 15 (DATA_HDR_ROW)   : 22 pt
-    #   Row 16+ (DATA_START)    : 15 pt
+    #   Rows 2-22 (SEL_HDR–SEL_END): 22 pt (hdr) + 24 pt each × 20 rows
+    #   Row 23 (NOTE_ROW)       : 44 pt
+    #   Row 24 (DATA_BANNER)    : 20 pt
+    #   Row 25 (DATA_HDR_ROW)   : 22 pt
+    #   Row 26+ (DATA_START)    : 15 pt
     row_heights_pt = (
-        [30]                     # row 1
-        + [22]                   # row 2 (SEL_HDR_ROW)
-        + [24] * 10              # rows 3-12 (SEL selector rows)
-        + [44]                   # row 13 (NOTE_ROW)
-        + [20]                   # row 14 (DATA_BANNER_ROW)
-        + [22]                   # row 15 (DATA_HDR_ROW)
-        + [15] * 300             # rows 16+ (data rows, generous upper bound)
+        [30]                                       # row 1
+        + [22]                                     # row 2 (SEL_HDR_ROW)
+        + [24] * max(MAX_FLOW, MAX_PRES)           # rows 3-22 (SEL selector rows)
+        + [44]                                     # NOTE_ROW
+        + [20]                                     # DATA_BANNER_ROW
+        + [22]                                     # DATA_HDR_ROW
+        + [15] * 300                               # data rows, generous upper bound
     )
     to_row    = from_row
     remaining = cy
@@ -733,15 +738,19 @@ def _build_correct_drawing_rels():
 
 
 def _patch_chart_xml(xlsx_path):
-    """Replace chart XML, drawing XML, and drawing relationship written by openpyxl.
+    """Replace only chart1.xml written by openpyxl with our correct 30-series version.
 
-    openpyxl produces an invalid drawing anchor (missing macro attribute, empty
-    xfrm, wrong namespace prefix) that causes Excel to discard the chart on open.
-    Also writes [Content_Types].xml first in the ZIP as required by OPC/OOXML.
+    openpyxl's drawing1.xml (oneCellAnchor with empty xfrm) is accepted by Excel
+    as-is when the chart XML it references is valid.  Previous attempts to also
+    replace drawing1.xml were unnecessary and masked the real problem: the chart
+    XML had <c:smooth> in the wrong position inside <c:ser>, violating the
+    CT_LineSer element-order constraint in the OOXML schema.  Excel's strict
+    validator then rejected chart1.xml and cascade-removed drawing1.xml.
+
+    Now we only replace chart1.xml (correct element order) and leave the drawing
+    files untouched.
     """
-    correct_chart   = _build_correct_chart_xml().encode("utf-8")
-    correct_drawing = _build_correct_drawing_xml().encode("utf-8")
-    correct_drel    = _build_correct_drawing_rels().encode("utf-8")
+    correct_chart = _build_correct_chart_xml().encode("utf-8")
 
     tmp_path = xlsx_path + ".patching"
     with zipfile.ZipFile(xlsx_path, "r") as zin:
@@ -760,10 +769,6 @@ def _patch_chart_xml(xlsx_path):
                     continue  # already written first
                 if item.filename == "xl/charts/chart1.xml":
                     zout.writestr(item, correct_chart)
-                elif item.filename == "xl/drawings/drawing1.xml":
-                    zout.writestr(item, correct_drawing)
-                elif item.filename == "xl/drawings/_rels/drawing1.xml.rels":
-                    zout.writestr(item, correct_drel)
                 else:
                     zout.writestr(item, zin.read(item.filename))
     os.replace(tmp_path, xlsx_path)
@@ -834,21 +839,21 @@ def build_instructions(ws):
         "Step 3:  Go to the Dashboard sheet.",
         "Step 4:  Each of the 10 'Flow N ▼' rows (col B, rows 3-12) has a name dropdown.",
         "         Pick the flow meters you want to display.  Leave unused rows blank.",
-        "Step 5:  Each of the 10 'Pres N ▼' rows (col E, rows 3-12) has a name dropdown.",
+        "Step 5:  Each of the 20 'Pres N ▼' rows (col E, rows 3-22) has a name dropdown.",
         "         Pick the pressure points.  Leave unused rows blank.",
         "Step 6:  Adjust the Scale (col C) for each flow row and the Offset (col F) for",
         "         each pressure row independently.  Default Scale = 1.000, Offset = 0.000.",
-        "Step 7:  The chart (right side) and formula table (below row 15) update instantly.",
+        "Step 7:  The chart (right side) and formula table update instantly.",
         "Step 8:  When satisfied, run the SaveToMOD macro to store the adjusted data.",
         "",
-        "NOTE:  Up to 10 flow series (left Y-axis, blue shades) and 10 pressure series",
+        "NOTE:  Up to 10 flow series (left Y-axis, blue shades) and 20 pressure series",
         "       (right Y-axis, warm shades) are shown simultaneously on the chart.",
         "",
         "NOTE:  After pasting your own data, right-click each Name cell → Data Validation",
         "       → update the Source to cover your column range, e.g. 'Raw Flow Data'!$B$1:$BZ$1",
         "",
-        "NOTE:  The formula table covers 200 rows (A16:U215). For longer datasets, select",
-        "       that range and copy-paste downward as far as needed.",
+        "NOTE:  The formula table covers 200 rows. For longer datasets, select",
+        f"       that range and copy-paste downward as far as needed.",
         "",
         "NOTE:  -999 values are treated as no-data and are excluded from all calculations.",
     ]:
@@ -908,19 +913,19 @@ def build_instructions(ws):
     vba = r"""' ═══════════════════════════════════════════════════════════════════════════
 ' SaveToMOD  —  appends current adjusted data to MOD Flow and MOD Pressure
 '
-' Reads all active selector rows (rows 3-12):
+' Reads all active selector rows (rows 3-22):
 '   Col B  = flow name  |  Col C  = scale factor  |  Col E  = pressure name
 '   Col F  = offset
-' Data table: row 16 onwards
+' Data table: row 26 onwards
 '   Col A = Date
-'   Cols B-K (2-11)  = Flow 1-10 Adjusted
-'   Cols L-U (12-21) = Pres 1-10 Adjusted
+'   Cols B-K (2-11)   = Flow 1-10 Adjusted
+'   Cols L-AE (12-31) = Pres 1-20 Adjusted
 ' ═══════════════════════════════════════════════════════════════════════════
 Sub SaveToMOD()
 
     Const SEL_START      As Long = 3
-    Const SEL_END        As Long = 12
-    Const DATA_START     As Long = 16
+    Const SEL_END        As Long = 22
+    Const DATA_START     As Long = 26
     Const FLOW_SEL_COL   As Long = 2   ' col B
     Const PRES_SEL_COL   As Long = 5   ' col E
     Const FLOW_ADJ_BASE  As Long = 2   ' col B = Flow 1 Adj
@@ -1040,10 +1045,10 @@ End Sub"""
         "• Use -999 for missing/no-data values — they are excluded from all calculations.",
         "• Data can be any length: months of 15-minute data = thousands of rows.",
         "",
-        "Dashboard data table (rows 16+):",
+        "Dashboard data table (rows 26+):",
         "  Col A     = Date",
         "  Cols B-K  = Flow 1-10 Adjusted  (driven by Name in B3-B12 × Scale in C3-C12)",
-        "  Cols L-U  = Pres 1-10 Adjusted  (driven by Name in E3-E12 + Offset in F3-F12)",
+        "  Cols L-AE = Pres 1-20 Adjusted  (driven by Name in E3-E22 + Offset in F3-F22)",
         "",
         "Leave a Name cell blank to hide that series (formula returns empty, not plotted).",
     ]:
