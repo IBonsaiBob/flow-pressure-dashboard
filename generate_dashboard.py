@@ -343,7 +343,7 @@ def build_dashboard(ws, flow_names):
             sel_cell = ws.cell(r, COL_FLOW_SEL)
             style_input(sel_cell,
                         flow_names[n] if n < len(flow_names) else "",
-                        bg=LIGHT_BLUE, sz=11)
+                        bg=FLOW_COLORS[n], fg="FFFFFF", sz=11)
             dv_flow.add(sel_cell)
 
             sc = ws.cell(r, COL_FLOW_SCALE)
@@ -361,7 +361,7 @@ def build_dashboard(ws, flow_names):
             psel = ws.cell(r, COL_PRES_SEL)
             style_input(psel,
                         flow_names[n] if n < len(flow_names) else "",
-                        bg=LIGHT_ORANGE, sz=11)
+                        bg=PRES_COLORS[n], fg="FFFFFF", sz=11)
             dv_pres.add(psel)
 
             oc = ws.cell(r, COL_PRES_OFFSET)
@@ -680,10 +680,6 @@ def _build_correct_chart_xml():
         <c:crossBetween val="midCat"/>
       </c:valAx>
     </c:plotArea>
-    <c:legend>
-      <c:legendPos val="r"/>
-      <c:overlay val="0"/>
-    </c:legend>
     <c:plotVisOnly val="1"/>
     <c:dispBlanksAs val="gap"/>
     <c:showDLblsOverMax val="0"/>
