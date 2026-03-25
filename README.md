@@ -45,21 +45,23 @@ Date              | AL012       | AL013       | AL014       | ...
 4. Go to the **Dashboard** tab
 
 ### Daily use
-1. **Select a flow** — use the `Select Flow ▼` dropdown (cell **B3**)  
-   The chosen flow is highlighted in the list on the left side of the dashboard
-2. **Select a pressure** — use the `Select Pressure ▼` dropdown (cell **E3**)  
-   The chosen pressure is highlighted in the list on the right side
-3. **Adjust values** if needed:
-   - `Flow Scaling Factor` (cell **B2**) — multiplies the flow by this value (default 1.0)
-   - `Pressure Offset` (cell **E2**) — adds this value to the pressure (default 0)
-4. The **dual-axis chart** and **formula table** update instantly
-5. When satisfied, run the **SaveToMOD** macro to append the adjusted data to the MOD tabs
+1. **Select flows** — rows 3-12 each have a `Flow N ▼` dropdown (col **B**).  
+   Pick up to 10 flow meters; leave unused rows blank.
+2. **Select pressures** — rows 3-12 each have a `Pres N ▼` dropdown (col **E**).  
+   Pick up to 10 pressure points; leave unused rows blank.
+3. **Adjust per-series values**:
+   - `Scale` (col **C**, rows 3-12) — multiplies each flow by its own factor (default 1.000)
+   - `Offset` (col **F**, rows 3-12) — adds a constant to each pressure (default 0.000)
+4. The **dual-axis chart** (10 flow series on left axis, 10 pressure on right) and
+   **formula table** (rows 16+, cols A-U) update instantly
+5. When satisfied, run the **SaveToMOD** macro to append all active series to the MOD tabs
 
 ### After pasting your own data
-The dropdown in B3 and E3 reads directly from the Raw tab headers.  
-If your new column range extends beyond the default, update the source:
-- Right-click **B3** → Data Validation → change Source to e.g. `'Raw Flow Data'!$B$1:$BZ$1`
-- Do the same for **E3** using `'Raw Pressure Data'`
+Each Name dropdown reads directly from the Raw tab headers.  
+If your column range extends beyond the default, update the source:
+- Right-click any **Flow Name** cell (B3-B12) → Data Validation → change Source to
+  e.g. `'Raw Flow Data'!$B$1:$BZ$1`
+- Do the same for any **Pressure Name** cell (E3-E12) using `'Raw Pressure Data'`
 
 ---
 
