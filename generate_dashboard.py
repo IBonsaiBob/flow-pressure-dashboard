@@ -825,13 +825,80 @@ def _build_correct_chart_xml():
 </c:chartSpace>"""
 
 
-def _patch_chart_xml(xlsx_path):
-    """Replace the broken chart XML written by openpyxl with a valid version.
+def _build_correct_drawing_xml():
+    """Return valid spreadsheet-drawing XML that anchors chart1 at CHART_ANCHOR.
 
-    Also writes [Content_Types].xml first in the ZIP, as required by the
-    Open Packaging Convention (OPC/OOXML) specification.
+    openpyxl generates drawing XML with three bugs that cause Excel to discard
+    the drawing entirely ("Removed Part: /xl/drawings/drawing1.xml"):
+      1. <xfrm /> is self-closing (empty) — Excel requires <a:off> and <a:ext> children.
+      2. <graphicFrame> is missing the required macro="" attribute.
+      3. All spreadsheetDrawing elements use the default namespace instead of xdr: prefix.
+
+    CHART_ANCHOR is "G1"  →  col index 6 (0-based), row index 0 (0-based).
+    CHART_WIDTH_CM / CHART_HEIGHT_CM are converted to EMU (1 cm = 360 000 EMU).
     """
-    correct_xml = _build_correct_chart_xml().encode("utf-8")
+    from openpyxl.utils import column_index_from_string
+    anchor_col = column_index_from_string(CHART_ANCHOR.rstrip("0123456789")) - 1
+    anchor_row = int("".join(c for c in CHART_ANCHOR if c.isdigit())) - 1
+    cx = int(CHART_WIDTH_CM  * 360_000)
+    cy = int(CHART_HEIGHT_CM * 360_000)
+
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<xdr:wsDr'
+        ' xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"'
+        ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+        ' xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"'
+        ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">\n'
+        '  <xdr:oneCellAnchor>\n'
+        f'    <xdr:from><xdr:col>{anchor_col}</xdr:col><xdr:colOff>0</xdr:colOff>'
+        f'<xdr:row>{anchor_row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>\n'
+        f'    <xdr:ext cx="{cx}" cy="{cy}"/>\n'
+        '    <xdr:graphicFrame macro="">\n'
+        '      <xdr:nvGraphicFramePr>\n'
+        '        <xdr:cNvPr id="2" name="Chart 1"/>\n'
+        '        <xdr:cNvGraphicFramePr/>\n'
+        '      </xdr:nvGraphicFramePr>\n'
+        # xfrm children must be present; for a oneCellAnchor chart frame the
+        # actual position/size comes from the <xdr:from>+<xdr:ext> siblings,
+        # so the offset and extent here are intentionally zero.
+        '      <xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>\n'
+        '      <a:graphic>\n'
+        '        <a:graphicData'
+        ' uri="http://schemas.openxmlformats.org/drawingml/2006/chart">\n'
+        '          <c:chart r:id="rId1"/>\n'
+        '        </a:graphicData>\n'
+        '      </a:graphic>\n'
+        '    </xdr:graphicFrame>\n'
+        '    <xdr:clientData/>\n'
+        '  </xdr:oneCellAnchor>\n'
+        '</xdr:wsDr>'
+    )
+
+
+def _build_correct_drawing_rels():
+    """Return a drawing relationship file using a relative (not absolute) target path."""
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n'
+        '  <Relationship Id="rId1"'
+        ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"'
+        ' Target="../charts/chart1.xml"/>\n'
+        '</Relationships>'
+    )
+
+
+def _patch_chart_xml(xlsx_path):
+    """Replace chart XML, drawing XML, and drawing relationship written by openpyxl.
+
+    openpyxl produces an invalid drawing anchor (missing macro attribute, empty
+    xfrm, wrong namespace prefix) that causes Excel to discard the chart on open.
+    Also writes [Content_Types].xml first in the ZIP as required by OPC/OOXML.
+    """
+    correct_chart   = _build_correct_chart_xml().encode("utf-8")
+    correct_drawing = _build_correct_drawing_xml().encode("utf-8")
+    correct_drel    = _build_correct_drawing_rels().encode("utf-8")
+
     tmp_path = xlsx_path + ".patching"
     with zipfile.ZipFile(xlsx_path, "r") as zin:
         with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zout:
@@ -848,7 +915,11 @@ def _patch_chart_xml(xlsx_path):
                 if item.filename == "[Content_Types].xml":
                     continue  # already written first
                 if item.filename == "xl/charts/chart1.xml":
-                    zout.writestr(item, correct_xml)
+                    zout.writestr(item, correct_chart)
+                elif item.filename == "xl/drawings/drawing1.xml":
+                    zout.writestr(item, correct_drawing)
+                elif item.filename == "xl/drawings/_rels/drawing1.xml.rels":
+                    zout.writestr(item, correct_drel)
                 else:
                     zout.writestr(item, zin.read(item.filename))
     os.replace(tmp_path, xlsx_path)
