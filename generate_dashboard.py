@@ -156,7 +156,7 @@ DATA_BANNER_ROW = NOTE_ROW + 1                             # = 24
 DATA_HDR_ROW    = DATA_BANNER_ROW + 1                      # = 25
 DATA_START_ROW  = DATA_HDR_ROW + 1                         # = 26
 DATA_OFFSET     = DATA_START_ROW - 2                       # = 24  → ROW()-24=2 at row 26
-DATA_ROWS       = 200
+DATA_ROWS       = 2000
 
 # Selector column indices (1-based)
 COL_FLOW_LABEL  = 1   # A  row number
@@ -476,9 +476,9 @@ def build_dashboard(ws, flow_names):
                 f"=IFERROR("
                 f"IF($B${sel_row}=\"\",\"\","
                 f"IF(${_ic}${_sr}+ROW()-{DATA_START_ROW}>${_ic}${_er},\"\","
-                f"IF(INDEX('Raw Flow Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}+${_fd}${sel_row},"
+                f"IF(INDEX('Raw Flow Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}-${_fd}${sel_row},"
                 f"MATCH($B${sel_row},'Raw Flow Data'!$1:$1,0))=-999,\"\","
-                f"INDEX('Raw Flow Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}+${_fd}${sel_row},"
+                f"INDEX('Raw Flow Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}-${_fd}${sel_row},"
                 f"MATCH($B${sel_row},'Raw Flow Data'!$1:$1,0))*$C${sel_row}))),\"\")"
             )
             c.number_format = "0.000"
@@ -495,9 +495,9 @@ def build_dashboard(ws, flow_names):
                 f"=IFERROR("
                 f"IF($F${sel_row}=\"\",\"\","
                 f"IF(${_ic}${_sr}+ROW()-{DATA_START_ROW}>${_ic}${_er},\"\","
-                f"IF(INDEX('Raw Pressure Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}+${_pd}${sel_row},"
+                f"IF(INDEX('Raw Pressure Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}-${_pd}${sel_row},"
                 f"MATCH($F${sel_row},'Raw Pressure Data'!$1:$1,0))=-999,\"\","
-                f"INDEX('Raw Pressure Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}+${_pd}${sel_row},"
+                f"INDEX('Raw Pressure Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}-${_pd}${sel_row},"
                 f"MATCH($F${sel_row},'Raw Pressure Data'!$1:$1,0))+$G${sel_row}))),\"\")"
             )
             c.number_format = "0.000"
