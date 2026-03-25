@@ -259,17 +259,6 @@ def build_raw_sheet(ws, title, table_name, data_rows, dates):
     )
     ws.add_table(tbl)
 
-    # Instructions
-    note_row = last_row + 2
-    nc = ws.cell(note_row, 1,
-                 value=("INSTRUCTIONS: Delete the sample rows above (keep Row 1 headers), "
-                        "then paste your data from Row 2. Date in Column A; "
-                        "flow/pressure names as column headers. -999 = no-data."))
-    nc.font = Font(italic=True, color=DARK_GRAY, size=9)
-    nc.alignment = Alignment(wrap_text=True)
-    ws.merge_cells(f"A{note_row}:{last_col}{note_row}")
-    ws.row_dimensions[note_row].height = 30
-
 
 # ── Dashboard sheet ────────────────────────────────────────────────────────────
 
@@ -858,25 +847,26 @@ def _patch_chart_xml(xlsx_path):
 # ── MOD output sheets ──────────────────────────────────────────────────────────
 
 def build_mod_sheet(ws, title):
+    """Create an empty wide-format MOD sheet matching the raw-data layout.
+
+    Row 1:   "Date" in A1  (SaveToMOD adds sensor-code headers to B1, C1, …)
+    Row 2+:  date/value data written by the SaveToMOD VBA macro.
+
+    The sheet is intentionally left almost empty so the user can paste data from
+    the raw sheets side-by-side. SaveToMOD clears and rewrites it on every run.
+    """
     ws.title = title
     ws.row_dimensions[1].height = 22
     ws.column_dimensions["A"].width = 21
-    ws.column_dimensions["B"].width = 18
-    ws.column_dimensions["C"].width = 20
 
-    for ci, (h, bg) in enumerate(
-        [("Date", DARK_BLUE), ("Name", DARK_BLUE), ("Adjusted Value", DARK_BLUE)],
-        start=1,
-    ):
-        style_header(ws.cell(1, ci), h, bg=bg)
+    style_header(ws.cell(1, 1), "Date", bg=DARK_BLUE)
 
     ws.row_dimensions[2].height = 18
     ic = ws.cell(2, 1,
-                 value=("Rows are appended here each time you run SaveToMOD. "
-                        "History is preserved — existing rows are never overwritten."))
+                 value=("Run the SaveToMOD macro to populate this sheet.  "
+                        "Format: Date in column A; sensor codes as column headers in row 1."))
     ic.font = Font(italic=True, color=DARK_GRAY, size=9)
     ic.alignment = Alignment(wrap_text=True)
-    ws.merge_cells("A2:C2")
 
 
 # ── Instructions sheet ─────────────────────────────────────────────────────────
@@ -933,6 +923,8 @@ def build_instructions(ws):
         "         • Pres Δt (steps)        — same for pressure data.",
         "           Use these to align sensor readings that have different transit times.",
         "Step 9:  When satisfied, run the SaveToMOD macro to store the adjusted data.",
+        "         MOD Flow and MOD Pressure are cleared and rewritten each run in the same",
+        "         wide format as the raw sheets (Date | SensorCode1 | SensorCode2 | …).",
         "",
         "NOTE:  Up to 10 flow series (left Y-axis, blue shades) and 20 pressure series",
         "       (right Y-axis, warm shades) are shown simultaneously on the chart.",
@@ -999,40 +991,39 @@ def build_instructions(ws):
     blank(r); r += 1
 
     vba = r"""' ═══════════════════════════════════════════════════════════════════════════
-' SaveToMOD  —  appends current adjusted data to MOD Flow and MOD Pressure
+' SaveToMOD  —  writes adjusted data to MOD Flow and MOD Pressure in wide
+'               format: Date | SensorCode1 | SensorCode2 | ...
+'               Row 1 holds the headers; rows 2+ hold the data.
+'               The sheet is cleared and rewritten on every run.
 '
-' Reads all active selector rows (rows 3-22):
-'   Col B  = flow name  |  Col C  = scale factor  |  Col E  = pressure name
-'   Col F  = offset
-' Data table: row 26 onwards
-'   Col A = Date
-'   Cols B-K (2-11)   = Flow 1-10 Adjusted
-'   Cols L-AE (12-31) = Pres 1-20 Adjusted
+' Data table on Dashboard: row 26 onwards
+'   Col A (1)     = Date
+'   Cols B-K (2-11)  = Flow 1-10 Adjusted  (driven by selectors B3-B12)
+'   Cols L-AE (12-31)= Pres 1-20 Adjusted  (driven by selectors E3-E22)
 ' ═══════════════════════════════════════════════════════════════════════════
 Sub SaveToMOD()
 
     Const SEL_START      As Long = 3
-    Const SEL_END        As Long = 22
+    Const MAX_FLOW_ROWS  As Long = 10   ' selector rows 3-12
+    Const MAX_PRES_ROWS  As Long = 20   ' selector rows 3-22
     Const DATA_START     As Long = 26
-    Const FLOW_SEL_COL   As Long = 2   ' col B
-    Const PRES_SEL_COL   As Long = 5   ' col E
-    Const FLOW_ADJ_BASE  As Long = 2   ' col B = Flow 1 Adj
-    Const PRES_ADJ_BASE  As Long = 12  ' col L = Pres 1 Adj
+    Const FLOW_SEL_COL   As Long = 2    ' col B — flow name selector
+    Const PRES_SEL_COL   As Long = 5    ' col E — pressure name selector
+    Const FLOW_ADJ_BASE  As Long = 2    ' col B = Flow 1 Adj
+    Const PRES_ADJ_BASE  As Long = 12   ' col L = Pres 1 Adj
 
     Dim wsDash    As Worksheet
     Dim wsModFlow As Worksheet
     Dim wsModPres As Worksheet
-    Dim lastRow   As Long
-    Dim i As Long, j As Long, n As Long
-    Dim flowName  As String
-    Dim presName  As String
-    Dim flowAdjCol As Long
-    Dim presAdjCol As Long
-    Dim nFlow     As Long
-    Dim nPres     As Long
-    Dim dtVal     As Variant
-    Dim adjVal    As Variant
-    Dim totalSaved As Long
+    Dim i As Long, j As Long, col As Long
+    Dim flowNames(0 To 9)  As String
+    Dim presNames(0 To 19) As String
+    Dim lastDashRow As Long
+    Dim flowRow     As Long
+    Dim presRow     As Long
+    Dim dtVal       As Variant
+    Dim adjVal      As Variant
+    Dim totalSaved  As Long
 
     On Error Resume Next
     Set wsDash    = Worksheets("Dashboard")
@@ -1046,67 +1037,97 @@ Sub SaveToMOD()
         Exit Sub
     End If
 
-    lastRow = wsDash.Cells(wsDash.Rows.Count, "A").End(xlUp).Row
-    If lastRow < DATA_START Then
+    lastDashRow = wsDash.Cells(wsDash.Rows.Count, "A").End(xlUp).Row
+    If lastDashRow < DATA_START Then
         MsgBox "No data found in the formula table (rows " & DATA_START & " onwards).", _
                vbExclamation, "No Data"
         Exit Sub
     End If
 
+    ' ── Collect active series names ────────────────────────────────────────────
+    For i = 0 To MAX_FLOW_ROWS - 1
+        flowNames(i) = Trim(wsDash.Cells(SEL_START + i, FLOW_SEL_COL).Value)
+    Next i
+    For i = 0 To MAX_PRES_ROWS - 1
+        presNames(i) = Trim(wsDash.Cells(SEL_START + i, PRES_SEL_COL).Value)
+    Next i
+
     Application.ScreenUpdating = False
     totalSaved = 0
 
-    For i = SEL_START To SEL_END
-        n          = i - SEL_START            ' 0-based slot index
-        flowName   = Trim(wsDash.Cells(i, FLOW_SEL_COL).Value)
-        presName   = Trim(wsDash.Cells(i, PRES_SEL_COL).Value)
-        flowAdjCol = FLOW_ADJ_BASE + n        ' 2,3,...,11
-        presAdjCol = PRES_ADJ_BASE + n        ' 12,13,...,21
-
-        If flowName <> "" Then
-            nFlow = wsModFlow.Cells(wsModFlow.Rows.Count, "A").End(xlUp).Row + 1
-            If nFlow < 3 Then nFlow = 3
-            For j = DATA_START To lastRow
-                dtVal  = wsDash.Cells(j, 1).Value
-                adjVal = wsDash.Cells(j, flowAdjCol).Value
-                If dtVal <> "" And adjVal <> "" Then
-                    wsModFlow.Cells(nFlow, 1).Value        = dtVal
-                    wsModFlow.Cells(nFlow, 1).NumberFormat = "DD/MM/YYYY HH:MM"
-                    wsModFlow.Cells(nFlow, 2).Value        = flowName
-                    wsModFlow.Cells(nFlow, 3).Value        = adjVal
-                    wsModFlow.Cells(nFlow, 3).NumberFormat = "0.000"
-                    nFlow = nFlow + 1
-                    totalSaved = totalSaved + 1
-                End If
-            Next j
-        End If
-
-        If presName <> "" Then
-            nPres = wsModPres.Cells(wsModPres.Rows.Count, "A").End(xlUp).Row + 1
-            If nPres < 3 Then nPres = 3
-            For j = DATA_START To lastRow
-                dtVal  = wsDash.Cells(j, 1).Value
-                adjVal = wsDash.Cells(j, presAdjCol).Value
-                If dtVal <> "" And adjVal <> "" Then
-                    wsModPres.Cells(nPres, 1).Value        = dtVal
-                    wsModPres.Cells(nPres, 1).NumberFormat = "DD/MM/YYYY HH:MM"
-                    wsModPres.Cells(nPres, 2).Value        = presName
-                    wsModPres.Cells(nPres, 3).Value        = adjVal
-                    wsModPres.Cells(nPres, 3).NumberFormat = "0.000"
-                    nPres = nPres + 1
-                    totalSaved = totalSaved + 1
-                End If
-            Next j
+    ' ── MOD Flow: clear then write wide format ─────────────────────────────────
+    wsModFlow.Cells.ClearContents
+    wsModFlow.Cells(1, 1).Value = "Date"
+    col = 2
+    For i = 0 To MAX_FLOW_ROWS - 1
+        If flowNames(i) <> "" Then
+            wsModFlow.Cells(1, col).Value = flowNames(i)
+            col = col + 1
         End If
     Next i
+
+    flowRow = 2
+    For j = DATA_START To lastDashRow
+        dtVal = wsDash.Cells(j, 1).Value
+        If dtVal <> "" Then
+            wsModFlow.Cells(flowRow, 1).Value        = dtVal
+            wsModFlow.Cells(flowRow, 1).NumberFormat = "DD/MM/YYYY HH:MM"
+            col = 2
+            For i = 0 To MAX_FLOW_ROWS - 1
+                If flowNames(i) <> "" Then
+                    adjVal = wsDash.Cells(j, FLOW_ADJ_BASE + i).Value
+                    If adjVal <> "" Then
+                        wsModFlow.Cells(flowRow, col).Value        = adjVal
+                        wsModFlow.Cells(flowRow, col).NumberFormat = "0.000"
+                        totalSaved = totalSaved + 1
+                    End If
+                    col = col + 1
+                End If
+            Next i
+            flowRow = flowRow + 1
+        End If
+    Next j
+
+    ' ── MOD Pressure: clear then write wide format ─────────────────────────────
+    wsModPres.Cells.ClearContents
+    wsModPres.Cells(1, 1).Value = "Date"
+    col = 2
+    For i = 0 To MAX_PRES_ROWS - 1
+        If presNames(i) <> "" Then
+            wsModPres.Cells(1, col).Value = presNames(i)
+            col = col + 1
+        End If
+    Next i
+
+    presRow = 2
+    For j = DATA_START To lastDashRow
+        dtVal = wsDash.Cells(j, 1).Value
+        If dtVal <> "" Then
+            wsModPres.Cells(presRow, 1).Value        = dtVal
+            wsModPres.Cells(presRow, 1).NumberFormat = "DD/MM/YYYY HH:MM"
+            col = 2
+            For i = 0 To MAX_PRES_ROWS - 1
+                If presNames(i) <> "" Then
+                    adjVal = wsDash.Cells(j, PRES_ADJ_BASE + i).Value
+                    If adjVal <> "" Then
+                        wsModPres.Cells(presRow, col).Value        = adjVal
+                        wsModPres.Cells(presRow, col).NumberFormat = "0.000"
+                        totalSaved = totalSaved + 1
+                    End If
+                    col = col + 1
+                End If
+            Next i
+            presRow = presRow + 1
+        End If
+    Next j
 
     Application.ScreenUpdating = True
 
     If totalSaved = 0 Then
-        MsgBox "No data rows were saved — check the formula table has values.", _
+        MsgBox "No data values were saved — check the formula table has values.", _
                vbExclamation, "Nothing Saved"
     Else
-        MsgBox "Saved " & totalSaved & " data rows across all active series.", _
+        MsgBox "Saved " & totalSaved & " data values across all active series.", _
                vbInformation, "Save Complete"
     End If
 
@@ -1120,11 +1141,13 @@ End Sub"""
     section(r, "5.  DATA FORMAT REFERENCE", bg=DARK_GRAY)
     r += 1
     for line in [
-        "Both Raw Data sheets expect this wide format:",
+        "Both Raw Data sheets AND MOD sheets use this wide format:",
         "",
         "    Date               | AL012       | AL013       | AL014       | ...  ",
-        "    12/01/2026 00:00   | 3.168205    | 2.204250    | 2.665153    | ...  ",
-        "    12/01/2026 00:15   | 3.190769    | 2.225250    | 2.681334    | ...  ",
+        "    01/12/2026 00:00   | 3.168205    | 2.204250    | 2.665153    | ...  ",
+        "    01/12/2026 00:15   | 3.190769    | 2.225250    | 2.681334    | ...  ",
+        "",
+        "  Dates are displayed in UK format: DD/MM/YYYY HH:MM",
         "",
         "• Column A must contain a proper Date/Time value (not text).",
         "• Flow and pressure column names can be any mix of letters and numbers.",
@@ -1132,11 +1155,18 @@ End Sub"""
         "  — you select each independently on the Dashboard.",
         "• Use -999 for missing/no-data values — they are excluded from all calculations.",
         "• Data can be any length: months of 15-minute data = thousands of rows.",
+        "• To paste your own data into a raw sheet: delete the sample data rows",
+        "  (keep row 1 headers), then paste starting from row 2.",
         "",
         "Dashboard data table (rows 26+):",
         "  Col A     = Date",
         "  Cols B-K  = Flow 1-10 Adjusted  (driven by Name in B3-B12 × Scale in C3-C12)",
         "  Cols L-AE = Pres 1-20 Adjusted  (driven by Name in E3-E22 + Offset in F3-F22)",
+        "",
+        "MOD Flow / MOD Pressure (written by SaveToMOD):",
+        "  Row 1  = Date | SensorCode1 | SensorCode2 | ...  (headers)",
+        "  Row 2+ = adjusted values in matching columns",
+        "  Note: the sheet is cleared and rewritten on every SaveToMOD run.",
         "",
         "Leave a Name cell blank to hide that series (formula returns empty, not plotted).",
     ]:
