@@ -6,17 +6,24 @@ Generates Flow_Pressure_Dashboard.xlsx
 
 Dashboard layout
 ────────────────
-  Col A-B │ Col C │ Col D-E   │ Col F  │ Col G-P (chart)
-  ────────────────────────────────────────────────────────
-  FLOW    │ space │ PRESSURE  │ space  │  dual-axis chart
-  list    │       │ list      │        │  (floats right)
-  ────────────────────────────────────────────────────────
-  DATA TABLE  (rows 25+)  A=Date B=FlowRaw C=FlowAdj D=PresRaw E=PresAdj
+  Col A-B  │ Col C     │ Col D-E       │ Col F-I        │ Col G+ (chart)
+  ─────────────────────────────────────────────────────────────────────────
+  FLOW      │ spacer    │ PRESSURE      │ (data table)   │  dual-axis chart
+  selector  │           │ 1/2/3 sel.    │                │  (floats right)
+  list      │           │ list          │                │
+  ─────────────────────────────────────────────────────────────────────────
+  DATA TABLE (rows 27+)
+    A=Date  B=FlowRaw   C=FlowAdj
+    D=Pres1Raw  E=Pres1Adj  F=Pres2Raw  G=Pres2Adj  H=Pres3Raw  I=Pres3Adj
 
 Controls:
-  B2 = Flow Scaling Factor    E2 = Pressure Offset
-  B3 = Selected Flow (↓ DV)  E3 = Selected Pressure (↓ DV)
-  Rows 5-20 = flow/pressure name lists with conditional highlight
+  B2 = Flow Scaling Factor      E2 = Pressure Offset
+  B3 = Selected Flow (↓ DV)     (leave blank to hide flow line)
+  E3 = Pressure 1 selector
+  E4 = Pressure 2 selector      (optional, leave blank to hide)
+  E5 = Pressure 3 selector      (optional, leave blank to hide)
+  Rows  5-20 = flow name list with conditional highlight
+  Rows  7-22 = pressure name list with conditional highlight
 
 Usage:
     python3 generate_dashboard.py
@@ -101,35 +108,49 @@ PRES_ROWS = [
 #
 #  Row 1   : Title
 #  Row 2   : "Scaling Factor" label (A2) | value (B2) | "Pressure Offset" label (D2) | value (E2)
-#  Row 3   : "Select Flow" label (A3)    | DROPDOWN (B3) | "Select Pressure" label (D3) | DROPDOWN (E3)
-#  Row 4   : List header bar — "All Flows" (A4:B4) | "All Pressures" (D4:E4)
-#  Rows 5+ : Flow names in A (merged A:B) | Pressure names in D (merged D:E)
-#  Last list row + 1 : note row
-#  DATA_SECTION_ROW  : "FORMULA TABLE" banner
-#  DATA_HDR_ROW      : Date | Flow Raw | Flow Adjusted | Pressure Raw | Pressure Adjusted
-#  DATA_START_ROW+   : Formula rows
+#  Row 3   : "Select Flow ▼" (A3)  | DROPDOWN (B3) | "Pressure 1 ▼" (D3) | DROPDOWN (E3)
+#  Row 4   : "All Flows" header (A4:B4) | "Pressure 2 ▼" (D4) | DROPDOWN (E4)
+#  Row 5+  : Flow name list starts (A5:B5) | "Pressure 3 ▼" (D5) | DROPDOWN (E5)
+#  Row 6   : Flow list item 2 (A6:B6)   | "All Pressures" header (D6:E6)
+#  Rows 7+ : Flow name list continues | Pressure name list starts
 #
-#  Columns A-E are shared between the list area (rows 1-22) and the
+#  Leave B3 blank to hide Flow from the chart.
+#  Leave E4 / E5 blank to show fewer than 3 pressure series.
+#
+#  Columns A-I are shared between the selector area (rows 1-24) and the
 #  data table (rows DATA_HDR_ROW+).  Different row ranges, no conflict.
 #
-#  Chart: anchored at G1, floats to the right — does not overlap list or data.
+#  Chart: anchored at G1, floats to the right — does not overlap selector area.
 
 LIST_SLOTS       = len(FLOW_NAMES)   # one visible row per sample name
+
+# Flow selector list (left side, rows 5-20 for 16 names)
 LIST_START_ROW   = 5
-LIST_END_ROW     = LIST_START_ROW + LIST_SLOTS - 1   # = 20 for 16 names
-NOTE_ROW         = LIST_END_ROW + 1                  # = 21
-DATA_SECTION_ROW = NOTE_ROW + 2                      # = 23
-DATA_HDR_ROW     = DATA_SECTION_ROW + 1              # = 24
-DATA_START_ROW   = DATA_HDR_ROW + 1                  # = 25
-DATA_OFFSET      = DATA_START_ROW - 2                # = 23  →  ROW()-23=2 at row 25
+LIST_END_ROW     = LIST_START_ROW + LIST_SLOTS - 1   # = 20
+
+# Pressure selectors are stacked vertically in column E
+PRES_SEL_ROWS    = [3, 4, 5]                          # E3, E4, E5
+PRES_LIST_HDR    = 6                                  # "All Pressures" header
+PRES_LIST_START  = 7                                  # pressure name list start
+PRES_LIST_END    = PRES_LIST_START + LIST_SLOTS - 1  # = 22
+
+NOTE_ROW         = PRES_LIST_END + 1                 # = 23  (after both lists)
+DATA_SECTION_ROW = NOTE_ROW + 2                      # = 25
+DATA_HDR_ROW     = DATA_SECTION_ROW + 1              # = 26
+DATA_START_ROW   = DATA_HDR_ROW + 1                  # = 27
+DATA_OFFSET      = DATA_START_ROW - 2                # = 25  →  ROW()-25=2 at row 27
 DATA_ROWS        = 100
 
 # Column indices
 COL_FLOW_LABEL   = 1   # A  – flow list names / Date in data table
 COL_FLOW_CTRL    = 2   # B  – flow dropdown, scaling factor / Flow Raw in data table
-COL_SPACER       = 3   # C  – narrow spacer / Flow Adjusted in data table
-COL_PRES_LABEL   = 4   # D  – pressure list names / Pressure Raw in data table
-COL_PRES_CTRL    = 5   # E  – pressure dropdown, offset / Pressure Adjusted in data table
+COL_SPACER       = 3   # C  – Flow Adjusted in data table
+COL_PRES_LABEL   = 4   # D  – pressure list names / Pressure 1 Raw in data table
+COL_PRES_CTRL    = 5   # E  – pressure 1 dropdown, offset / Pressure 1 Adjusted in data table
+COL_PRES2_RAW    = 6   # F  – Pressure 2 Raw in data table
+COL_PRES2_ADJ    = 7   # G  – Pressure 2 Adjusted in data table
+COL_PRES3_RAW    = 8   # H  – Pressure 3 Raw in data table
+COL_PRES3_ADJ    = 9   # I  – Pressure 3 Adjusted in data table
 
 CHART_ANCHOR     = "G1"
 CHART_WIDTH_CM   = 20
@@ -228,10 +249,13 @@ def build_dashboard(ws, flow_names):
     # Column widths
     ws.column_dimensions["A"].width = 22   # flow names / date
     ws.column_dimensions["B"].width = 14   # flow ctrl / flow raw
-    ws.column_dimensions["C"].width = 16   # spacer / flow adjusted
-    ws.column_dimensions["D"].width = 22   # pressure names / pressure raw
-    ws.column_dimensions["E"].width = 14   # pressure ctrl / pressure adjusted
-    ws.column_dimensions["F"].width = 2    # narrow spacer before chart
+    ws.column_dimensions["C"].width = 16   # flow adjusted
+    ws.column_dimensions["D"].width = 22   # pressure names / pressure 1 raw
+    ws.column_dimensions["E"].width = 14   # pressure 1 ctrl / pressure 1 adjusted
+    ws.column_dimensions["F"].width = 14   # pressure 2 raw
+    ws.column_dimensions["G"].width = 16   # pressure 2 adjusted
+    ws.column_dimensions["H"].width = 14   # pressure 3 raw
+    ws.column_dimensions["I"].width = 16   # pressure 3 adjusted
 
     # ── Row 1: Title ──────────────────────────────────────────────────────────
     ws.row_dimensions[1].height = 30
@@ -254,45 +278,42 @@ def build_dashboard(ws, flow_names):
     style_input(ws.cell(2, COL_PRES_CTRL),
                 0.0, bg=LIGHT_GREEN, num_fmt="0.000")
 
-    # ── Row 3: Flow selector (left) | Pressure selector (right) ──────────────
+    # ── Row 3: Flow selector (left) | Pressure 1 selector (right) ────────────
     ws.row_dimensions[3].height = 30
 
     style_label(ws.cell(3, COL_FLOW_LABEL),
-                "Select Flow  ▼", bold=True, fg=DARK_BLUE, sz=11)
+                "Select Flow  ▼  (blank = hide)", bold=True, fg=DARK_BLUE, sz=11)
     flow_cell = ws.cell(3, COL_FLOW_CTRL)
     style_input(flow_cell, flow_names[0], bg=LIGHT_BLUE, sz=12)
 
-    # Data Validation — reads live from Raw Flow Data header row
+    # Flow DV — allow blank so the user can leave it empty to hide the series
     dv_flow = DataValidation(
         type="list",
-        formula1="'Raw Flow Data'!$B$1:$GR$1",   # covers up to 200 flow columns
+        formula1="'Raw Flow Data'!$B$1:$GR$1",
+        allow_blank=True,
         showDropDown=False,
-        showErrorMessage=True,
-        errorTitle="Unknown Flow",
-        error="Select a name from the Raw Flow Data headers.",
+        showErrorMessage=False,
     )
     ws.add_data_validation(dv_flow)
     dv_flow.add(flow_cell)
 
     style_label(ws.cell(3, COL_PRES_LABEL),
-                "Select Pressure  ▼", bold=True, fg=DARK_ORANGE, sz=11)
-    pres_cell = ws.cell(3, COL_PRES_CTRL)
-    style_input(pres_cell, flow_names[0], bg=LIGHT_ORANGE, sz=12)
+                "Pressure 1  ▼", bold=True, fg=DARK_ORANGE, sz=11)
+    pres1_cell = ws.cell(3, COL_PRES_CTRL)
+    style_input(pres1_cell, flow_names[0], bg=LIGHT_ORANGE, sz=12)
 
-    # Data Validation — reads live from Raw Pressure Data header row
-    dv_pres = DataValidation(
+    dv_pres1 = DataValidation(
         type="list",
         formula1="'Raw Pressure Data'!$B$1:$GR$1",
+        allow_blank=True,
         showDropDown=False,
-        showErrorMessage=True,
-        errorTitle="Unknown Pressure",
-        error="Select a name from the Raw Pressure Data headers.",
+        showErrorMessage=False,
     )
-    ws.add_data_validation(dv_pres)
-    dv_pres.add(pres_cell)
+    ws.add_data_validation(dv_pres1)
+    dv_pres1.add(pres1_cell)
 
-    # ── Row 4: List section headers ───────────────────────────────────────────
-    ws.row_dimensions[4].height = 20
+    # ── Row 4: "All Flows" header (left) | Pressure 2 selector (right) ───────
+    ws.row_dimensions[4].height = 26
 
     fh = ws.cell(4, COL_FLOW_LABEL,
                  value="All Flows  (current selection highlighted)")
@@ -301,29 +322,68 @@ def build_dashboard(ws, flow_names):
     fh.alignment = Alignment(horizontal="center", vertical="center")
     ws.merge_cells("A4:B4")
 
-    ph = ws.cell(4, COL_PRES_LABEL,
-                 value="All Pressures  (current selection highlighted)")
+    style_label(ws.cell(4, COL_PRES_LABEL),
+                "Pressure 2  ▼  (optional)", bold=True, fg=DARK_ORANGE, sz=11)
+    pres2_cell = ws.cell(4, COL_PRES_CTRL)
+    style_input(pres2_cell, "", bg=LIGHT_ORANGE, sz=12)
+
+    dv_pres2 = DataValidation(
+        type="list",
+        formula1="'Raw Pressure Data'!$B$1:$GR$1",
+        allow_blank=True,
+        showDropDown=False,
+        showErrorMessage=False,
+    )
+    ws.add_data_validation(dv_pres2)
+    dv_pres2.add(pres2_cell)
+
+    # ── Row 5: Flow list item 1 (left) | Pressure 3 selector (right) ─────────
+    ws.row_dimensions[5].height = 26
+
+    style_label(ws.cell(5, COL_PRES_LABEL),
+                "Pressure 3  ▼  (optional)", bold=True, fg=DARK_ORANGE, sz=11)
+    pres3_cell = ws.cell(5, COL_PRES_CTRL)
+    style_input(pres3_cell, "", bg=LIGHT_ORANGE, sz=12)
+
+    dv_pres3 = DataValidation(
+        type="list",
+        formula1="'Raw Pressure Data'!$B$1:$GR$1",
+        allow_blank=True,
+        showDropDown=False,
+        showErrorMessage=False,
+    )
+    ws.add_data_validation(dv_pres3)
+    dv_pres3.add(pres3_cell)
+
+    # ── Row 6: Flow list item 2 (left) | "All Pressures" header (right) ──────
+    ws.row_dimensions[PRES_LIST_HDR].height = 20
+
+    ph = ws.cell(PRES_LIST_HDR, COL_PRES_LABEL,
+                 value="All Pressures  (highlighted = any of P1/P2/P3)")
     ph.font = Font(bold=True, color=WHITE, size=9)
     ph.fill = PatternFill(fill_type="solid", fgColor=DARK_ORANGE)
     ph.alignment = Alignment(horizontal="center", vertical="center")
-    ws.merge_cells("D4:E4")
+    ws.merge_cells(f"D{PRES_LIST_HDR}:E{PRES_LIST_HDR}")
 
-    # ── Rows 5 – LIST_END_ROW: the name lists ─────────────────────────────────
+    # ── Rows 5 – LIST_END_ROW (flow) / PRES_LIST_END (pressure): name lists ──
+    # Flow list: rows LIST_START_ROW (5) to LIST_END_ROW (20)
+    # Pressure list: rows PRES_LIST_START (7) to PRES_LIST_END (22)
     for i, name in enumerate(flow_names):
-        r = LIST_START_ROW + i
-        ws.row_dimensions[r].height = 18
-
-        # Flow list cell (merged A:B)
-        fc = ws.cell(r, COL_FLOW_LABEL, value=name)
+        # Flow list row
+        rf = LIST_START_ROW + i
+        ws.row_dimensions[rf].height = 18
+        fc = ws.cell(rf, COL_FLOW_LABEL, value=name)
         fc.alignment = Alignment(horizontal="center", vertical="center")
         fc.border = _thin()
-        ws.merge_cells(f"A{r}:B{r}")
+        ws.merge_cells(f"A{rf}:B{rf}")
 
-        # Pressure list cell (merged D:E)
-        pc = ws.cell(r, COL_PRES_LABEL, value=name)
+        # Pressure list row (starts 2 rows later)
+        rp = PRES_LIST_START + i
+        ws.row_dimensions[rp].height = 18
+        pc = ws.cell(rp, COL_PRES_LABEL, value=name)
         pc.alignment = Alignment(horizontal="center", vertical="center")
         pc.border = _thin()
-        ws.merge_cells(f"D{r}:E{r}")
+        ws.merge_cells(f"D{rp}:E{rp}")
 
     # ── Conditional formatting — highlight selected items ─────────────────────
     hi_flow_fill = PatternFill(fill_type="solid", fgColor=LIGHT_BLUE)
@@ -337,27 +397,32 @@ def build_dashboard(ws, flow_names):
         ),
     )
 
+    # Pressure CF: highlight if name matches ANY of the three pressure selectors
     hi_pres_fill = PatternFill(fill_type="solid", fgColor=LIGHT_ORANGE)
     hi_pres_font = Font(bold=True, color=DARK_ORANGE, size=10)
     ws.conditional_formatting.add(
-        f"D{LIST_START_ROW}:E{LIST_END_ROW}",
+        f"D{PRES_LIST_START}:E{PRES_LIST_END}",
         FormulaRule(
-            formula=[f"$D{LIST_START_ROW}=$E$3"],
+            formula=[f"OR($D{PRES_LIST_START}=$E$3,"
+                     f"$D{PRES_LIST_START}=$E$4,"
+                     f"$D{PRES_LIST_START}=$E$5)"],
             fill=hi_pres_fill,
             font=hi_pres_font,
         ),
     )
 
     # ── Note row ──────────────────────────────────────────────────────────────
-    ws.row_dimensions[NOTE_ROW].height = 28
+    ws.row_dimensions[NOTE_ROW].height = 42
     nc = ws.cell(NOTE_ROW, 1,
-                 value=("ℹ  After pasting your own data the lists above update automatically. "
-                        "If the dropdown (B3 / E3) doesn't show your names, right-click the cell "
-                        "→ Data Validation → update the Source range to match your column headers. "
-                        "Values of -999 are treated as no-data and excluded from calculations."))
+                 value=("ℹ  Use Pressure 1 / 2 / 3 dropdowns (E3:E5) to overlay up to 3 pressure "
+                        "series on the chart.  Leave E4 or E5 blank to show fewer series.  "
+                        "Leave B3 blank to hide the flow line and show pressure only.  "
+                        "After pasting your own data, right-click each selector cell → "
+                        "Data Validation → update the Source to match your column headers.  "
+                        "Values of -999 are treated as no-data and excluded."))
     nc.font = Font(italic=True, color=DARK_GRAY, size=9)
     nc.alignment = Alignment(wrap_text=True)
-    ws.merge_cells(f"A{NOTE_ROW}:E{NOTE_ROW}")
+    ws.merge_cells(f"A{NOTE_ROW}:I{NOTE_ROW}")
 
     # ── DATA TABLE section banner ──────────────────────────────────────────────
     ws.row_dimensions[DATA_SECTION_ROW].height = 20
@@ -366,7 +431,7 @@ def build_dashboard(ws, flow_names):
     sc.font = Font(bold=True, color=WHITE, size=9)
     sc.fill = PatternFill(fill_type="solid", fgColor=DARK_BLUE)
     sc.alignment = Alignment(horizontal="left", vertical="center", indent=1)
-    ws.merge_cells(f"A{DATA_SECTION_ROW}:E{DATA_SECTION_ROW}")
+    ws.merge_cells(f"A{DATA_SECTION_ROW}:I{DATA_SECTION_ROW}")
 
     # ── DATA TABLE column headers ──────────────────────────────────────────────
     ws.row_dimensions[DATA_HDR_ROW].height = 22
@@ -374,14 +439,18 @@ def build_dashboard(ws, flow_names):
         (1, "Date",               DARK_BLUE),
         (2, "Flow (Raw)",         MID_BLUE),
         (3, "Flow Adjusted",      DARK_ORANGE),
-        (4, "Pressure (Raw)",     MID_BLUE),
-        (5, "Pressure Adjusted",  GREEN_DARK),
+        (4, "Pressure 1 (Raw)",   MID_BLUE),
+        (5, "Pressure 1 Adj.",    GREEN_DARK),
+        (6, "Pressure 2 (Raw)",   MID_BLUE),
+        (7, "Pressure 2 Adj.",    GREEN_DARK),
+        (8, "Pressure 3 (Raw)",   MID_BLUE),
+        (9, "Pressure 3 Adj.",    GREEN_DARK),
     ]
     for ci, txt, bg in hdr_cols:
         style_header(ws.cell(DATA_HDR_ROW, ci), txt, bg=bg)
 
     # ── DATA TABLE formula rows ────────────────────────────────────────────────
-    # DATA_OFFSET = 23  →  ROW() - 23 = 2 at row 25 (first data row)
+    # DATA_OFFSET = 25  →  ROW() - 25 = 2 at row 27 (first data row)
     for r in range(DATA_START_ROW, DATA_START_ROW + DATA_ROWS):
         ws.row_dimensions[r].height = 15
         alt = (r % 2 == 0)
@@ -419,7 +488,7 @@ def build_dashboard(ws, flow_names):
         cc.fill = PatternFill(fill_type="solid",
                               fgColor=LIGHT_ORANGE if alt else YELLOW_BG)
 
-        # D: Pressure Raw (looked up by name in E3)
+        # D: Pressure 1 Raw (looked up by name in E3)
         dc = ws.cell(r, 4)
         dc.value = (
             f"=IFERROR("
@@ -432,7 +501,7 @@ def build_dashboard(ws, flow_names):
         if alt:
             dc.fill = PatternFill(fill_type="solid", fgColor=LIGHT_GRAY)
 
-        # E: Pressure Adjusted  =  Pressure Raw + Offset (E2)
+        # E: Pressure 1 Adjusted  =  Pressure Raw + Offset (E2)
         ec = ws.cell(r, 5)
         ec.value = f"=IF(OR(D{r}=\"\",D{r}=-999),\"\",D{r}+$E$2)"
         ec.number_format = "0.000"
@@ -440,23 +509,65 @@ def build_dashboard(ws, flow_names):
         ec.fill = PatternFill(fill_type="solid",
                               fgColor=LIGHT_GREEN if alt else "D6E4BC")
 
+        # F: Pressure 2 Raw (looked up by name in E4)
+        fc = ws.cell(r, 6)
+        fc.value = (
+            f"=IFERROR("
+            f"IF($E$4=\"\",\"\","
+            f"INDEX('Raw Pressure Data'!$A:$ZZ,ROW()-{DATA_OFFSET},"
+            f"MATCH($E$4,'Raw Pressure Data'!$1:$1,0))),\"\")"
+        )
+        fc.number_format = "0.000"
+        fc.alignment = Alignment(horizontal="right")
+        if alt:
+            fc.fill = PatternFill(fill_type="solid", fgColor=LIGHT_GRAY)
+
+        # G: Pressure 2 Adjusted
+        gc = ws.cell(r, 7)
+        gc.value = f"=IF(OR(F{r}=\"\",F{r}=-999),\"\",F{r}+$E$2)"
+        gc.number_format = "0.000"
+        gc.alignment = Alignment(horizontal="right")
+        gc.fill = PatternFill(fill_type="solid",
+                              fgColor=LIGHT_GREEN if alt else "D6E4BC")
+
+        # H: Pressure 3 Raw (looked up by name in E5)
+        hc = ws.cell(r, 8)
+        hc.value = (
+            f"=IFERROR("
+            f"IF($E$5=\"\",\"\","
+            f"INDEX('Raw Pressure Data'!$A:$ZZ,ROW()-{DATA_OFFSET},"
+            f"MATCH($E$5,'Raw Pressure Data'!$1:$1,0))),\"\")"
+        )
+        hc.number_format = "0.000"
+        hc.alignment = Alignment(horizontal="right")
+        if alt:
+            hc.fill = PatternFill(fill_type="solid", fgColor=LIGHT_GRAY)
+
+        # I: Pressure 3 Adjusted
+        ic = ws.cell(r, 9)
+        ic.value = f"=IF(OR(H{r}=\"\",H{r}=-999),\"\",H{r}+$E$2)"
+        ic.number_format = "0.000"
+        ic.alignment = Alignment(horizontal="right")
+        ic.fill = PatternFill(fill_type="solid",
+                              fgColor=LIGHT_GREEN if alt else "D6E4BC")
+
     # Copy-down hint
     hint_r = DATA_START_ROW + DATA_ROWS
     ws.row_dimensions[hint_r].height = 24
     hc = ws.cell(hint_r, 1,
-                 value=(f"↑ Formulas cover {DATA_ROWS} rows. "
-                        "For more data: select A25:E124 and copy-paste downward. "
-                        "For very large datasets use Power Query — see Instructions sheet."))
+                 value=(f"↑ Formulas cover {DATA_ROWS} rows (A{DATA_START_ROW}:I{hint_r - 1}). "
+                        "For more data: select that range and copy-paste downward."))
     hc.font = Font(italic=True, color=DARK_GRAY, size=9)
     hc.alignment = Alignment(wrap_text=True)
-    ws.merge_cells(f"A{hint_r}:E{hint_r}")
+    ws.merge_cells(f"A{hint_r}:I{hint_r}")
 
     # ── Chart ─────────────────────────────────────────────────────────────────
     _add_chart(ws)
 
 
 def _add_chart(ws):
-    """Dual-axis line chart: Flow Adjusted (primary) + Pressure Adjusted (secondary)."""
+    """Dual-axis line chart — Flow Adjusted (primary left) + up to 3 Pressures (secondary right).
+    This chart object is replaced by _patch_chart_xml; this just creates the xlsx entry."""
 
     # Primary chart — Flow Adjusted (col C)
     c1 = LineChart()
@@ -468,68 +579,153 @@ def _add_chart(ws):
     c1.width  = CHART_WIDTH_CM
     c1.height = CHART_HEIGHT_CM
 
-    flow_ref = Reference(ws,
-                         min_col=3, max_col=3,
-                         min_row=DATA_HDR_ROW,
-                         max_row=DATA_START_ROW + DATA_ROWS - 1)
-    c1.add_data(flow_ref, titles_from_data=True)
+    last_row = DATA_START_ROW + DATA_ROWS - 1
+    dates_ref = Reference(ws, min_col=1, max_col=1,
+                          min_row=DATA_START_ROW, max_row=last_row)
 
-    dates_ref = Reference(ws,
-                          min_col=1, max_col=1,
-                          min_row=DATA_START_ROW,
-                          max_row=DATA_START_ROW + DATA_ROWS - 1)
+    flow_ref = Reference(ws, min_col=COL_SPACER, max_col=COL_SPACER,
+                         min_row=DATA_HDR_ROW, max_row=last_row)
+    c1.add_data(flow_ref, titles_from_data=True)
     c1.set_categories(dates_ref)
 
-    # Secondary chart — Pressure Adjusted (col E)
+    # Secondary chart — all 3 pressure series share the right Y axis
     c2 = LineChart()
     c2.y_axis.title  = "Pressure Adjusted"
     c2.y_axis.axId   = 200
-    c2.y_axis.crosses = "max"   # renders on right-hand axis
+    c2.y_axis.crosses = "max"
     c2.x_axis.axId   = 100
-    c2.x_axis.delete = True     # suppress duplicate x-axis
+    c2.x_axis.delete = True
 
-    pres_ref = Reference(ws,
-                         min_col=5, max_col=5,
-                         min_row=DATA_HDR_ROW,
-                         max_row=DATA_START_ROW + DATA_ROWS - 1)
-    c2.add_data(pres_ref, titles_from_data=True)
+    for pcol in (COL_PRES_CTRL, COL_PRES2_ADJ, COL_PRES3_ADJ):
+        ref = Reference(ws, min_col=pcol, max_col=pcol,
+                        min_row=DATA_HDR_ROW, max_row=last_row)
+        c2.add_data(ref, titles_from_data=True)
     c2.set_categories(dates_ref)
 
-    # Merge into dual-axis
     c1 += c2
 
-    # Series colours
     try:
-        c1.series[0].graphicalProperties.line.solidFill = MID_BLUE
-        c1.series[0].graphicalProperties.line.width = 20000
-        c1.series[1].graphicalProperties.line.solidFill = DARK_ORANGE
-        c1.series[1].graphicalProperties.line.width = 20000
+        colors = [MID_BLUE, DARK_ORANGE, GREEN_MID, PURPLE]
+        for i, col in enumerate(colors):
+            c1.series[i].graphicalProperties.line.solidFill = col
+            c1.series[i].graphicalProperties.line.width = 20000
     except Exception:
-        pass  # cosmetic only
+        pass
 
     c1.anchor = CHART_ANCHOR
     ws.add_chart(c1)
 
 
 def _build_correct_chart_xml():
-    """Return a valid dual-axis line-chart XML string.
+    """Return a valid dual-axis line-chart XML string with 4 series and pre-computed
+    numCache so the chart renders immediately on first open without requiring a
+    formula recalculation cycle.
 
-    openpyxl emits broken axis cross-references and omits the required
-    category axis (<c:catAx>) when merging two LineChart objects.  This
-    function produces the correct XML directly so that Excel accepts the file.
-    The structure closely matches what Excel itself generates for a dual-axis
-    line chart.
+    Series layout:
+      lineChart 1  (primary left Y axis 1002):
+        idx=0  Flow Adjusted           col C  →  blue
+      lineChart 2  (secondary right Y axis 1003):
+        idx=1  Pressure 1 Adjusted     col E  →  orange
+        idx=2  Pressure 2 Adjusted     col G  →  green   (blank = invisible)
+        idx=3  Pressure 3 Adjusted     col I  →  purple  (blank = invisible)
+
+    Leave B3 blank to hide Flow; leave E4/E5 blank to hide Pressure 2/3.
     """
-    last_data_row = DATA_START_ROW + DATA_ROWS - 1
-    flow_col   = get_column_letter(COL_SPACER)    # C  – Flow Adjusted
-    pres_col   = get_column_letter(COL_PRES_CTRL) # E  – Pressure Adjusted
-    date_col   = get_column_letter(COL_FLOW_LABEL) # A  – Date
+    import datetime as _dt
 
-    flow_title_ref = f"Dashboard!${flow_col}${DATA_HDR_ROW}"
-    pres_title_ref = f"Dashboard!${pres_col}${DATA_HDR_ROW}"
-    dates_ref  = f"Dashboard!${date_col}${DATA_START_ROW}:${date_col}${last_data_row}"
-    flow_ref   = f"Dashboard!${flow_col}${DATA_START_ROW}:${flow_col}${last_data_row}"
-    pres_ref   = f"Dashboard!${pres_col}${DATA_START_ROW}:${pres_col}${last_data_row}"
+    last_data_row = DATA_START_ROW + DATA_ROWS - 1
+    date_col  = get_column_letter(COL_FLOW_LABEL)   # A
+    flow_col  = get_column_letter(COL_SPACER)        # C
+    p1_col    = get_column_letter(COL_PRES_CTRL)     # E
+    p2_col    = get_column_letter(COL_PRES2_ADJ)     # G
+    p3_col    = get_column_letter(COL_PRES3_ADJ)     # I
+
+    def _ref(col, start=DATA_START_ROW, end=last_data_row):
+        return f"Dashboard!${col}${start}:${col}${end}"
+
+    def _hdr(col):
+        return f"Dashboard!${col}${DATA_HDR_ROW}"
+
+    # ── Pre-compute numCache values from the embedded sample data ────────────
+    # Excel serial dates: epoch = 1899-12-30 for Python's perspective
+    _epoch = _dt.datetime(1899, 12, 30)
+    n = len(SAMPLE_DATES)
+
+    def _date_pts():
+        lines = []
+        for i, d in enumerate(SAMPLE_DATES):
+            delta = d - _epoch
+            v = delta.days + delta.seconds / 86400.0
+            lines.append(f'        <c:pt idx="{i}"><c:v>{v:.8f}</c:v></c:pt>')
+        return "\n".join(lines)
+
+    def _val_pts(column_index):
+        """column_index: 0-based index into each data row."""
+        lines = []
+        for i, row in enumerate(FLOW_ROWS):
+            try:
+                v = row[column_index]
+                if v == -999:
+                    continue
+                lines.append(f'        <c:pt idx="{i}"><c:v>{v}</c:v></c:pt>')
+            except IndexError:
+                pass
+        return "\n".join(lines)
+
+    def _pres_pts(column_index):
+        lines = []
+        for i, row in enumerate(PRES_ROWS):
+            try:
+                v = row[column_index]
+                if v == -999:
+                    continue
+                lines.append(f'        <c:pt idx="{i}"><c:v>{v}</c:v></c:pt>')
+            except IndexError:
+                pass
+        return "\n".join(lines)
+
+    # Flow Adjusted = flow_raw × 1.0 (B2 default = 1.0), using FLOW_NAMES[0]=AL012 → col 0
+    flow_pts  = _val_pts(0)
+    # Pressure 1 Adjusted = pres_raw + 0.0 (E2 default = 0), using PRES_NAMES[0]=AL012 → col 0
+    pres1_pts = _pres_pts(0)
+    date_pts  = _date_pts()
+
+    def _num_cache(fmt, pt_count, pts_xml):
+        return (f"<c:numCache>"
+                f"<c:formatCode>{fmt}</c:formatCode>"
+                f"<c:ptCount val=\"{pt_count}\"/>\n"
+                f"{pts_xml}\n"
+                f"      </c:numCache>")
+
+    # Dates cache (shared by all series)
+    dates_cache   = _num_cache("m/d/yy h:mm", n, date_pts)
+    flow_cache    = _num_cache("0.000", n, flow_pts)
+    pres1_cache   = _num_cache("0.000", n, pres1_pts)
+    # P2 and P3 start empty (selectors E4/E5 are blank by default)
+    empty_cache   = '<c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="0"/></c:numCache>'
+
+    def _ser(idx, color, title_ref, dates_cache_xml, val_cache_xml):
+        # kept for reference only — _series_xml is the actual builder used below
+        pass
+
+    # Build each series entry
+    def _series_xml(idx, color, title_ref, val_ref, dates_cache_xml, val_cache_xml):
+        return f"""\
+        <c:ser>
+          <c:idx val="{idx}"/>
+          <c:order val="{idx}"/>
+          <c:tx><c:strRef><c:f>{title_ref}</c:f></c:strRef></c:tx>
+          <c:spPr><a:ln w="20000"><a:solidFill><a:srgbClr val="{color}"/></a:solidFill></a:ln></c:spPr>
+          <c:marker><c:symbol val="none"/></c:marker>
+          <c:smooth val="0"/>
+          <c:cat><c:numRef><c:f>{_ref(date_col)}</c:f>{dates_cache_xml}</c:numRef></c:cat>
+          <c:val><c:numRef><c:f>{val_ref}</c:f>{val_cache_xml}</c:numRef></c:val>
+        </c:ser>"""
+
+    ser0 = _series_xml(0, MID_BLUE,    _hdr(flow_col), _ref(flow_col), dates_cache, flow_cache)
+    ser1 = _series_xml(1, DARK_ORANGE, _hdr(p1_col),   _ref(p1_col),  dates_cache, pres1_cache)
+    ser2 = _series_xml(2, GREEN_MID,   _hdr(p2_col),   _ref(p2_col),  dates_cache, empty_cache)
+    ser3 = _series_xml(3, PURPLE,      _hdr(p3_col),   _ref(p3_col),  dates_cache, empty_cache)
 
     return f"""\
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -549,16 +745,7 @@ def _build_correct_chart_xml():
       <c:lineChart>
         <c:grouping val="standard"/>
         <c:varyColors val="0"/>
-        <c:ser>
-          <c:idx val="0"/>
-          <c:order val="0"/>
-          <c:tx><c:strRef><c:f>{flow_title_ref}</c:f></c:strRef></c:tx>
-          <c:spPr><a:ln w="20000"><a:solidFill><a:srgbClr val="{MID_BLUE}"/></a:solidFill></a:ln></c:spPr>
-          <c:marker><c:symbol val="none"/></c:marker>
-          <c:smooth val="0"/>
-          <c:cat><c:numRef><c:f>{dates_ref}</c:f></c:numRef></c:cat>
-          <c:val><c:numRef><c:f>{flow_ref}</c:f></c:numRef></c:val>
-        </c:ser>
+{ser0}
         <c:marker><c:symbol val="none"/></c:marker>
         <c:smooth val="0"/>
         <c:axId val="1001"/>
@@ -567,16 +754,9 @@ def _build_correct_chart_xml():
       <c:lineChart>
         <c:grouping val="standard"/>
         <c:varyColors val="0"/>
-        <c:ser>
-          <c:idx val="1"/>
-          <c:order val="1"/>
-          <c:tx><c:strRef><c:f>{pres_title_ref}</c:f></c:strRef></c:tx>
-          <c:spPr><a:ln w="20000"><a:solidFill><a:srgbClr val="{DARK_ORANGE}"/></a:solidFill></a:ln></c:spPr>
-          <c:marker><c:symbol val="none"/></c:marker>
-          <c:smooth val="0"/>
-          <c:cat><c:numRef><c:f>{dates_ref}</c:f></c:numRef></c:cat>
-          <c:val><c:numRef><c:f>{pres_ref}</c:f></c:numRef></c:val>
-        </c:ser>
+{ser1}
+{ser2}
+{ser3}
         <c:marker><c:symbol val="none"/></c:marker>
         <c:smooth val="0"/>
         <c:axId val="1001"/>
@@ -587,7 +767,7 @@ def _build_correct_chart_xml():
         <c:scaling><c:orientation val="minMax"/></c:scaling>
         <c:delete val="0"/>
         <c:axPos val="b"/>
-        <c:numFmt formatCode="m/d/yy" sourceLinked="1"/>
+        <c:numFmt formatCode="d/m/yy h:mm" sourceLinked="1"/>
         <c:majorTickMark val="out"/>
         <c:minorTickMark val="none"/>
         <c:tickLblPos val="nextTo"/>
@@ -737,20 +917,21 @@ def build_instructions(ws):
         "Step 1:  Paste your flow data into 'Raw Flow Data' (delete sample rows, keep Row 1 headers).",
         "Step 2:  Paste your pressure data into 'Raw Pressure Data' (same format).",
         "Step 3:  Go to the Dashboard sheet.",
-        "Step 4:  Use the 'Select Flow ▼' dropdown (cell B3) to pick a flow.",
-        "         The selected flow is highlighted in the list on the left.",
-        "Step 5:  Use the 'Select Pressure ▼' dropdown (cell E3) to pick a pressure.",
-        "         The selected pressure is highlighted in the list on the right.",
+        "Step 4:  Use 'Pressure 1 ▼' (cell E3) to pick the first pressure to display.",
+        "         Optionally use 'Pressure 2 ▼' (E4) and 'Pressure 3 ▼' (E5) for more series.",
+        "         Leave E4 / E5 blank to show fewer than 3 pressure lines on the chart.",
+        "Step 5:  Use 'Select Flow ▼' (cell B3) to pick a flow.",
+        "         Leave B3 blank to hide the Flow line and show only pressure(s).",
         "Step 6:  Adjust 'Flow Scaling Factor' (B2) and 'Pressure Offset' (E2) if needed.",
         "Step 7:  The chart (right side) and formula table (below) update instantly.",
         "Step 8:  When satisfied, run the SaveToMOD macro to store the adjusted data.",
         "",
-        "NOTE:  After pasting your own data, right-click cell B3 → Data Validation → update",
-        "       Source to cover your column range, e.g.  'Raw Flow Data'!$B$1:$BZ$1",
-        "       Do the same for E3 using 'Raw Pressure Data'.",
+        "NOTE:  After pasting your own data, right-click each selector cell (B3, E3-E5)",
+        "       → Data Validation → update the Source to cover your column range,",
+        "       e.g.  'Raw Flow Data'!$B$1:$BZ$1",
         "",
-        "NOTE:  The formula table covers 100 rows. For longer datasets, select A25:E124",
-        "       and copy-paste downward as far as needed.",
+        "NOTE:  The formula table covers 100 rows (A27:I126). For longer datasets, select",
+        "       that range and copy-paste downward as far as needed.",
         "",
         "NOTE:  -999 values are treated as no-data and are excluded from all calculations.",
     ]:
@@ -809,8 +990,9 @@ def build_instructions(ws):
 
     vba = r"""' ═══════════════════════════════════════════════════════════════════════════
 ' SaveToMOD  —  appends current adjusted data to MOD Flow and MOD Pressure
-' Reads:  B3 (selected flow), E3 (selected pressure), B2 (scaling), E2 (offset)
-'         Data table rows 25 onwards, columns A-E
+' Reads:  B3 (selected flow), E3 (pressure 1), B2 (scaling), E2 (offset)
+'         Data table rows 27+, col C = Flow Adjusted, col E = Pressure 1 Adjusted
+'         (Pressure 2/3 in cols G/I are not saved by this macro — extend as needed)
 ' ═══════════════════════════════════════════════════════════════════════════
 Sub SaveToMOD()
 
@@ -848,12 +1030,12 @@ Sub SaveToMOD()
     End If
 
     ' ── Find last row with data ──────────────────────────────────────────────
-    Const DATA_START As Long = 25
+    Const DATA_START As Long = 27
     Dim lastRow As Long
     lastRow = wsDash.Cells(wsDash.Rows.Count, "A").End(xlUp).Row
 
     If lastRow < DATA_START Then
-        MsgBox "No data found in the formula table (rows 25 onwards).", _
+        MsgBox "No data found in the formula table (rows 27 onwards).", _
                vbExclamation, "No Data"
         Exit Sub
     End If
@@ -879,7 +1061,7 @@ Sub SaveToMOD()
 
         dtVal   = wsDash.Cells(i, "A").Value   ' Date
         flowAdj = wsDash.Cells(i, "C").Value   ' Flow Adjusted   (col C)
-        presAdj = wsDash.Cells(i, "E").Value   ' Pressure Adjusted (col E)
+        presAdj = wsDash.Cells(i, "E").Value   ' Pressure 1 Adjusted (col E)
 
         If dtVal = "" Then GoTo Skip
 
@@ -939,6 +1121,9 @@ End Sub"""
         "  do NOT need to match — you select each independently on the Dashboard.",
         "• Use -999 for missing/no-data values — they are excluded from all calculations.",
         "• Data can be any length: months of 15-minute data = thousands of rows.",
+        "• Columns F/G = Pressure 2 Raw/Adjusted  (driven by E4),",
+        "  Columns H/I = Pressure 3 Raw/Adjusted  (driven by E5).",
+        "• Leave E4 or E5 blank to leave those columns empty (no performance impact).",
     ]:
         body(r, line, indent=2)
         r += 1
