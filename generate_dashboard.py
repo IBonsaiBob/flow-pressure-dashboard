@@ -540,7 +540,6 @@ def _build_correct_chart_xml():
         <c:grouping val="standard"/>
         <c:varyColors val="0"/>
 {flow_xml}
-        <c:marker><c:symbol val="none"/></c:marker>
         <c:smooth val="0"/>
         <c:axId val="1001"/>
         <c:axId val="1002"/>
@@ -549,7 +548,6 @@ def _build_correct_chart_xml():
         <c:grouping val="standard"/>
         <c:varyColors val="0"/>
 {pres_xml}
-        <c:marker><c:symbol val="none"/></c:marker>
         <c:smooth val="0"/>
         <c:axId val="1001"/>
         <c:axId val="1003"/>
