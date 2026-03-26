@@ -1432,10 +1432,12 @@ End Sub
 ' is empty or contains non-numeric text (returns 0 in those cases).
 ' ===========================================================================
 Private Function ToDouble(v As Variant) As Double
+    ' Returns CDbl(v) when v is numeric; returns 0 for blank or non-numeric cells.
     If IsNumeric(v) Then ToDouble = CDbl(v)
 End Function
 
 Private Function ToLong(v As Variant) As Long
+    ' Returns CLng(v) when v is numeric; returns 0 for blank or non-numeric cells.
     If IsNumeric(v) Then ToLong = CLng(v)
 End Function
 
