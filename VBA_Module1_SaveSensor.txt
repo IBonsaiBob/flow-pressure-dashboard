@@ -202,6 +202,33 @@ Sub PopulateElevation(sRow As Long)
 End Sub
 
 ' ===========================================================================
+' PopulateAllElevations  - calls PopulateElevation for every pressure row
+'                          that has a sensor selected.  Safe to call at any
+'                          time (e.g. on sheet activate, or to refresh after
+'                          the Point Index has been updated).
+' ===========================================================================
+Sub PopulateAllElevations()
+
+    Const SEL_START As Long = 3
+    Const SEL_END   As Long = 22
+    Const PRES_NAME As Long = 7   ' G
+
+    Dim wsDash As Worksheet
+    Set wsDash = Worksheets("Dashboard")
+
+    Application.EnableEvents = False
+    Application.ScreenUpdating = False
+
+    Dim r As Long
+    For r = SEL_START To SEL_END
+        PopulateElevation r - SEL_START + 1
+    Next r
+
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
+End Sub
+
+' ===========================================================================
 ' SaveElevationToPointIndex  - writes the elevation value in col J back to
 '                              the "Point Index" tab Z (m) column.
 '                              Called by SaveOneSensor for pressure sensors.

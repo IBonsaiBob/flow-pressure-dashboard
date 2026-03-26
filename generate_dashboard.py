@@ -233,6 +233,33 @@ Sub PopulateElevation(sRow As Long)
 End Sub
 
 ' ===========================================================================
+' PopulateAllElevations  - calls PopulateElevation for every pressure row
+'                          that has a sensor selected.  Safe to call at any
+'                          time (e.g. on sheet activate, or to refresh after
+'                          the Point Index has been updated).
+' ===========================================================================
+Sub PopulateAllElevations()
+
+    Const SEL_START As Long = 3
+    Const SEL_END   As Long = 22
+    Const PRES_NAME As Long = 7   ' G
+
+    Dim wsDash As Worksheet
+    Set wsDash = Worksheets("Dashboard")
+
+    Application.EnableEvents = False
+    Application.ScreenUpdating = False
+
+    Dim r As Long
+    For r = SEL_START To SEL_END
+        PopulateElevation r - SEL_START + 1
+    Next r
+
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
+End Sub
+
+' ===========================================================================
 ' SaveElevationToPointIndex  - writes the elevation value in col J back to
 '                              the "Point Index" tab Z (m) column.
 '                              Called by SaveOneSensor for pressure sensors.
@@ -425,22 +452,32 @@ VBA_SHEET = """\
 ' Paste into the Dashboard sheet module (double-click Sheet1 in Project tree)
 ' ===========================================================================
 
+' Worksheet_Activate: re-populates col J elevation for every sensor that is
+'                     already selected whenever the user switches to this sheet.
+'                     This covers sensors that were already set when the file
+'                     was opened (Worksheet_Change never fires for those).
+Private Sub Worksheet_Activate()
+    PopulateAllElevations
+End Sub
+
 ' Worksheet_Change: auto-populates col J elevation when a pressure sensor
-'                   name is selected from the col G dropdown.
+'                   name is selected or pasted into col G (rows 3-22).
+'                   Handles both single-cell selection and multi-cell paste.
 Private Sub Worksheet_Change(ByVal Target As Range)
 
     Const SEL_START As Long = 3
     Const SEL_END   As Long = 22
     Const PRES_NAME As Long = 7   ' G
 
-    If Target.Count > 1 Then Exit Sub
-
-    If Target.Column = PRES_NAME And _
-       Target.Row >= SEL_START And Target.Row <= SEL_END Then
-        Application.EnableEvents = False
-        PopulateElevation Target.Row - SEL_START + 1
-        Application.EnableEvents = True
-    End If
+    Dim cell As Range
+    For Each cell In Target
+        If cell.Column = PRES_NAME And _
+           cell.Row >= SEL_START And cell.Row <= SEL_END Then
+            Application.EnableEvents = False
+            PopulateElevation cell.Row - SEL_START + 1
+            Application.EnableEvents = True
+        End If
+    Next cell
 End Sub
 
 ' Worksheet_SelectionChange: handles the \U0001f4be click-to-save buttons and the
@@ -672,8 +709,9 @@ def _build_instructions_xml():
                "Open VBA_Dashboard_Sheet.txt in Notepad, press Ctrl+A, Ctrl+C, then paste into "
                "the Dashboard sheet module (double-click 'Sheet1 (Dashboard)' in the Project tree). "
                "This makes the \U0001f4be cells (col E for flow, col K for pressure, rows 3\u201322) "
-               "respond to a single click, and auto-populates the col J elevation from the "
-               "'Point Index' tab when a pressure sensor is chosen.")])); r += 1
+               "respond to a single click, auto-populates the col J elevation from the "
+               "'Point Index' tab when a pressure sensor is chosen (single-cell or paste), "
+               "and re-populates all Z values whenever you switch to the Dashboard tab.")])); r += 1
     blank(r); r += 1
 
     rows.append((r, 17, [_cell("A" + str(r), S_CODE, VBA_SHEET)])); r += 1

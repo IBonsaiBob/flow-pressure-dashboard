@@ -3,22 +3,32 @@
 ' Paste into the Dashboard sheet module (double-click Sheet1 in Project tree)
 ' ===========================================================================
 
+' Worksheet_Activate: re-populates col J elevation for every sensor that is
+'                     already selected whenever the user switches to this sheet.
+'                     This covers sensors that were already set when the file
+'                     was opened (Worksheet_Change never fires for those).
+Private Sub Worksheet_Activate()
+    PopulateAllElevations
+End Sub
+
 ' Worksheet_Change: auto-populates col J elevation when a pressure sensor
-'                   name is selected from the col G dropdown.
+'                   name is selected or pasted into col G (rows 3-22).
+'                   Handles both single-cell selection and multi-cell paste.
 Private Sub Worksheet_Change(ByVal Target As Range)
 
     Const SEL_START As Long = 3
     Const SEL_END   As Long = 22
     Const PRES_NAME As Long = 7   ' G
 
-    If Target.Count > 1 Then Exit Sub
-
-    If Target.Column = PRES_NAME And _
-       Target.Row >= SEL_START And Target.Row <= SEL_END Then
-        Application.EnableEvents = False
-        PopulateElevation Target.Row - SEL_START + 1
-        Application.EnableEvents = True
-    End If
+    Dim cell As Range
+    For Each cell In Target
+        If cell.Column = PRES_NAME And _
+           cell.Row >= SEL_START And cell.Row <= SEL_END Then
+            Application.EnableEvents = False
+            PopulateElevation cell.Row - SEL_START + 1
+            Application.EnableEvents = True
+        End If
+    Next cell
 End Sub
 
 ' Worksheet_SelectionChange: handles the 💾 click-to-save buttons and the
