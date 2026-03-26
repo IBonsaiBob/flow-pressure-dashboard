@@ -1301,6 +1301,39 @@ S_ITALIC = 70
 
 
 # ---------------------------------------------------------------------------
+# VBA string splitter (Excel cell limit = 32 767 chars)
+# ---------------------------------------------------------------------------
+
+def _split_vba(text, limit=32000):
+    """
+    Split *text* into chunks of at most *limit* characters **after XML escaping**,
+    breaking only on newline boundaries so that VBA lines are never cut in the
+    middle.  Returns a list of one or more strings.
+
+    Excel's cell-value limit is 32 767 characters; we use 32 000 as a safe margin.
+    The escaped length can be longer than the raw length because XML entities such
+    as &amp; (1 → 5 chars), &lt; (1 → 4), &gt; (1 → 4) expand the content.
+    """
+    if len(_escape(text)) <= limit:
+        return [text]
+    chunks = []
+    lines = text.split("\n")
+    current = []
+    current_escaped_len = 0
+    for line in lines:
+        escaped_line_len = len(_escape(line)) + 1  # +1 for the newline
+        if current and current_escaped_len + escaped_line_len > limit:
+            chunks.append("\n".join(current))
+            current = []
+            current_escaped_len = 0
+        current.append(line)
+        current_escaped_len += escaped_line_len
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+
+# ---------------------------------------------------------------------------
 # Build new Instructions sheet XML
 # ---------------------------------------------------------------------------
 
@@ -1430,7 +1463,9 @@ def _build_instructions_xml():
         body(r, line); r += 1
     blank(r); r += 1
 
-    rows.append((r, 17, [_cell("A" + str(r), S_CODE, VBA_MODULE)])); r += 1
+    # VBA_MODULE may exceed Excel's 32 767-char cell limit, so split across rows.
+    for chunk in _split_vba(VBA_MODULE):
+        rows.append((r, 17, [_cell("A" + str(r), S_CODE, chunk)])); r += 1
     blank(r); r += 1
 
     sec(r,
