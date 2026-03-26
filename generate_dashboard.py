@@ -1061,15 +1061,24 @@ def build_instructions(ws):
     section(r, "4.  VBA SAVE MACROS — two steps:", bg=PURPLE)
     r += 1
     for line in [
+        "Two plain-text files are generated alongside this workbook:",
+        "  VBA_Module1_SaveToMOD.txt   — standard module code",
+        "  VBA_Dashboard_Sheet.txt     — Dashboard sheet module code",
+        "",
         "Step A:  Press Alt+F11 to open the VBA editor.",
-        "Step B:  Click Insert → Module and paste the code block labelled",
-        "         'STANDARD MODULE CODE' below.  This adds SaveToMOD,",
-        "         SaveOneSensorToMOD, and SaveRemainingToMOD.",
-        "Step C:  In the Project tree (left panel) double-click the Dashboard",
-        "         sheet module (usually 'Sheet1 (Dashboard)') and paste the",
-        "         code block labelled 'DASHBOARD SHEET MODULE CODE' below.",
-        "         This makes the 💾 cells and the 'Save Rest' cell clickable.",
+        "Step B:  Click Insert → Module.  Open VBA_Module1_SaveToMOD.txt in",
+        "         Notepad, press Ctrl+A then Ctrl+C, and paste into the new",
+        "         module.  This adds SaveToMOD, SaveOneSensorToMOD, and",
+        "         SaveRemainingToMOD.",
+        "Step C:  In the Project tree double-click 'Sheet1 (Dashboard)'.",
+        "         Open VBA_Dashboard_Sheet.txt in Notepad, press Ctrl+A then",
+        "         Ctrl+C, and paste into that sheet module.  This makes the",
+        "         [S] cells and the 'Save Rest' cell clickable.",
         "Step D:  Close the VBA editor and save the file as .xlsm.",
+        "",
+        "NOTE: Do NOT copy the code blocks below directly from this cell.",
+        "      Excel wraps cell content in quotes on copy, which corrupts the",
+        "      VBA syntax.  Always use the .txt files instead.",
     ]:
         body(r, line, indent=2)
         r += 1
@@ -1133,12 +1142,12 @@ Sub SaveToMOD()
     ' -- Read selector settings from Dashboard ----------------------------------
     For i = 0 To MAX_ROWS - 1
         flowName(i)  = Trim(wsDash.Cells(SEL_START + i, FLOW_SEL_COL).Value)
-        flowScale(i) = CDbl(wsDash.Cells(SEL_START + i, FLOW_SCALE_COL).Value)
+        flowScale(i) = ToDouble(wsDash.Cells(SEL_START + i, FLOW_SCALE_COL).Value)
         If flowScale(i) = 0 Then flowScale(i) = 1
-        flowDt(i)    = CLng(wsDash.Cells(SEL_START + i, FLOW_DT_COL).Value)
+        flowDt(i)    = ToLong(wsDash.Cells(SEL_START + i, FLOW_DT_COL).Value)
         presName(i)  = Trim(wsDash.Cells(SEL_START + i, PRES_SEL_COL).Value)
-        presOff(i)   = CDbl(wsDash.Cells(SEL_START + i, PRES_OFF_COL).Value)
-        presDt(i)    = CLng(wsDash.Cells(SEL_START + i, PRES_DT_COL).Value)
+        presOff(i)   = ToDouble(wsDash.Cells(SEL_START + i, PRES_OFF_COL).Value)
+        presDt(i)    = ToLong(wsDash.Cells(SEL_START + i, PRES_DT_COL).Value)
     Next i
 
     ' -- Locate sensor columns in raw sheet headers (row 1) --------------------
@@ -1309,9 +1318,9 @@ Sub SaveOneSensorToMOD(isFlow As Boolean, sRow As Long, _
             End If
             Exit Sub
         End If
-        scale  = CDbl(wsDash.Cells(dashRow, FLOW_SCALE).Value)
+        scale  = ToDouble(wsDash.Cells(dashRow, FLOW_SCALE).Value)
         If scale = 0 Then scale = 1
-        dt     = CLng(wsDash.Cells(dashRow, FLOW_DT).Value)
+        dt     = ToLong(wsDash.Cells(dashRow, FLOW_DT).Value)
         Set wsRaw = Worksheets("Raw Flow Data")
         Set wsMod = Worksheets("MOD Flow")
     Else
@@ -1322,8 +1331,8 @@ Sub SaveOneSensorToMOD(isFlow As Boolean, sRow As Long, _
             End If
             Exit Sub
         End If
-        offset = CDbl(wsDash.Cells(dashRow, PRES_OFF).Value)
-        dt     = CLng(wsDash.Cells(dashRow, PRES_DT).Value)
+        offset = ToDouble(wsDash.Cells(dashRow, PRES_OFF).Value)
+        dt     = ToLong(wsDash.Cells(dashRow, PRES_DT).Value)
         Set wsRaw = Worksheets("Raw Pressure Data")
         Set wsMod = Worksheets("MOD Pressure")
     End If
@@ -1419,6 +1428,18 @@ NextSensorRow:
 End Sub
 
 ' ===========================================================================
+' Safe numeric helpers - prevent Type mismatch when a Scale/Offset/Dt cell
+' is empty or contains non-numeric text (returns 0 in those cases).
+' ===========================================================================
+Private Function ToDouble(v As Variant) As Double
+    If IsNumeric(v) Then ToDouble = CDbl(v)
+End Function
+
+Private Function ToLong(v As Variant) As Long
+    If IsNumeric(v) Then ToLong = CLng(v)
+End Function
+
+' ===========================================================================
 ' SaveRemainingToMOD - saves all sensors selected on the Dashboard that do
 '                      NOT yet have a column in the corresponding MOD sheet.
 '                      Run this after finishing individual per-row saves.
@@ -1494,13 +1515,14 @@ End Sub"""
     blank(r); r += 1
 
     # ── Dashboard sheet module code ───────────────────────────────────────────
-    section(r, "DASHBOARD SHEET MODULE CODE  (paste into the Dashboard sheet's code module)",
+    section(r, "DASHBOARD SHEET MODULE CODE  (open VBA_Dashboard_Sheet.txt in Notepad, copy, paste here)",
             bg=PURPLE)
     r += 1
     body(r,
-         "In the VBA editor Project tree, double-click 'Sheet1 (Dashboard)' and paste the "
-         "code below.  This makes the 💾 cells (cols E and J, rows 3-22) and the "
-         "'💾 Save Rest' cell (col K row 7) respond to single clicks.",
+         "Open VBA_Dashboard_Sheet.txt in Notepad, press Ctrl+A, Ctrl+C, then paste into "
+         "the Dashboard sheet module (double-click 'Sheet1 (Dashboard)' in the Project tree). "
+         "This makes the [S] cells (cols E and J, rows 3-22) and the "
+         "'Save Rest' cell (col K row 7) respond to single clicks.",
          indent=2, italic=True, fg=DARK_GRAY)
     r += 1
     blank(r); r += 1
@@ -1583,9 +1605,28 @@ End Sub"""
     ]:
         body(r, line, indent=2)
         r += 1
+    blank(r); r += 1
+
+    return vba, vba_sheet
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# ── Write VBA text files ───────────────────────────────────────────────────────
+
+def write_vba_files(vba_module, vba_sheet, out_dir):
+    """Write VBA code to plain .txt files alongside the workbook.
+
+    Copying code from an Excel cell corrupts it (Excel wraps multi-line
+    content in quotes and doubles every internal quote on copy).  Plain
+    text files avoid this entirely — open in Notepad, Ctrl+A, Ctrl+C, paste.
+    """
+    for filename, content in [
+        ("VBA_Module1_SaveToMOD.txt",  vba_module),
+        ("VBA_Dashboard_Sheet.txt",    vba_sheet),
+    ]:
+        path = os.path.join(out_dir, filename)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        print(f"Generated: {path}")
 
 def main():
     wb = openpyxl.Workbook()
@@ -1602,7 +1643,7 @@ def main():
     build_dashboard(ws_dash, FLOW_NAMES)
     build_mod_sheet(ws_mod_f, "MOD Flow")
     build_mod_sheet(ws_mod_p, "MOD Pressure")
-    build_instructions(ws_instr)
+    vba_module, vba_sheet = build_instructions(ws_instr)
 
     wb.calculation.calcMode    = "auto"
     wb.calculation.fullCalcOnLoad = True
@@ -1610,6 +1651,7 @@ def main():
     out = "Flow_Pressure_Dashboard.xlsx"
     wb.save(out)
     _patch_chart_xml(out)
+    write_vba_files(vba_module, vba_sheet, os.path.dirname(os.path.abspath(out)))
     print(f"Generated: {out}")
 
 
