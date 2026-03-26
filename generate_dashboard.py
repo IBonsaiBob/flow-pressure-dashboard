@@ -157,6 +157,10 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
     Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
 
+    ' --- Capture old elevation from Point Index BEFORE it is overwritten ---
+    Dim elevForNote As Variant
+    If Not isFlow Then elevForNote = GetElevationFromPointIndex(sensorName)
+
     ' --- For pressure sensors: write elevation back to Point Index tab ---
     If Not isFlow Then
         SaveElevationToPointIndex sRow
@@ -178,8 +182,6 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
         zPart = ""
     Else
         adjLabel = "Offset: " & Format(adjParam, "0.000")
-        Dim elevForNote As Variant
-        elevForNote = wsDash.Cells(dashRow, PRES_ELEV).Value
         If IsNumeric(elevForNote) Then
             zPart = " | Z: " & Format(CDbl(elevForNote), "0.###")
         Else
@@ -452,6 +454,53 @@ Sub SaveElevationToPointIndex(sRow As Long)
 
     MsgBox "Sensor '" & sensorName & "' not found in 'Point Index'.", vbExclamation
 End Sub
+
+' ===========================================================================
+' GetElevationFromPointIndex  - returns the current Z (m) value stored in the
+'                               "Point Index" tab for the given sensor, or Empty
+'                               if the sensor / sheet / column cannot be found.
+'                               Used to record the OLD elevation in the save note
+'                               before SaveElevationToPointIndex overwrites it.
+' sensorName : sensor name to look up in the "Point Ref" column
+' ===========================================================================
+Function GetElevationFromPointIndex(sensorName As String) As Variant
+
+    GetElevationFromPointIndex = Empty
+
+    Dim wsIdx As Worksheet
+    Dim ws As Worksheet
+    For Each ws In ThisWorkbook.Worksheets
+        If LCase(Trim(ws.Name)) = "point index" Then
+            Set wsIdx = ws
+            Exit For
+        End If
+    Next ws
+    If wsIdx Is Nothing Then Exit Function
+
+    Dim lastHdrCol As Long
+    lastHdrCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    Dim pointRefCol As Long: pointRefCol = 0
+    Dim zCol As Long: zCol = 0
+    Dim c As Long
+    For c = 1 To lastHdrCol
+        Select Case Trim(wsIdx.Cells(1, c).Value)
+            Case "Point Ref": pointRefCol = c
+            Case "Z (m)":     zCol = c
+        End Select
+    Next c
+    If pointRefCol = 0 Or zCol = 0 Then Exit Function
+
+    Dim lastRow As Long
+    lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
+    Dim r As Long
+    For r = 2 To lastRow
+        If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
+            GetElevationFromPointIndex = wsIdx.Cells(r, zCol).Value
+            Exit Function
+        End If
+    Next r
+
+End Function
 
 ' ===========================================================================
 ' WriteDataNoteToPointIndex  - appends a compact single-line save note to col K
