@@ -14,6 +14,8 @@ End Sub
 ' Worksheet_Change: auto-populates col J elevation when a pressure sensor
 '                   name is selected or pasted into col G (rows 3-22).
 '                   Also resets the 💾 button colour when a sensor name changes.
+'                   When +Z is ON, live-refreshes the chart column if Offset (H)
+'                   or Δt (I) is edited.
 '                   Handles both single-cell selection and multi-cell paste.
 '                   EnableEvents is always restored even if an inner call errors.
 Private Sub Worksheet_Change(ByVal Target As Range)
@@ -22,6 +24,8 @@ Private Sub Worksheet_Change(ByVal Target As Range)
     Const SEL_END   As Long = 22
     Const FLOW_NAME As Long = 2   ' B
     Const PRES_NAME As Long = 7   ' G
+    Const PRES_OFF  As Long = 8   ' H
+    Const PRES_DT   As Long = 9   ' I
 
     Dim cell As Range
     For Each cell In Target
@@ -37,6 +41,13 @@ Private Sub Worksheet_Change(ByVal Target As Range)
                 Application.EnableEvents = False
                 On Error Resume Next
                 ClearSavedMark True, cell.Row - SEL_START + 1
+                On Error GoTo 0
+                Application.EnableEvents = True
+            ElseIf cell.Column = PRES_OFF Or cell.Column = PRES_DT Then
+                ' When +Z is ON live-refresh the elevated column for this sensor
+                Application.EnableEvents = False
+                On Error Resume Next
+                RefreshElevatedColumnIfOn cell.Row - SEL_START + 1, Me, cell.Row
                 On Error GoTo 0
                 Application.EnableEvents = True
             End If

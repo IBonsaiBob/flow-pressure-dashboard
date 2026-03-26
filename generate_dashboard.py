@@ -160,6 +160,9 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
     ' --- For pressure sensors: write elevation back to Point Index tab ---
     If Not isFlow Then
         SaveElevationToPointIndex sRow
+        ' If +Z toggle is ON, re-apply elevation to this sensor's formula-table
+        ' column so the chart reflects the new offset / time-shift immediately.
+        RefreshElevatedColumnIfOn sRow, wsDash, dashRow
     End If
 
     ' --- Mark the save button green and add a timestamped note ---
@@ -522,6 +525,77 @@ Sub WriteDataNoteToPointIndex(sensorName As String, noteText As String)
 End Sub
 
 ' ===========================================================================
+' RefreshElevatedColumnIfOn  - if the +Z toggle is currently ON, refreshes
+'                               the formula-table column for one pressure
+'                               sensor by:
+'                                 1. temporarily restoring its pressure formula
+'                                 2. forcing recalculation
+'                                 3. adding the Z(m) elevation offset back
+'                                 4. writing the result as static values
+'
+'                               Called after a sensor is saved (💾) or when
+'                               the user edits Offset / Δt while +Z is ON so
+'                               the chart updates immediately.
+' sRow    : selector row index 1-20
+' wsDash  : Dashboard worksheet reference
+' dashRow : absolute row on Dashboard (SEL_START + sRow - 1)
+' ===========================================================================
+Sub RefreshElevatedColumnIfOn(sRow As Long, wsDash As Worksheet, dashRow As Long)
+
+    Const TOGGLE_COL    As Long = 12  ' L
+    Const TOGGLE_ROW    As Long = 7
+    Const FT_START_ROW  As Long = 26  ' first formula-table data row
+    Const PRES_FT_FIRST As Long = 22  ' V = column 22
+    Const PRES_ELEV     As Long = 10  ' J
+
+    Dim toggleState As String
+    toggleState = Trim(CStr(wsDash.Cells(TOGGLE_ROW, TOGGLE_COL).Value))
+    If LCase(toggleState) <> "+z on" Then Exit Sub
+
+    Dim elevVal As Variant
+    elevVal = wsDash.Cells(dashRow, PRES_ELEV).Value
+    If Not IsNumeric(elevVal) Then Exit Sub
+    Dim elevZ As Double: elevZ = CDbl(elevVal)
+
+    Dim lastFTRow As Long
+    lastFTRow = wsDash.Cells(wsDash.Rows.Count, 1).End(xlUp).Row
+    If lastFTRow < FT_START_ROW Then Exit Sub
+
+    Dim ftCol As Long
+    ftCol = PRES_FT_FIRST + (sRow - 1)
+
+    Dim ftrng As Range
+    Set ftrng = wsDash.Range(wsDash.Cells(FT_START_ROW, ftCol), _
+                             wsDash.Cells(lastFTRow, ftCol))
+
+    ' Temporarily restore the formula so it recalculates against current raw data
+    Dim q As String: q = Chr(34)
+    Dim n As String: n = CStr(dashRow)
+    ftrng.Formula = "=IFERROR(IF($G$" & n & "=" & q & q & ",NA()," & _
+        "IF($M$5+ROW()-26>$M$6,NA()," & _
+        "IF(INDEX('Raw Pressure Data'!$A:$ZZ," & _
+        "$M$5+ROW()-26-$I$" & n & "," & _
+        "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))=-999,NA()," & _
+        "INDEX('Raw Pressure Data'!$A:$ZZ," & _
+        "$M$5+ROW()-26-$I$" & n & "," & _
+        "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))" & _
+        "+$H$" & n & "))),NA())"
+
+    Application.Calculate
+
+    ' Read recalculated values, add elevation, write back as static values
+    Dim arr As Variant
+    arr = ftrng.Value
+    Dim i As Long
+    For i = 1 To UBound(arr, 1)
+        If IsNumeric(arr(i, 1)) Then
+            arr(i, 1) = CDbl(arr(i, 1)) + elevZ
+        End If
+    Next i
+    ftrng.Value = arr
+End Sub
+
+' ===========================================================================
 ' ToggleElevationAdjust  - adds or removes the elevation Z (m) offset from
 '                          all active pressure columns in the formula table
 '                          for chart display purposes only.
@@ -535,8 +609,8 @@ End Sub
 '                   known template so the chart returns to base values.
 '
 ' NOTE: While the toggle is ON the pressure columns contain static values.
-'       Any changes to raw data will not update the chart until the toggle
-'       is turned OFF first and then back ON.
+'       Saving a sensor (💾) or editing its Offset / Δt will automatically
+'       refresh the column via RefreshElevatedColumnIfOn.
 ' ===========================================================================
 Sub ToggleElevationAdjust()
 
@@ -654,6 +728,8 @@ End Sub
 ' Worksheet_Change: auto-populates col J elevation when a pressure sensor
 '                   name is selected or pasted into col G (rows 3-22).
 '                   Also resets the 💾 button colour when a sensor name changes.
+'                   When +Z is ON, live-refreshes the chart column if Offset (H)
+'                   or Δt (I) is edited.
 '                   Handles both single-cell selection and multi-cell paste.
 '                   EnableEvents is always restored even if an inner call errors.
 Private Sub Worksheet_Change(ByVal Target As Range)
@@ -662,6 +738,8 @@ Private Sub Worksheet_Change(ByVal Target As Range)
     Const SEL_END   As Long = 22
     Const FLOW_NAME As Long = 2   ' B
     Const PRES_NAME As Long = 7   ' G
+    Const PRES_OFF  As Long = 8   ' H
+    Const PRES_DT   As Long = 9   ' I
 
     Dim cell As Range
     For Each cell In Target
@@ -677,6 +755,13 @@ Private Sub Worksheet_Change(ByVal Target As Range)
                 Application.EnableEvents = False
                 On Error Resume Next
                 ClearSavedMark True, cell.Row - SEL_START + 1
+                On Error GoTo 0
+                Application.EnableEvents = True
+            ElseIf cell.Column = PRES_OFF Or cell.Column = PRES_DT Then
+                ' When +Z is ON live-refresh the elevated column for this sensor
+                Application.EnableEvents = False
+                On Error Resume Next
+                RefreshElevatedColumnIfOn cell.Row - SEL_START + 1, Me, cell.Row
                 On Error GoTo 0
                 Application.EnableEvents = True
             End If
