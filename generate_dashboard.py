@@ -1301,39 +1301,6 @@ S_ITALIC = 70
 
 
 # ---------------------------------------------------------------------------
-# VBA string splitter (Excel cell limit = 32 767 chars)
-# ---------------------------------------------------------------------------
-
-def _split_vba(text, limit=32000):
-    """
-    Split *text* into chunks of at most *limit* characters **after XML escaping**,
-    breaking only on newline boundaries so that VBA lines are never cut in the
-    middle.  Returns a list of one or more strings.
-
-    Excel's cell-value limit is 32 767 characters; we use 32 000 as a safe margin.
-    The escaped length can be longer than the raw length because XML entities such
-    as &amp; (1 → 5 chars), &lt; (1 → 4), &gt; (1 → 4) expand the content.
-    """
-    if len(_escape(text)) <= limit:
-        return [text]
-    chunks = []
-    lines = text.split("\n")
-    current = []
-    current_escaped_len = 0
-    for line in lines:
-        escaped_line_len = len(_escape(line)) + 1  # +1 for the newline
-        if current and current_escaped_len + escaped_line_len > limit:
-            chunks.append("\n".join(current))
-            current = []
-            current_escaped_len = 0
-        current.append(line)
-        current_escaped_len += escaped_line_len
-    if current:
-        chunks.append("\n".join(current))
-    return chunks
-
-
-# ---------------------------------------------------------------------------
 # Build new Instructions sheet XML
 # ---------------------------------------------------------------------------
 
@@ -1456,35 +1423,8 @@ def _build_instructions_xml():
         "",
         "IMPORTANT: The \U0001f4be buttons overwrite the sensor column in the Raw tab.",
         "           Keep a backup of your original data before clicking Save.",
-        "",
-        "NOTE: Always use the .txt files \u2014 do NOT copy from this cell.",
-        "      Excel wraps cell content in quotes, which corrupts VBA syntax.",
     ]:
         body(r, line); r += 1
-    blank(r); r += 1
-
-    # VBA_MODULE may exceed Excel's 32 767-char cell limit, so split across rows.
-    for chunk in _split_vba(VBA_MODULE):
-        rows.append((r, 17, [_cell("A" + str(r), S_CODE, chunk)])); r += 1
-    blank(r); r += 1
-
-    sec(r,
-        "DASHBOARD SHEET MODULE CODE  "
-        "(open VBA_Dashboard_Sheet.txt in Notepad, copy, paste here)",
-        S_HDR4); r += 1
-    rows.append((r, 17,
-        [_cell("A" + str(r), S_ITALIC,
-               "Open VBA_Dashboard_Sheet.txt in Notepad, press Ctrl+A, Ctrl+C, then paste into "
-               "the Dashboard sheet module (double-click 'Sheet1 (Dashboard)' in the Project tree). "
-               "This makes the \U0001f4be cells (col E for flow, col K for pressure, rows 3\u201322) "
-               "respond to a single click, auto-populates the col J elevation from the "
-               "'Point Index' tab when a pressure sensor is chosen (single-cell or paste), "
-               "re-populates all Z values whenever you switch to the Dashboard tab, "
-               "and turns the \U0001f4be cell green with a hover-note after each save "
-               "(note resets automatically when a new sensor is selected).")])); r += 1
-    blank(r); r += 1
-
-    rows.append((r, 17, [_cell("A" + str(r), S_CODE, VBA_SHEET)])); r += 1
     blank(r); r += 1
 
     # ── 5. Data Format Reference ──────────────────────────────────────────────
