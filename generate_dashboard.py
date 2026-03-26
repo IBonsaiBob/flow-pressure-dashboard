@@ -1075,29 +1075,29 @@ def build_instructions(ws):
         r += 1
     blank(r); r += 1
 
-    vba = r"""' ═══════════════════════════════════════════════════════════════════════════
-' STANDARD MODULE CODE — paste into a new Module (Alt+F11 → Insert → Module)
-' ═══════════════════════════════════════════════════════════════════════════
+    vba = r"""' ===========================================================================
+' STANDARD MODULE CODE - paste into a new Module (Alt+F11 -> Insert -> Module)
+' ===========================================================================
 
-' SaveToMOD  —  clears and rewrites BOTH MOD sheets from scratch using the
-'               current Scale, Offset, and Δt settings for ALL sensors.
+' SaveToMOD - clears and rewrites BOTH MOD sheets from scratch using the
+'             current Scale, Offset, and Dt settings for ALL sensors.
 '
 ' Dashboard selector rows 3-22:
 '   Col B (2) = Flow sensor name    Col C (3) = Flow scale multiplier
-'   Col D (4) = Flow Δt (row offset)
+'   Col D (4) = Flow Dt (row offset)
 '   Col G (7) = Pressure sensor name  Col H (8) = Pressure offset addend
-'   Col I (9) = Pressure Δt (row offset)
-' ═══════════════════════════════════════════════════════════════════════════
+'   Col I (9) = Pressure Dt (row offset)
+' ===========================================================================
 Sub SaveToMOD()
 
     Const SEL_START      As Long = 3    ' first selector row on Dashboard
     Const MAX_ROWS       As Long = 20   ' up to 20 flow / 20 pressure series
-    Const FLOW_SEL_COL   As Long = 2    ' B – flow sensor name
-    Const FLOW_SCALE_COL As Long = 3    ' C – scale multiplier
-    Const FLOW_DT_COL    As Long = 4    ' D – timestep offset
-    Const PRES_SEL_COL   As Long = 7    ' G – pressure sensor name
-    Const PRES_OFF_COL   As Long = 8    ' H – offset addend
-    Const PRES_DT_COL    As Long = 9    ' I – timestep offset
+    Const FLOW_SEL_COL   As Long = 2    ' B - flow sensor name
+    Const FLOW_SCALE_COL As Long = 3    ' C - scale multiplier
+    Const FLOW_DT_COL    As Long = 4    ' D - timestep offset
+    Const PRES_SEL_COL   As Long = 7    ' G - pressure sensor name
+    Const PRES_OFF_COL   As Long = 8    ' H - offset addend
+    Const PRES_DT_COL    As Long = 9    ' I - timestep offset
 
     Dim wsDash    As Worksheet
     Dim wsRawFlow As Worksheet
@@ -1130,7 +1130,7 @@ Sub SaveToMOD()
     Dim presDt(0 To 19)    As Long
     Dim presCol(0 To 19)   As Long   ' column in Raw Pressure Data (0 = not found)
 
-    ' ── Read selector settings from Dashboard ────────────────────────────────
+    ' -- Read selector settings from Dashboard ----------------------------------
     For i = 0 To MAX_ROWS - 1
         flowName(i)  = Trim(wsDash.Cells(SEL_START + i, FLOW_SEL_COL).Value)
         flowScale(i) = CDbl(wsDash.Cells(SEL_START + i, FLOW_SCALE_COL).Value)
@@ -1141,7 +1141,7 @@ Sub SaveToMOD()
         presDt(i)    = CLng(wsDash.Cells(SEL_START + i, PRES_DT_COL).Value)
     Next i
 
-    ' ── Locate sensor columns in raw sheet headers (row 1) ───────────────────
+    ' -- Locate sensor columns in raw sheet headers (row 1) --------------------
     Dim lastFlowHdrCol As Long
     Dim lastPresHdrCol As Long
     lastFlowHdrCol = wsRawFlow.Cells(1, wsRawFlow.Columns.Count).End(xlToLeft).Column
@@ -1179,7 +1179,7 @@ Sub SaveToMOD()
     Dim dtVal  As Variant
     Dim outRow As Long
 
-    ' ── MOD Flow: process every row in Raw Flow Data ──────────────────────────
+    ' -- MOD Flow: process every row in Raw Flow Data ---------------------------
     wsModFlow.Cells.ClearContents
     wsModFlow.Cells(1, 1).Value = "Date"
     col = 2
@@ -1217,7 +1217,7 @@ Sub SaveToMOD()
 NextFlowRow:
     Next j
 
-    ' ── MOD Pressure: process every row in Raw Pressure Data ─────────────────
+    ' -- MOD Pressure: process every row in Raw Pressure Data ------------------
     wsModPres.Cells.ClearContents
     wsModPres.Cells(1, 1).Value = "Date"
     col = 2
@@ -1258,7 +1258,7 @@ NextPresRow:
     Application.ScreenUpdating = True
 
     If totalSaved = 0 Then
-        MsgBox "No data values were saved — check that sensor names match the " & _
+        MsgBox "No data values were saved - check that sensor names match the " & _
                "column headers in Raw Flow Data / Raw Pressure Data.", _
                vbExclamation, "Nothing Saved"
     Else
@@ -1269,15 +1269,15 @@ NextPresRow:
 
 End Sub
 
-' ═══════════════════════════════════════════════════════════════════════════
-' SaveOneSensorToMOD  —  saves adjusted data for ONE sensor row to the
-'                        appropriate MOD sheet WITHOUT clearing other columns.
+' ===========================================================================
+' SaveOneSensorToMOD - saves adjusted data for ONE sensor row to the
+'                      appropriate MOD sheet WITHOUT clearing other columns.
 '
-' sType   : "Flow" or "Pressure"
+' isFlow  : True = Flow sensor, False = Pressure sensor
 ' sRow    : selector row index 1-20
 ' Silent  : suppress the confirmation MsgBox (used by SaveRemainingToMOD)
-' ═══════════════════════════════════════════════════════════════════════════
-Sub SaveOneSensorToMOD(sType As String, sRow As Long, _
+' ===========================================================================
+Sub SaveOneSensorToMOD(isFlow As Boolean, sRow As Long, _
                        Optional Silent As Boolean = False)
 
     Const SEL_START    As Long = 3
@@ -1301,7 +1301,7 @@ Sub SaveOneSensorToMOD(sType As String, sRow As Long, _
     Dim dashRow    As Long
     dashRow = SEL_START + sRow - 1
 
-    If sType = "Flow" Then
+    If isFlow Then
         sensorName = Trim(wsDash.Cells(dashRow, FLOW_NAME).Value)
         If sensorName = "" Then
             If Not Silent Then
@@ -1398,7 +1398,7 @@ Sub SaveOneSensorToMOD(sType As String, sRow As Long, _
         If srcRow >= 2 And srcRow <= lastRawRow Then
             rawVal = wsRaw.Cells(srcRow, rawSensorCol).Value
             If IsNumeric(rawVal) And CDbl(rawVal) <> -999 Then
-                If sType = "Flow" Then
+                If isFlow Then
                     wsMod.Cells(j, modSensorCol).Value = CDbl(rawVal) * scale
                 Else
                     wsMod.Cells(j, modSensorCol).Value = CDbl(rawVal) + offset
@@ -1418,11 +1418,11 @@ NextSensorRow:
     End If
 End Sub
 
-' ═══════════════════════════════════════════════════════════════════════════
-' SaveRemainingToMOD  —  saves all sensors selected on the Dashboard that do
-'                        NOT yet have a column in the corresponding MOD sheet.
-'                        Run this after finishing individual per-row saves.
-' ═══════════════════════════════════════════════════════════════════════════
+' ===========================================================================
+' SaveRemainingToMOD - saves all sensors selected on the Dashboard that do
+'                      NOT yet have a column in the corresponding MOD sheet.
+'                      Run this after finishing individual per-row saves.
+' ===========================================================================
 Sub SaveRemainingToMOD()
 
     Const SEL_START  As Long = 3
@@ -1457,7 +1457,7 @@ Sub SaveRemainingToMOD()
                 End If
             Next k
             If Not found Then
-                SaveOneSensorToMOD "Flow", i + 1, True
+                SaveOneSensorToMOD True, i + 1, True
                 savedCount = savedCount + 1
             End If
         End If
@@ -1474,14 +1474,14 @@ Sub SaveRemainingToMOD()
                 End If
             Next k
             If Not found Then
-                SaveOneSensorToMOD "Pressure", i + 1, True
+                SaveOneSensorToMOD False, i + 1, True
                 savedCount = savedCount + 1
             End If
         End If
     Next i
 
     If savedCount = 0 Then
-        MsgBox "All sensors already saved — nothing to do.", _
+        MsgBox "All sensors already saved - nothing to do.", _
                vbInformation, "Save Rest"
     Else
         MsgBox "Saved remaining " & savedCount & " sensor(s) to MOD sheets.", _
@@ -1505,15 +1505,15 @@ End Sub"""
     r += 1
     blank(r); r += 1
 
-    vba_sheet = r"""' ═══════════════════════════════════════════════════════════════════════════
+    vba_sheet = r"""' ===========================================================================
 ' DASHBOARD SHEET MODULE CODE
 ' Paste into the Dashboard sheet module (double-click Sheet1 in Project tree)
-' ═══════════════════════════════════════════════════════════════════════════
+' ===========================================================================
 Private Sub Worksheet_SelectionChange(ByVal Target As Range)
 
-    Const FLOW_SAVE_COL    As Long = 5    ' E – flow 💾 cells
-    Const PRES_SAVE_COL    As Long = 10   ' J – pres 💾 cells
-    Const SAVE_REST_COL    As Long = 11   ' K – Save Rest button (merged K:L)
+    Const FLOW_SAVE_COL    As Long = 5    ' E - flow [S] cells
+    Const PRES_SAVE_COL    As Long = 10   ' J - pres [S] cells
+    Const SAVE_REST_COL    As Long = 11   ' K - Save Rest button (merged K:L)
     Const SEL_START        As Long = 3    ' first selector row
     Const SEL_END          As Long = 22   ' last selector row
     Const SAVE_REST_ROW    As Long = 7    ' Save Rest row
@@ -1525,14 +1525,14 @@ Private Sub Worksheet_SelectionChange(ByVal Target As Range)
         Application.EnableEvents = False
         Target.Offset(0, -1).Select   ' move focus so next click re-fires
         Application.EnableEvents = True
-        SaveOneSensorToMOD "Flow", Target.Row - SEL_START + 1
+        SaveOneSensorToMOD True, Target.Row - SEL_START + 1
 
     ElseIf Target.Column = PRES_SAVE_COL And _
            Target.Row >= SEL_START And Target.Row <= SEL_END Then
         Application.EnableEvents = False
         Target.Offset(0, -1).Select
         Application.EnableEvents = True
-        SaveOneSensorToMOD "Pressure", Target.Row - SEL_START + 1
+        SaveOneSensorToMOD False, Target.Row - SEL_START + 1
 
     ElseIf Target.Column = SAVE_REST_COL And Target.Row = SAVE_REST_ROW Then
         Application.EnableEvents = False
