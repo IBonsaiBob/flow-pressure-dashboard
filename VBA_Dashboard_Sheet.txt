@@ -4,33 +4,25 @@
 ' ===========================================================================
 Private Sub Worksheet_SelectionChange(ByVal Target As Range)
 
-    Const FLOW_SAVE_COL    As Long = 5    ' E - flow [S] cells
-    Const PRES_SAVE_COL    As Long = 10   ' J - pres [S] cells
-    Const SAVE_REST_COL    As Long = 11   ' K - Save Rest button (merged K:L)
-    Const SEL_START        As Long = 3    ' first selector row
-    Const SEL_END          As Long = 22   ' last selector row
-    Const SAVE_REST_ROW    As Long = 7    ' Save Rest row
+    Const FLOW_SAVE_COL As Long = 5    ' E - flow 💾 cells
+    Const PRES_SAVE_COL As Long = 10   ' J - pres 💾 cells
+    Const SEL_START     As Long = 3    ' first selector row
+    Const SEL_END       As Long = 22   ' last selector row
 
     If Target.Count > 1 Then Exit Sub
 
     If Target.Column = FLOW_SAVE_COL And _
        Target.Row >= SEL_START And Target.Row <= SEL_END Then
         Application.EnableEvents = False
-        Target.Offset(0, -1).Select   ' move focus so next click re-fires
+        Target.Offset(0, -1).Select
         Application.EnableEvents = True
-        SaveOneSensorToMOD True, Target.Row - SEL_START + 1
+        SaveOneSensor True, Target.Row - SEL_START + 1
 
     ElseIf Target.Column = PRES_SAVE_COL And _
            Target.Row >= SEL_START And Target.Row <= SEL_END Then
         Application.EnableEvents = False
         Target.Offset(0, -1).Select
         Application.EnableEvents = True
-        SaveOneSensorToMOD False, Target.Row - SEL_START + 1
-
-    ElseIf Target.Column = SAVE_REST_COL And Target.Row = SAVE_REST_ROW Then
-        Application.EnableEvents = False
-        Target.Offset(1, 0).Select
-        Application.EnableEvents = True
-        SaveRemainingToMOD
+        SaveOneSensor False, Target.Row - SEL_START + 1
     End If
 End Sub

@@ -11,9 +11,7 @@ Pick any flow and any pressure from the selection lists, apply scaling/offset ad
 |---|---|
 | **Raw Flow Data** | Paste your wide-format flow data here (Date + flow columns) |
 | **Raw Pressure Data** | Paste your wide-format pressure data here (Date + pressure columns) |
-| **Dashboard** | Main working area — selection lists, controls, chart, data table |
-| **MOD Flow** | Saved adjusted flow data (appended each time you click Save) |
-| **MOD Pressure** | Saved adjusted pressure data (appended each time you click Save) |
+| **Dashboard** | Main working area — selection lists, controls, chart, formula table |
 | **Instructions** | Step-by-step guide, Power Query setup, and VBA Save button code |
 
 ---
@@ -52,11 +50,12 @@ Date              | AL012       | AL013       | AL014       | ...
 3. **Adjust per-series values**:
    - `Scale` (col **C**, rows 3-22) — multiplies each flow by its own factor (default 1.000)
    - `Offset` (col **H**, rows 3-22) — adds a constant to each pressure (default 0.000)
-4. The **dual-axis chart** (20 flow series on left axis — solid lines; 20 pressure on right — solid lines) and
+   - `Δt` (col **D** / col **I**) — integer timestep shift to align sensors in time
+4. The **dual-axis chart** (20 flow series on left axis; 20 pressure on right) and
    **formula table** (rows 26+, cols A-AO) update instantly
-5. Click a **💾** cell (col **E** for flow, col **J** for pressure) to save that sensor to its MOD tab.
-   Click **💾 Save Rest** (top-right, row 7) to save all remaining sensors at once.
-   Run **SaveToMOD** to rebuild both MOD tabs completely from scratch.
+5. Click a **💾** cell (col **E** for flow, col **J** for pressure) to apply the current
+   Scale / Offset / Δt and write the adjusted values back into the Raw tab.  
+   **Keep a backup of your original raw data before clicking Save.**
 
 ### After pasting your own data
 Each Name dropdown reads directly from the Raw tab headers.  
@@ -67,25 +66,27 @@ If your column range extends beyond the default, update the source:
 
 ---
 
-## VBA Save Macros
+## VBA Save Macro
 
-The full VBA code is in the **Instructions** sheet (section 4).
+The full VBA code is in the **Instructions** sheet (section 4) and in two text files generated alongside the workbook:
 
-Three macros are provided:
+| File | Contents |
+|---|---|
+| `VBA_Module1_SaveSensor.txt` | `SaveOneSensor` subroutine — writes adjusted values back into the Raw tab |
+| `VBA_Dashboard_Sheet.txt` | Sheet event handler — makes 💾 cells clickable |
 
 | Macro | What it does |
 |---|---|
-| `SaveOneSensorToMOD` | Saves one sensor row to its MOD tab (non-destructive) |
-| `SaveRemainingToMOD` | Saves all sensors not yet in MOD (called by 💾 Save Rest) |
-| `SaveToMOD` | Clears and rebuilds both MOD tabs from scratch |
+| `SaveOneSensor(True, n)` | Flow row n — applies Scale × raw, writes back to Raw Flow Data |
+| `SaveOneSensor(False, n)` | Pressure row n — applies raw + Offset, writes back to Raw Pressure Data |
 
 To install:
 1. Press **Alt+F11** to open the VBA editor
-2. **Insert → Module** and paste the **"STANDARD MODULE CODE"** block from the Instructions sheet
-3. In the Project tree, double-click **Sheet1 (Dashboard)** and paste the **"DASHBOARD SHEET MODULE CODE"** block
+2. **Insert → Module** and paste the contents of `VBA_Module1_SaveSensor.txt`
+3. In the Project tree, double-click **Sheet1 (Dashboard)** and paste the contents of `VBA_Dashboard_Sheet.txt`
 4. Save the file as `.xlsm`
 
-Once installed, clicking a **💾** cell (col E = flow, col J = pressure, rows 3-22) saves that sensor, and **💾 Save Rest** (row 7, top right) saves all remaining sensors.
+Once installed, clicking a **💾** cell (col E = flow, col J = pressure, rows 3-22) saves that sensor's adjusted data back into the corresponding Raw tab.
 
 ---
 

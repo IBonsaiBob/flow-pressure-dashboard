@@ -15,7 +15,7 @@ Dashboard layout
       Col D  flow Δt  |  Col E  flow 💾 save button
       Col F  "Pres N ▼" label  |  Col G  pressure dropdown  |  Col H  offset
       Col I  pres Δt  |  Col J  pres 💾 save button
-    Chart controls (cols K-L, rows 3-7): Start/End date filters + Save Rest button
+    Chart controls (cols K-L, rows 3-6): Start/End date filters
     Row 23 : Notes
     Row 24 : DATA TABLE banner
     Row 25 : Data table column headers
@@ -392,7 +392,7 @@ def build_dashboard(ws, flow_names):
             psave.alignment = Alignment(horizontal="center", vertical="center")
             psave.border = _thin()
 
-    # ── Control area (cols K-L, rows 3-7) ────────────────────────────────────
+    # ── Control area (cols K-L, rows 3-6) ────────────────────────────────────
     # Date format DD/MM/YY is intentionally compact (user preference).
     _ctrl_rows = [
         (CTRL_START_DATE_ROW, "Start ▶", "", "DD/MM/YY", LIGHT_BLUE),
@@ -426,16 +426,6 @@ def build_dashboard(ws, flow_names):
         hc.alignment = Alignment(horizontal="center", vertical="center")
         hc.number_format = "0"
 
-    # "Save Rest" button — click to save all sensors not yet in MOD sheets
-    _cl = get_column_letter(CTRL_LABEL_COL)
-    _ci = get_column_letter(CTRL_INPUT_COL)
-    ws.merge_cells(f"{_cl}{CTRL_SAVE_REST_ROW}:{_ci}{CTRL_SAVE_REST_ROW}")
-    sr_cell = ws.cell(CTRL_SAVE_REST_ROW, CTRL_LABEL_COL, value="💾 Save Rest")
-    sr_cell.fill = PatternFill(fill_type="solid", fgColor=PURPLE)
-    sr_cell.font = Font(bold=True, color=WHITE, size=9)
-    sr_cell.alignment = Alignment(horizontal="center", vertical="center")
-    sr_cell.border = _thin()
-
     # ── Note row ──────────────────────────────────────────────────────────────
     ws.row_dimensions[NOTE_ROW].height = 44
     nc = ws.cell(NOTE_ROW, 1,
@@ -444,8 +434,7 @@ def build_dashboard(ws, flow_names):
                         "Each row has its own Scale (flow multiplier), Offset (pressure addend) "
                         "and Δt (integer timestep offset — positive shifts the series later, "
                         "negative shifts it earlier).  "
-                        "After pasting your own data, right-click a Name cell → Data Validation "
-                        "→ update the Source range to match your column headers.  "
+                        "The formula table below updates automatically as you change any setting.  "
                         "Values of -999 are treated as no-data and excluded."))
     nc.font = Font(italic=True, color=DARK_GRAY, size=9)
     nc.alignment = Alignment(wrap_text=True)
@@ -915,31 +904,6 @@ def _patch_chart_xml(xlsx_path):
     os.replace(tmp_path, xlsx_path)
 
 
-# ── MOD output sheets ──────────────────────────────────────────────────────────
-
-def build_mod_sheet(ws, title):
-    """Create an empty wide-format MOD sheet matching the raw-data layout.
-
-    Row 1:   "Date" in A1  (SaveToMOD adds sensor-code headers to B1, C1, …)
-    Row 2+:  date/value data written by the SaveToMOD VBA macro.
-
-    The sheet is intentionally left almost empty so the user can paste data from
-    the raw sheets side-by-side. SaveToMOD clears and rewrites it on every run.
-    """
-    ws.title = title
-    ws.row_dimensions[1].height = 22
-    ws.column_dimensions["A"].width = 21
-
-    style_header(ws.cell(1, 1), "Date", bg=DARK_BLUE)
-
-    ws.row_dimensions[2].height = 18
-    ic = ws.cell(2, 1,
-                 value=("Run the SaveToMOD macro to populate this sheet.  "
-                        "Format: Date in column A; sensor codes as column headers in row 1."))
-    ic.font = Font(italic=True, color=DARK_GRAY, size=9)
-    ic.alignment = Alignment(wrap_text=True)
-
-
 # ── Instructions sheet ─────────────────────────────────────────────────────────
 
 def build_instructions(ws):
@@ -985,28 +949,18 @@ def build_instructions(ws):
         "Step 6:  Adjust the Scale (col C) for each flow row and the Offset (col H) for",
         "         each pressure row independently.  Default Scale = 1.000, Offset = 0.000.",
         "Step 7:  The input cell for each series is coloured to match its chart line.",
-        "         Flow lines and pressure lines are both solid.",
         "Step 8:  Use the Chart Controls panel (cols K-L, top right of the Dashboard):",
-        "         • Start Date / End Date  — enter dates to filter the formula table and chart.",
+        "         • Start Date / End Date — enter dates to filter the formula table and chart.",
         "           Leave blank to show all available data.  Dates must exist in 'Raw Flow Data'.",
         "Step 9:  Each flow row (col D) and each pressure row (col I) has its own Δt cell.",
         "         Enter an integer to shift that series in time:",
         "         +2 = read from 2 timesteps later;  -3 = read from 3 timesteps earlier.",
         "         Use this to align sensors with different transit / delay times.",
-        "Step 10: To save a single sensor click its 💾 cell (col E for flow, col J for pressure).",
-        "         After setting up the VBA (see section 4) a single click writes only that",
-        "         sensor's adjusted data into the MOD sheet without touching other columns.",
-        "Step 11: Click '💾 Save Rest' (top-right, row 7) to save all remaining sensors",
-        "         that have not yet been individually saved to the MOD sheets.",
-        "Step 12: To rebuild both MOD sheets completely from scratch, run SaveToMOD.",
-        "         SaveToMOD reads the COMPLETE raw dataset, applies Scale / Offset / Δt,",
-        "         and clears/rewrites MOD Flow and MOD Pressure entirely.",
+        "Step 10: The formula table (rows 26+) updates automatically — it IS your adjusted data.",
+        "         Copy and paste-as-values anywhere you need a static snapshot.",
         "",
-        "NOTE:  Up to 20 flow series (left Y-axis, blue/teal shades — solid lines) and 20",
-        "       pressure series (right Y-axis, warm/cool shades — solid lines) shown simultaneously.",
-        "",
-        "NOTE:  After pasting your own data, right-click each Name cell → Data Validation",
-        "       → update the Source to cover your column range, e.g. 'Raw Flow Data'!$B$1:$BZ$1",
+        "NOTE:  Up to 20 flow series (left Y-axis, blue/teal shades) and 20 pressure series",
+        "       (right Y-axis, warm/cool shades) are shown simultaneously.",
         "",
         f"NOTE:  The formula table covers {DATA_ROWS} rows. For longer datasets, select",
         f"       that range and copy-paste downward as far as needed.",
@@ -1058,459 +1012,147 @@ def build_instructions(ws):
     blank(r); r += 1
 
     # ── 4. VBA Save macros ────────────────────────────────────────────────────
-    section(r, "4.  VBA SAVE MACROS — two steps:", bg=PURPLE)
+    section(r, "4.  VBA SAVE MACROS  (saves adjusted data back into the Raw tabs)", bg=PURPLE)
     r += 1
     for line in [
         "Two plain-text files are generated alongside this workbook:",
-        "  VBA_Module1_SaveToMOD.txt   — standard module code",
+        "  VBA_Module1_SaveSensor.txt  — standard module code",
         "  VBA_Dashboard_Sheet.txt     — Dashboard sheet module code",
         "",
         "Step A:  Press Alt+F11 to open the VBA editor.",
-        "Step B:  Click Insert → Module.  Open VBA_Module1_SaveToMOD.txt in",
-        "         Notepad, press Ctrl+A then Ctrl+C, and paste into the new",
-        "         module.  This adds SaveToMOD, SaveOneSensorToMOD, and",
-        "         SaveRemainingToMOD.",
+        "Step B:  Click Insert → Module.  Open VBA_Module1_SaveSensor.txt in",
+        "         Notepad, press Ctrl+A then Ctrl+C, and paste into the new module.",
         "Step C:  In the Project tree double-click 'Sheet1 (Dashboard)'.",
         "         Open VBA_Dashboard_Sheet.txt in Notepad, press Ctrl+A then",
-        "         Ctrl+C, and paste into that sheet module.  This makes the",
-        "         [S] cells and the 'Save Rest' cell clickable.",
+        "         Ctrl+C, and paste into that sheet module.",
         "Step D:  Close the VBA editor and save the file as .xlsm.",
         "",
-        "NOTE: Do NOT copy the code blocks below directly from this cell.",
-        "      Excel wraps cell content in quotes on copy, which corrupts the",
-        "      VBA syntax.  Always use the .txt files instead.",
+        "IMPORTANT: The 💾 buttons overwrite the sensor column in the Raw tab.",
+        "           Keep a backup of your original data before clicking Save.",
+        "",
+        "NOTE: Always use the .txt files — do NOT copy from this cell.",
+        "      Excel wraps cell content in quotes, which corrupts VBA syntax.",
     ]:
         body(r, line, indent=2)
         r += 1
     blank(r); r += 1
 
     vba = r"""' ===========================================================================
-' STANDARD MODULE CODE - paste into a new Module (Alt+F11 -> Insert -> Module)
+' STANDARD MODULE CODE
+' Paste into a new Module (Alt+F11 -> Insert -> Module)
 ' ===========================================================================
-
-' SaveToMOD - clears and rewrites BOTH MOD sheets from scratch using the
-'             current Scale, Offset, and Dt settings for ALL sensors.
+' SaveOneSensor  - applies Scale / Offset / Dt for ONE sensor and writes the
+'                  adjusted values back into the corresponding Raw data tab,
+'                  overwriting that sensor column in place.
+'
+' isFlow : True  -> Flow sensor   (Raw Flow Data,     Scale * value,  col D Dt)
+'          False -> Pressure      (Raw Pressure Data, value + Offset, col I Dt)
+' sRow   : selector row index 1-20
 '
 ' Dashboard selector rows 3-22:
-'   Col B (2) = Flow sensor name    Col C (3) = Flow scale multiplier
-'   Col D (4) = Flow Dt (row offset)
-'   Col G (7) = Pressure sensor name  Col H (8) = Pressure offset addend
-'   Col I (9) = Pressure Dt (row offset)
+'   Col B (2) = Flow name    Col C (3) = Scale    Col D (4) = Flow Dt
+'   Col G (7) = Pres name    Col H (8) = Offset   Col I (9) = Pres Dt
 ' ===========================================================================
-Sub SaveToMOD()
+Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
 
-    Const SEL_START      As Long = 3    ' first selector row on Dashboard
-    Const MAX_ROWS       As Long = 20   ' up to 20 flow / 20 pressure series
-    Const FLOW_SEL_COL   As Long = 2    ' B - flow sensor name
-    Const FLOW_SCALE_COL As Long = 3    ' C - scale multiplier
-    Const FLOW_DT_COL    As Long = 4    ' D - timestep offset
-    Const PRES_SEL_COL   As Long = 7    ' G - pressure sensor name
-    Const PRES_OFF_COL   As Long = 8    ' H - offset addend
-    Const PRES_DT_COL    As Long = 9    ' I - timestep offset
-
-    Dim wsDash    As Worksheet
-    Dim wsRawFlow As Worksheet
-    Dim wsRawPres As Worksheet
-    Dim wsModFlow As Worksheet
-    Dim wsModPres As Worksheet
-
-    On Error Resume Next
-    Set wsDash    = Worksheets("Dashboard")
-    Set wsRawFlow = Worksheets("Raw Flow Data")
-    Set wsRawPres = Worksheets("Raw Pressure Data")
-    Set wsModFlow = Worksheets("MOD Flow")
-    Set wsModPres = Worksheets("MOD Pressure")
-    On Error GoTo 0
-
-    If wsDash Is Nothing Or wsRawFlow Is Nothing Or wsRawPres Is Nothing Or _
-       wsModFlow Is Nothing Or wsModPres Is Nothing Then
-        MsgBox "Could not find required sheets (Dashboard, Raw Flow Data, " & _
-               "Raw Pressure Data, MOD Flow, MOD Pressure).", vbCritical, "Sheet Missing"
-        Exit Sub
-    End If
-
-    Dim i As Long, j As Long, k As Long, col As Long, srcRow As Long
-    Dim flowName(0 To 19)  As String
-    Dim flowScale(0 To 19) As Double
-    Dim flowDt(0 To 19)    As Long
-    Dim flowCol(0 To 19)   As Long   ' column in Raw Flow Data (0 = not found)
-    Dim presName(0 To 19)  As String
-    Dim presOff(0 To 19)   As Double
-    Dim presDt(0 To 19)    As Long
-    Dim presCol(0 To 19)   As Long   ' column in Raw Pressure Data (0 = not found)
-
-    ' -- Read selector settings from Dashboard ----------------------------------
-    For i = 0 To MAX_ROWS - 1
-        flowName(i)  = Trim(wsDash.Cells(SEL_START + i, FLOW_SEL_COL).Value)
-        flowScale(i) = ToDouble(wsDash.Cells(SEL_START + i, FLOW_SCALE_COL).Value)
-        If flowScale(i) = 0 Then flowScale(i) = 1
-        flowDt(i)    = ToLong(wsDash.Cells(SEL_START + i, FLOW_DT_COL).Value)
-        presName(i)  = Trim(wsDash.Cells(SEL_START + i, PRES_SEL_COL).Value)
-        presOff(i)   = ToDouble(wsDash.Cells(SEL_START + i, PRES_OFF_COL).Value)
-        presDt(i)    = ToLong(wsDash.Cells(SEL_START + i, PRES_DT_COL).Value)
-    Next i
-
-    ' -- Locate sensor columns in raw sheet headers (row 1) --------------------
-    Dim lastFlowHdrCol As Long
-    Dim lastPresHdrCol As Long
-    lastFlowHdrCol = wsRawFlow.Cells(1, wsRawFlow.Columns.Count).End(xlToLeft).Column
-    lastPresHdrCol = wsRawPres.Cells(1, wsRawPres.Columns.Count).End(xlToLeft).Column
-
-    For i = 0 To MAX_ROWS - 1
-        flowCol(i) = 0
-        presCol(i) = 0
-        If flowName(i) <> "" Then
-            For k = 2 To lastFlowHdrCol
-                If Trim(wsRawFlow.Cells(1, k).Value) = flowName(i) Then
-                    flowCol(i) = k
-                    Exit For
-                End If
-            Next k
-        End If
-        If presName(i) <> "" Then
-            For k = 2 To lastPresHdrCol
-                If Trim(wsRawPres.Cells(1, k).Value) = presName(i) Then
-                    presCol(i) = k
-                    Exit For
-                End If
-            Next k
-        End If
-    Next i
-
-    Dim lastFlowRow As Long
-    Dim lastPresRow As Long
-    lastFlowRow = wsRawFlow.Cells(wsRawFlow.Rows.Count, 1).End(xlUp).Row
-    lastPresRow = wsRawPres.Cells(wsRawPres.Rows.Count, 1).End(xlUp).Row
-
-    Application.ScreenUpdating = False
-    Dim totalSaved As Long: totalSaved = 0
-    Dim rawVal As Variant
-    Dim dtVal  As Variant
-    Dim outRow As Long
-
-    ' -- MOD Flow: process every row in Raw Flow Data ---------------------------
-    wsModFlow.Cells.ClearContents
-    wsModFlow.Cells(1, 1).Value = "Date"
-    col = 2
-    For i = 0 To MAX_ROWS - 1
-        If flowName(i) <> "" Then
-            wsModFlow.Cells(1, col).Value = flowName(i)
-            col = col + 1
-        End If
-    Next i
-
-    outRow = 2
-    For j = 2 To lastFlowRow
-        dtVal = wsRawFlow.Cells(j, 1).Value
-        If IsEmpty(dtVal) Or dtVal = "" Then GoTo NextFlowRow
-        wsModFlow.Cells(outRow, 1).Value        = dtVal
-        wsModFlow.Cells(outRow, 1).NumberFormat = "DD/MM/YYYY HH:MM"
-        col = 2
-        For i = 0 To MAX_ROWS - 1
-            If flowName(i) <> "" Then
-                If flowCol(i) > 0 Then
-                    srcRow = j - flowDt(i)
-                    If srcRow >= 2 And srcRow <= lastFlowRow Then
-                        rawVal = wsRawFlow.Cells(srcRow, flowCol(i)).Value
-                        If IsNumeric(rawVal) And CDbl(rawVal) <> -999 Then
-                            wsModFlow.Cells(outRow, col).Value        = CDbl(rawVal) * flowScale(i)
-                            wsModFlow.Cells(outRow, col).NumberFormat = "0.000"
-                            totalSaved = totalSaved + 1
-                        End If
-                    End If
-                End If
-                col = col + 1
-            End If
-        Next i
-        outRow = outRow + 1
-NextFlowRow:
-    Next j
-
-    ' -- MOD Pressure: process every row in Raw Pressure Data ------------------
-    wsModPres.Cells.ClearContents
-    wsModPres.Cells(1, 1).Value = "Date"
-    col = 2
-    For i = 0 To MAX_ROWS - 1
-        If presName(i) <> "" Then
-            wsModPres.Cells(1, col).Value = presName(i)
-            col = col + 1
-        End If
-    Next i
-
-    outRow = 2
-    For j = 2 To lastPresRow
-        dtVal = wsRawPres.Cells(j, 1).Value
-        If IsEmpty(dtVal) Or dtVal = "" Then GoTo NextPresRow
-        wsModPres.Cells(outRow, 1).Value        = dtVal
-        wsModPres.Cells(outRow, 1).NumberFormat = "DD/MM/YYYY HH:MM"
-        col = 2
-        For i = 0 To MAX_ROWS - 1
-            If presName(i) <> "" Then
-                If presCol(i) > 0 Then
-                    srcRow = j - presDt(i)
-                    If srcRow >= 2 And srcRow <= lastPresRow Then
-                        rawVal = wsRawPres.Cells(srcRow, presCol(i)).Value
-                        If IsNumeric(rawVal) And CDbl(rawVal) <> -999 Then
-                            wsModPres.Cells(outRow, col).Value        = CDbl(rawVal) + presOff(i)
-                            wsModPres.Cells(outRow, col).NumberFormat = "0.000"
-                            totalSaved = totalSaved + 1
-                        End If
-                    End If
-                End If
-                col = col + 1
-            End If
-        Next i
-        outRow = outRow + 1
-NextPresRow:
-    Next j
-
-    Application.ScreenUpdating = True
-
-    If totalSaved = 0 Then
-        MsgBox "No data values were saved - check that sensor names match the " & _
-               "column headers in Raw Flow Data / Raw Pressure Data.", _
-               vbExclamation, "Nothing Saved"
-    Else
-        MsgBox "Saved " & totalSaved & " values covering the complete dataset " & _
-               "(all dates, not just the current dashboard window).", _
-               vbInformation, "Save Complete"
-    End If
-
-End Sub
-
-' ===========================================================================
-' SaveOneSensorToMOD - saves adjusted data for ONE sensor row to the
-'                      appropriate MOD sheet WITHOUT clearing other columns.
-'
-' isFlow  : True = Flow sensor, False = Pressure sensor
-' sRow    : selector row index 1-20
-' Silent  : suppress the confirmation MsgBox (used by SaveRemainingToMOD)
-' ===========================================================================
-Sub SaveOneSensorToMOD(isFlow As Boolean, sRow As Long, _
-                       Optional Silent As Boolean = False)
-
-    Const SEL_START    As Long = 3
-    Const FLOW_NAME    As Long = 2   ' B
-    Const FLOW_SCALE   As Long = 3   ' C
-    Const FLOW_DT      As Long = 4   ' D
-    Const PRES_NAME    As Long = 7   ' G
-    Const PRES_OFF     As Long = 8   ' H
-    Const PRES_DT      As Long = 9   ' I
+    Const SEL_START  As Long = 3
+    Const FLOW_NAME  As Long = 2   ' B
+    Const FLOW_SCALE As Long = 3   ' C
+    Const FLOW_DT    As Long = 4   ' D
+    Const PRES_NAME  As Long = 7   ' G
+    Const PRES_OFF   As Long = 8   ' H
+    Const PRES_DT    As Long = 9   ' I
 
     Dim wsDash  As Worksheet
     Dim wsRaw   As Worksheet
-    Dim wsMod   As Worksheet
-
     Set wsDash = Worksheets("Dashboard")
 
-    Dim sensorName As String
+    Dim sensorName  As String
     Dim scaleFactor As Double
-    Dim offset     As Double
-    Dim dt         As Long
-    Dim dashRow    As Long
+    Dim offset      As Double
+    Dim dt          As Long
+    Dim dashRow     As Long
     dashRow = SEL_START + sRow - 1
 
     If isFlow Then
         sensorName = Trim(wsDash.Cells(dashRow, FLOW_NAME).Value)
         If sensorName = "" Then
-            If Not Silent Then
-                MsgBox "No sensor selected in Flow row " & sRow, vbExclamation
-            End If
+            MsgBox "No sensor selected in Flow row " & sRow, vbExclamation
             Exit Sub
         End If
-        scaleFactor  = ToDouble(wsDash.Cells(dashRow, FLOW_SCALE).Value)
+        scaleFactor = ToDouble(wsDash.Cells(dashRow, FLOW_SCALE).Value)
         If scaleFactor = 0 Then scaleFactor = 1
-        dt     = ToLong(wsDash.Cells(dashRow, FLOW_DT).Value)
+        dt = ToLong(wsDash.Cells(dashRow, FLOW_DT).Value)
         Set wsRaw = Worksheets("Raw Flow Data")
-        Set wsMod = Worksheets("MOD Flow")
     Else
         sensorName = Trim(wsDash.Cells(dashRow, PRES_NAME).Value)
         If sensorName = "" Then
-            If Not Silent Then
-                MsgBox "No sensor selected in Pressure row " & sRow, vbExclamation
-            End If
+            MsgBox "No sensor selected in Pressure row " & sRow, vbExclamation
             Exit Sub
         End If
         offset = ToDouble(wsDash.Cells(dashRow, PRES_OFF).Value)
-        dt     = ToLong(wsDash.Cells(dashRow, PRES_DT).Value)
+        dt = ToLong(wsDash.Cells(dashRow, PRES_DT).Value)
         Set wsRaw = Worksheets("Raw Pressure Data")
-        Set wsMod = Worksheets("MOD Pressure")
     End If
 
     ' --- Find sensor column in raw sheet ---
-    Dim lastRawHdrCol As Long
-    lastRawHdrCol = wsRaw.Cells(1, wsRaw.Columns.Count).End(xlToLeft).Column
-    Dim rawSensorCol As Long: rawSensorCol = 0
+    Dim lastHdrCol As Long
+    lastHdrCol = wsRaw.Cells(1, wsRaw.Columns.Count).End(xlToLeft).Column
+    Dim sensorCol As Long: sensorCol = 0
     Dim k As Long
-    For k = 2 To lastRawHdrCol
+    For k = 2 To lastHdrCol
         If Trim(wsRaw.Cells(1, k).Value) = sensorName Then
-            rawSensorCol = k
+            sensorCol = k
             Exit For
         End If
     Next k
-    If rawSensorCol = 0 Then
-        If Not Silent Then
-            MsgBox "Sensor '" & sensorName & "' not found in " & wsRaw.Name, _
-                   vbExclamation, "Sensor Not Found"
-        End If
+    If sensorCol = 0 Then
+        MsgBox "Sensor '" & sensorName & "' not found in " & wsRaw.Name, _
+               vbExclamation, "Sensor Not Found"
         Exit Sub
     End If
 
-    ' --- Ensure MOD sheet has a Date header ---
-    If wsMod.Cells(1, 1).Value = "" Then wsMod.Cells(1, 1).Value = "Date"
+    Dim lastRow As Long
+    lastRow = wsRaw.Cells(wsRaw.Rows.Count, 1).End(xlUp).Row
 
-    ' --- Extend date column in MOD to match raw sheet ---
-    Dim lastRawRow As Long
-    lastRawRow = wsRaw.Cells(wsRaw.Rows.Count, 1).End(xlUp).Row
-    Dim lastModRow As Long
-    lastModRow = wsMod.Cells(wsMod.Rows.Count, 1).End(xlUp).Row
-
-    Dim j As Long
-    Dim dtVal As Variant
-    Dim startFill As Long
-    startFill = IIf(lastModRow < 2, 2, lastModRow + 1)
-    If startFill <= lastRawRow Then
-        For j = startFill To lastRawRow
-            dtVal = wsRaw.Cells(j, 1).Value
-            If Not (IsEmpty(dtVal) Or dtVal = "") Then
-                wsMod.Cells(j, 1).Value        = dtVal
-                wsMod.Cells(j, 1).NumberFormat = "DD/MM/YYYY HH:MM"
-            End If
-        Next j
-    End If
-
-    ' --- Find or create column for this sensor in MOD ---
-    Dim lastModHdrCol As Long
-    lastModHdrCol = wsMod.Cells(1, wsMod.Columns.Count).End(xlToLeft).Column
-    Dim modSensorCol As Long: modSensorCol = 0
-    For k = 2 To lastModHdrCol
-        If Trim(wsMod.Cells(1, k).Value) = sensorName Then
-            modSensorCol = k
-            Exit For
-        End If
-    Next k
-    If modSensorCol = 0 Then
-        modSensorCol = lastModHdrCol + 1
-        wsMod.Cells(1, modSensorCol).Value = sensorName
-    End If
-
-    ' --- Write adjusted sensor data ---
+    ' --- Apply transformation and write back into the Raw tab ---
     Application.ScreenUpdating = False
     Dim totalSaved As Long: totalSaved = 0
     Dim rawVal As Variant
     Dim srcRow As Long
+    Dim j As Long
 
-    For j = 2 To lastRawRow
-        dtVal = wsRaw.Cells(j, 1).Value
-        If IsEmpty(dtVal) Or dtVal = "" Then GoTo NextSensorRow
+    For j = 2 To lastRow
         srcRow = j - dt
-        If srcRow >= 2 And srcRow <= lastRawRow Then
-            rawVal = wsRaw.Cells(srcRow, rawSensorCol).Value
+        If srcRow >= 2 And srcRow <= lastRow Then
+            rawVal = wsRaw.Cells(srcRow, sensorCol).Value
             If IsNumeric(rawVal) And CDbl(rawVal) <> -999 Then
                 If isFlow Then
-                    wsMod.Cells(j, modSensorCol).Value = CDbl(rawVal) * scaleFactor
+                    wsRaw.Cells(j, sensorCol).Value = CDbl(rawVal) * scaleFactor
                 Else
-                    wsMod.Cells(j, modSensorCol).Value = CDbl(rawVal) + offset
+                    wsRaw.Cells(j, sensorCol).Value = CDbl(rawVal) + offset
                 End If
-                wsMod.Cells(j, modSensorCol).NumberFormat = "0.000"
+                wsRaw.Cells(j, sensorCol).NumberFormat = "0.000"
                 totalSaved = totalSaved + 1
             End If
         End If
-NextSensorRow:
     Next j
 
     Application.ScreenUpdating = True
-
-    If Not Silent Then
-        MsgBox "Saved " & totalSaved & " values for '" & sensorName & "'.", _
-               vbInformation, "Sensor Saved"
-    End If
+    MsgBox "Saved " & totalSaved & " values for '" & sensorName & _
+           "' into " & wsRaw.Name & ".", vbInformation, "Save Complete"
 End Sub
 
 ' ===========================================================================
-' Safe numeric helpers - prevent Type mismatch when a Scale/Offset/Dt cell
-' is empty or contains non-numeric text (returns 0 in those cases).
+' Safe numeric helpers
 ' ===========================================================================
 Private Function ToDouble(v As Variant) As Double
-    ' Returns CDbl(v) when v is numeric; returns 0 for blank or non-numeric cells.
     If IsNumeric(v) Then ToDouble = CDbl(v)
 End Function
 
 Private Function ToLong(v As Variant) As Long
-    ' Returns CLng(v) when v is numeric; returns 0 for blank or non-numeric cells.
     If IsNumeric(v) Then ToLong = CLng(v)
-End Function
-
-' ===========================================================================
-' SaveRemainingToMOD - saves all sensors selected on the Dashboard that do
-'                      NOT yet have a column in the corresponding MOD sheet.
-'                      Run this after finishing individual per-row saves.
-' ===========================================================================
-Sub SaveRemainingToMOD()
-
-    Const SEL_START  As Long = 3
-    Const MAX_ROWS   As Long = 20
-    Const FLOW_NAME  As Long = 2    ' B
-    Const PRES_NAME  As Long = 7    ' G
-
-    Dim wsDash    As Worksheet
-    Dim wsModFlow As Worksheet
-    Dim wsModPres As Worksheet
-
-    Set wsDash    = Worksheets("Dashboard")
-    Set wsModFlow = Worksheets("MOD Flow")
-    Set wsModPres = Worksheets("MOD Pressure")
-
-    Dim i As Long, k As Long
-    Dim sensorName As String
-    Dim found As Boolean
-    Dim lastHdrCol As Long
-    Dim savedCount As Long: savedCount = 0
-
-    For i = 0 To MAX_ROWS - 1
-        ' --- Flow ---
-        sensorName = Trim(wsDash.Cells(SEL_START + i, FLOW_NAME).Value)
-        If sensorName <> "" Then
-            found = False
-            lastHdrCol = wsModFlow.Cells(1, wsModFlow.Columns.Count).End(xlToLeft).Column
-            For k = 2 To lastHdrCol
-                If Trim(wsModFlow.Cells(1, k).Value) = sensorName Then
-                    found = True
-                    Exit For
-                End If
-            Next k
-            If Not found Then
-                SaveOneSensorToMOD True, i + 1, True
-                savedCount = savedCount + 1
-            End If
-        End If
-
-        ' --- Pressure ---
-        sensorName = Trim(wsDash.Cells(SEL_START + i, PRES_NAME).Value)
-        If sensorName <> "" Then
-            found = False
-            lastHdrCol = wsModPres.Cells(1, wsModPres.Columns.Count).End(xlToLeft).Column
-            For k = 2 To lastHdrCol
-                If Trim(wsModPres.Cells(1, k).Value) = sensorName Then
-                    found = True
-                    Exit For
-                End If
-            Next k
-            If Not found Then
-                SaveOneSensorToMOD False, i + 1, True
-                savedCount = savedCount + 1
-            End If
-        End If
-    Next i
-
-    If savedCount = 0 Then
-        MsgBox "All sensors already saved - nothing to do.", _
-               vbInformation, "Save Rest"
-    Else
-        MsgBox "Saved remaining " & savedCount & " sensor(s) to MOD sheets.", _
-               vbInformation, "Save Rest Complete"
-    End If
-End Sub"""
+End Function"""
 
     body(r, vba, sz=9, bg=LIGHT_GRAY, height=17)
     r += 1
@@ -1523,8 +1165,8 @@ End Sub"""
     body(r,
          "Open VBA_Dashboard_Sheet.txt in Notepad, press Ctrl+A, Ctrl+C, then paste into "
          "the Dashboard sheet module (double-click 'Sheet1 (Dashboard)' in the Project tree). "
-         "This makes the [S] cells (cols E and J, rows 3-22) and the "
-         "'Save Rest' cell (col K row 7) respond to single clicks.",
+         "This makes the 💾 cells (col E for flow, col J for pressure, rows 3-22) "
+         "respond to a single click.",
          indent=2, italic=True, fg=DARK_GRAY)
     r += 1
     blank(r); r += 1
@@ -1535,34 +1177,26 @@ End Sub"""
 ' ===========================================================================
 Private Sub Worksheet_SelectionChange(ByVal Target As Range)
 
-    Const FLOW_SAVE_COL    As Long = 5    ' E - flow [S] cells
-    Const PRES_SAVE_COL    As Long = 10   ' J - pres [S] cells
-    Const SAVE_REST_COL    As Long = 11   ' K - Save Rest button (merged K:L)
-    Const SEL_START        As Long = 3    ' first selector row
-    Const SEL_END          As Long = 22   ' last selector row
-    Const SAVE_REST_ROW    As Long = 7    ' Save Rest row
+    Const FLOW_SAVE_COL As Long = 5    ' E - flow 💾 cells
+    Const PRES_SAVE_COL As Long = 10   ' J - pres 💾 cells
+    Const SEL_START     As Long = 3    ' first selector row
+    Const SEL_END       As Long = 22   ' last selector row
 
     If Target.Count > 1 Then Exit Sub
 
     If Target.Column = FLOW_SAVE_COL And _
        Target.Row >= SEL_START And Target.Row <= SEL_END Then
         Application.EnableEvents = False
-        Target.Offset(0, -1).Select   ' move focus so next click re-fires
+        Target.Offset(0, -1).Select
         Application.EnableEvents = True
-        SaveOneSensorToMOD True, Target.Row - SEL_START + 1
+        SaveOneSensor True, Target.Row - SEL_START + 1
 
     ElseIf Target.Column = PRES_SAVE_COL And _
            Target.Row >= SEL_START And Target.Row <= SEL_END Then
         Application.EnableEvents = False
         Target.Offset(0, -1).Select
         Application.EnableEvents = True
-        SaveOneSensorToMOD False, Target.Row - SEL_START + 1
-
-    ElseIf Target.Column = SAVE_REST_COL And Target.Row = SAVE_REST_ROW Then
-        Application.EnableEvents = False
-        Target.Offset(1, 0).Select
-        Application.EnableEvents = True
-        SaveRemainingToMOD
+        SaveOneSensor False, Target.Row - SEL_START + 1
     End If
 End Sub"""
 
@@ -1574,7 +1208,7 @@ End Sub"""
     section(r, "5.  DATA FORMAT REFERENCE", bg=DARK_GRAY)
     r += 1
     for line in [
-        "Both Raw Data sheets AND MOD sheets use this wide format:",
+        "Both Raw Data sheets use this wide format:",
         "",
         "    Date               | AL012       | AL013       | AL014       | ...  ",
         "    01/12/2026 00:00   | 3.168205    | 2.204250    | 2.665153    | ...  ",
@@ -1591,17 +1225,14 @@ End Sub"""
         "• To paste your own data into a raw sheet: delete the sample data rows",
         "  (keep row 1 headers), then paste starting from row 2.",
         "",
-        "Dashboard data table (rows 26+):",
+        "Dashboard formula table (rows 26+):",
         "  Col A     = Date",
         "  Cols B-U  = Flow 1-20 Adjusted  (Name in B3-B22 × Scale in C3-C22 + Δt in D3-D22)",
         "  Cols V-AO = Pres 1-20 Adjusted  (Name in G3-G22 + Offset in H3-H22 + Δt in I3-I22)",
         "",
-        "MOD Flow / MOD Pressure:",
-        "  SaveToMOD       — clears and rewrites both sheets from scratch.",
-        "  💾 per-row cells — add/update just that sensor's column (non-destructive).",
-        "  💾 Save Rest    — saves all sensors not yet present in the MOD sheets.",
-        "  Row 1  = Date | SensorCode1 | SensorCode2 | ...  (headers)",
-        "  Row 2+ = adjusted values in matching columns",
+        "💾 Save buttons (col E = flow, col J = pressure):",
+        "  Clicking 💾 applies the current Scale / Offset / Δt and overwrites that",
+        "  sensor's column in the Raw tab.  Keep a backup before saving.",
         "",
         "Leave a Name cell blank to hide that series (formula returns empty, not plotted).",
     ]:
@@ -1615,15 +1246,10 @@ End Sub"""
 # ── Write VBA text files ───────────────────────────────────────────────────────
 
 def write_vba_files(vba_module, vba_sheet, out_dir):
-    """Write VBA code to plain .txt files alongside the workbook.
-
-    Copying code from an Excel cell corrupts it (Excel wraps multi-line
-    content in quotes and doubles every internal quote on copy).  Plain
-    text files avoid this entirely — open in Notepad, Ctrl+A, Ctrl+C, paste.
-    """
+    """Write VBA code to plain .txt files alongside the workbook."""
     for filename, content in [
-        ("VBA_Module1_SaveToMOD.txt",  vba_module),
-        ("VBA_Dashboard_Sheet.txt",    vba_sheet),
+        ("VBA_Module1_SaveSensor.txt", vba_module),
+        ("VBA_Dashboard_Sheet.txt",   vba_sheet),
     ]:
         path = os.path.join(out_dir, filename)
         with open(path, "w", encoding="utf-8") as fh:
@@ -1636,15 +1262,11 @@ def main():
     ws_flow  = wb.active
     ws_pres  = wb.create_sheet()
     ws_dash  = wb.create_sheet()
-    ws_mod_f = wb.create_sheet()
-    ws_mod_p = wb.create_sheet()
     ws_instr = wb.create_sheet()
 
     build_raw_sheet(ws_flow, "Raw Flow Data",     "FlowData",     FLOW_ROWS, SAMPLE_DATES)
     build_raw_sheet(ws_pres, "Raw Pressure Data", "PressureData", PRES_ROWS, SAMPLE_DATES)
     build_dashboard(ws_dash, FLOW_NAMES)
-    build_mod_sheet(ws_mod_f, "MOD Flow")
-    build_mod_sheet(ws_mod_p, "MOD Pressure")
     vba_module, vba_sheet = build_instructions(ws_instr)
 
     wb.calculation.calcMode    = "auto"
