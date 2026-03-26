@@ -135,6 +135,18 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
     adjParam = IIf(isFlow, scaleFactor, offset)
     MarkSaved isFlow, sRow, sensorName, adjParam, dt
 
+    ' --- Write compact data note to Point Index tab col K ---
+    Dim adjLabel As String
+    If isFlow Then
+        adjLabel = "Scale: " & Format(adjParam, "0.000")
+    Else
+        adjLabel = "Offset: " & Format(adjParam, "0.000")
+    End If
+    Dim piNote As String
+    piNote = Format(Now, "dd/mm/yyyy HH:mm") & " | " & sensorName & _
+             " | " & adjLabel & " | Dt: " & dt
+    WriteDataNoteToPointIndex sensorName, piNote
+
     MsgBox "Saved " & totalSaved & " values for '" & sensorName & _
            "' into " & wsRaw.Name & ".", vbInformation, "Save Complete"
 End Sub
@@ -383,6 +395,77 @@ Sub SaveElevationToPointIndex(sRow As Long)
     Next r
 
     MsgBox "Sensor '" & sensorName & "' not found in 'Point Index'.", vbExclamation
+End Sub
+
+' ===========================================================================
+' WriteDataNoteToPointIndex  - appends a compact single-line save note to col K
+'                              ("Data Notes") of the matching row in Point Index.
+'                              If the sensor is not found an error message is shown.
+'                              If col K already has content the new note is placed
+'                              below the existing text, separated by a blank line.
+' sensorName : sensor name to look up in the "Point Ref" column
+' noteText   : compact note string, e.g. "26/03/2026 14:35 | AM026 | Offset: 10.000 | Dt: 4"
+' ===========================================================================
+Sub WriteDataNoteToPointIndex(sensorName As String, noteText As String)
+
+    Const DATA_NOTES_COL As Long = 11  ' K
+
+    ' Find the "Point Index" worksheet
+    Dim wsIdx As Worksheet
+    Dim ws As Worksheet
+    For Each ws In ThisWorkbook.Worksheets
+        If LCase(Trim(ws.Name)) = "point index" Then
+            Set wsIdx = ws
+            Exit For
+        End If
+    Next ws
+    If wsIdx Is Nothing Then
+        MsgBox "Worksheet 'Point Index' not found.", vbExclamation
+        Exit Sub
+    End If
+
+    ' Ensure the header cell exists
+    If Trim(wsIdx.Cells(1, DATA_NOTES_COL).Value) = "" Then
+        wsIdx.Cells(1, DATA_NOTES_COL).Value = "Data Notes"
+    End If
+
+    ' Find "Point Ref" column header
+    Dim lastHdrCol As Long
+    lastHdrCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    Dim pointRefCol As Long: pointRefCol = 0
+    Dim c As Long
+    For c = 1 To lastHdrCol
+        If Trim(wsIdx.Cells(1, c).Value) = "Point Ref" Then
+            pointRefCol = c
+            Exit For
+        End If
+    Next c
+    If pointRefCol = 0 Then
+        MsgBox "Could not find 'Point Ref' column in 'Point Index'.", vbExclamation
+        Exit Sub
+    End If
+
+    ' Find the matching sensor row and append the note
+    Dim lastRow As Long
+    lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
+    Dim r As Long
+    For r = 2 To lastRow
+        If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
+            Dim existingText As String
+            existingText = wsIdx.Cells(r, DATA_NOTES_COL).Value
+            If existingText = "" Then
+                wsIdx.Cells(r, DATA_NOTES_COL).Value = noteText
+            Else
+                wsIdx.Cells(r, DATA_NOTES_COL).Value = existingText & Chr(10) & Chr(10) & noteText
+            End If
+            wsIdx.Cells(r, DATA_NOTES_COL).WrapText = True
+            Exit Sub
+        End If
+    Next r
+
+    ' Sensor not found in Point Index
+    MsgBox "Sensor '" & sensorName & "' not found in 'Point Index'." & Chr(10) & _
+           "Not in Point Index", vbExclamation, "Not in Point Index"
 End Sub
 
 ' ===========================================================================
