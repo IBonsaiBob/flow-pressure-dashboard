@@ -1304,7 +1304,7 @@ Sub SaveOneSensorToMOD(isFlow As Boolean, sRow As Long, _
     Set wsDash = Worksheets("Dashboard")
 
     Dim sensorName As String
-    Dim scale      As Double
+    Dim scaleFactor As Double
     Dim offset     As Double
     Dim dt         As Long
     Dim dashRow    As Long
@@ -1318,8 +1318,8 @@ Sub SaveOneSensorToMOD(isFlow As Boolean, sRow As Long, _
             End If
             Exit Sub
         End If
-        scale  = ToDouble(wsDash.Cells(dashRow, FLOW_SCALE).Value)
-        If scale = 0 Then scale = 1
+        scaleFactor  = ToDouble(wsDash.Cells(dashRow, FLOW_SCALE).Value)
+        If scaleFactor = 0 Then scaleFactor = 1
         dt     = ToLong(wsDash.Cells(dashRow, FLOW_DT).Value)
         Set wsRaw = Worksheets("Raw Flow Data")
         Set wsMod = Worksheets("MOD Flow")
@@ -1408,7 +1408,7 @@ Sub SaveOneSensorToMOD(isFlow As Boolean, sRow As Long, _
             rawVal = wsRaw.Cells(srcRow, rawSensorCol).Value
             If IsNumeric(rawVal) And CDbl(rawVal) <> -999 Then
                 If isFlow Then
-                    wsMod.Cells(j, modSensorCol).Value = CDbl(rawVal) * scale
+                    wsMod.Cells(j, modSensorCol).Value = CDbl(rawVal) * scaleFactor
                 Else
                     wsMod.Cells(j, modSensorCol).Value = CDbl(rawVal) + offset
                 End If
