@@ -503,17 +503,14 @@ Function GetElevationFromPointIndex(sensorName As String) As Variant
 End Function
 
 ' ===========================================================================
-' WriteDataNoteToPointIndex  - appends a compact single-line save note to col K
-'                              ("Data Notes") of the matching row in Point Index.
-'                              If the sensor is not found an error message is shown.
-'                              If col K already has content the new note is placed
-'                              below the existing text, separated by a blank line.
+' WriteDataNoteToPointIndex  - appends a compact single-line save note to the
+'                              "Data Notes" column of the matching row in Point
+'                              Index. The column is found by header name; if it
+'                              does not exist it is created after the last column.
 ' sensorName : sensor name to look up in the "Point Ref" column
 ' noteText   : compact note string, e.g. "26/03/2026 14:35 | Z: 33.95 | Offset: 10.000 | Dt: 4"
 ' ===========================================================================
 Sub WriteDataNoteToPointIndex(sensorName As String, noteText As String)
-
-    Const DATA_NOTES_COL As Long = 11  ' K
 
     ' Find the "Point Index" worksheet
     Dim wsIdx As Worksheet
@@ -529,25 +526,27 @@ Sub WriteDataNoteToPointIndex(sensorName As String, noteText As String)
         Exit Sub
     End If
 
-    ' Ensure the header cell exists
-    If Trim(wsIdx.Cells(1, DATA_NOTES_COL).Value) = "" Then
-        wsIdx.Cells(1, DATA_NOTES_COL).Value = "Data Notes"
-    End If
-
-    ' Find "Point Ref" column header
+    ' Find "Point Ref" and "Data Notes" column headers dynamically
     Dim lastHdrCol As Long
     lastHdrCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
-    Dim pointRefCol As Long: pointRefCol = 0
+    Dim pointRefCol  As Long: pointRefCol  = 0
+    Dim dataNotesCol As Long: dataNotesCol = 0
     Dim c As Long
     For c = 1 To lastHdrCol
-        If Trim(wsIdx.Cells(1, c).Value) = "Point Ref" Then
-            pointRefCol = c
-            Exit For
-        End If
+        Select Case Trim(wsIdx.Cells(1, c).Value)
+            Case "Point Ref":  pointRefCol  = c
+            Case "Data Notes": dataNotesCol = c
+        End Select
     Next c
     If pointRefCol = 0 Then
         MsgBox "Could not find 'Point Ref' column in 'Point Index'.", vbExclamation
         Exit Sub
+    End If
+
+    ' If "Data Notes" column doesn't exist yet, create it after last used column
+    If dataNotesCol = 0 Then
+        dataNotesCol = lastHdrCol + 1
+        wsIdx.Cells(1, dataNotesCol).Value = "Data Notes"
     End If
 
     ' Find the matching sensor row and append the note
@@ -557,13 +556,13 @@ Sub WriteDataNoteToPointIndex(sensorName As String, noteText As String)
     For r = 2 To lastRow
         If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
             Dim existingText As String
-            existingText = wsIdx.Cells(r, DATA_NOTES_COL).Value
+            existingText = wsIdx.Cells(r, dataNotesCol).Value
             If existingText = "" Then
-                wsIdx.Cells(r, DATA_NOTES_COL).Value = noteText
+                wsIdx.Cells(r, dataNotesCol).Value = noteText
             Else
-                wsIdx.Cells(r, DATA_NOTES_COL).Value = existingText & Chr(10) & Chr(10) & noteText
+                wsIdx.Cells(r, dataNotesCol).Value = existingText & Chr(10) & Chr(10) & noteText
             End If
-            wsIdx.Cells(r, DATA_NOTES_COL).WrapText = True
+            wsIdx.Cells(r, dataNotesCol).WrapText = True
             Exit Sub
         End If
     Next r
@@ -591,7 +590,7 @@ End Sub
 ' ===========================================================================
 Sub RefreshElevatedColumnIfOn(sRow As Long, wsDash As Worksheet, dashRow As Long)
 
-    Const TOGGLE_COL    As Long = 12  ' L
+    Const TOGGLE_COL    As Long = 14  ' N
     Const TOGGLE_ROW    As Long = 7
     Const FT_START_ROW  As Long = 26  ' first formula-table data row
     Const PRES_FT_FIRST As Long = 22  ' V = column 22
@@ -621,12 +620,12 @@ Sub RefreshElevatedColumnIfOn(sRow As Long, wsDash As Worksheet, dashRow As Long
     Dim q As String: q = Chr(34)
     Dim n As String: n = CStr(dashRow)
     ftrng.Formula = "=IFERROR(IF($G$" & n & "=" & q & q & ",NA()," & _
-        "IF($M$5+ROW()-26>$M$6,NA()," & _
+        "IF($O$5+ROW()-26>$O$6,NA()," & _
         "IF(INDEX('Raw Pressure Data'!$A:$ZZ," & _
-        "$M$5+ROW()-26-$I$" & n & "," & _
+        "$O$5+ROW()-26-$I$" & n & "," & _
         "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))=-999,NA()," & _
         "INDEX('Raw Pressure Data'!$A:$ZZ," & _
-        "$M$5+ROW()-26-$I$" & n & "," & _
+        "$O$5+ROW()-26-$I$" & n & "," & _
         "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))" & _
         "+$H$" & n & "))),NA())"
 
@@ -649,7 +648,7 @@ End Sub
 '                          all active pressure columns in the formula table
 '                          for chart display purposes only.
 '
-' Toggle state is stored as the value of cell L7 on the Dashboard:
+' Toggle state is stored as the value of cell N7 on the Dashboard:
 '   "+Z OFF"  -> elevation not applied (normal pressure display)
 '   "+Z ON"   -> elevation applied (pressure + Z shown on chart)
 '
@@ -669,8 +668,8 @@ Sub ToggleElevationAdjust()
     Const PRES_ELEV     As Long = 10  ' J
     Const FT_START_ROW  As Long = 26  ' first formula-table data row
     Const PRES_FT_FIRST As Long = 22  ' V  — first pressure formula-table column
-    Const TOGGLE_COL    As Long = 12  ' L
-    Const TOGGLE_ROW    As Long = 7   ' row of the toggle button (L7)
+    Const TOGGLE_COL    As Long = 14  ' N
+    Const TOGGLE_ROW    As Long = 7   ' row of the toggle button (N7)
 
     Dim wsDash As Worksheet
     Set wsDash = Worksheets("Dashboard")
@@ -734,12 +733,12 @@ Sub ToggleElevationAdjust()
             Dim n As String
             n = CStr(dashRow)
             rng.Formula = "=IFERROR(IF($G$" & n & "=" & q & q & ",NA()," & _
-                "IF($M$5+ROW()-26>$M$6,NA()," & _
+                "IF($O$5+ROW()-26>$O$6,NA()," & _
                 "IF(INDEX('Raw Pressure Data'!$A:$ZZ," & _
-                "$M$5+ROW()-26-$I$" & n & "," & _
+                "$O$5+ROW()-26-$I$" & n & "," & _
                 "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))=-999,NA()," & _
                 "INDEX('Raw Pressure Data'!$A:$ZZ," & _
-                "$M$5+ROW()-26-$I$" & n & "," & _
+                "$O$5+ROW()-26-$I$" & n & "," & _
                 "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))" & _
                 "+$H$" & n & "))),NA())"
         End If
@@ -758,6 +757,375 @@ NextSensor:
         "Elevation removed. Pressure formulas restored."), _
         vbInformation, "Elevation Toggle"
 End Sub
+
+' ===========================================================================
+' ExportOnePRN  - exports the PRN file for the sensor in one dashboard row.
+'
+' Dashboard layout (rows 3-22):
+'   Col B (2)  = Flow name       Col F (6)  = Flow PRN button
+'   Col G (7)  = Pres name       Col L (12) = Pres PRN button
+'   Col N (14) = Client Name label   Col O (15) = Client Name value (row 8)
+'                                    Col O (15) = Export Path value  (row 9)
+'   Col N (14) = Export All PRNs button (row 10)
+'
+' isFlow : True  = flow row (col B name, Raw Flow Data)
+'          False = pressure/depth row (col G name, Raw Pressure Data)
+' sRow   : selector row index 1-20
+' ===========================================================================
+Sub ExportOnePRN(isFlow As Boolean, sRow As Long)
+
+    Const SEL_START  As Long = 3
+    Const FLOW_NAME  As Long = 2   ' B
+    Const PRES_NAME  As Long = 7   ' G
+    Const CLIENT_ROW As Long = 8   ' O8 = client name value
+    Const PATH_ROW   As Long = 9   ' O9 = export path value
+    Const INPUT_COL  As Long = 15  ' O
+
+    Dim wsDash As Worksheet
+    Set wsDash = Worksheets("Dashboard")
+
+    Dim dashRow As Long
+    dashRow = SEL_START + sRow - 1
+
+    Dim sensorName As String
+    If isFlow Then
+        sensorName = Trim(wsDash.Cells(dashRow, FLOW_NAME).Value)
+        If sensorName = "" Then
+            MsgBox "No sensor selected in Flow row " & sRow, vbExclamation
+            Exit Sub
+        End If
+    Else
+        sensorName = Trim(wsDash.Cells(dashRow, PRES_NAME).Value)
+        If sensorName = "" Then
+            MsgBox "No sensor selected in Pressure row " & sRow, vbExclamation
+            Exit Sub
+        End If
+    End If
+
+    Dim clientName As String
+    Dim exportPath As String
+    clientName = Trim(CStr(wsDash.Cells(CLIENT_ROW, INPUT_COL).Value))
+    exportPath  = Trim(CStr(wsDash.Cells(PATH_ROW,   INPUT_COL).Value))
+
+    If exportPath = "" Then
+        MsgBox "Please enter an Export Path in cell O9 on the Dashboard.", _
+               vbExclamation, "Export Path Missing"
+        Exit Sub
+    End If
+    If Right(exportPath, 1) <> "\\" Then exportPath = exportPath & "\\"
+    If clientName = "" Then clientName = "Wessex Logger"
+
+    Dim chanType As String
+    Dim chanUnit As String
+    If isFlow Then
+        chanType = "flow": chanUnit = "l/s"
+    Else
+        Dim sType As String
+        sType = GetSensorTypeFromPointIndex(sensorName)
+        chanType = sType: chanUnit = "m"
+    End If
+
+    Dim wsRaw As Worksheet
+    If isFlow Then
+        Set wsRaw = Worksheets("Raw Flow Data")
+    Else
+        Set wsRaw = Worksheets("Raw Pressure Data")
+    End If
+
+    On Error GoTo ErrHandler
+    WriteOnePRNFile sensorName, chanType, chanUnit, _
+                    GetLoggerIDFromPointIndex(sensorName), _
+                    wsRaw, clientName, exportPath
+    MsgBox "Exported: " & exportPath & sensorName & ".prn", _
+           vbInformation, "PRN Export"
+    Exit Sub
+ErrHandler:
+    MsgBox "Export failed for '" & sensorName & "':" & Chr(10) & Err.Description, _
+           vbExclamation, "PRN Export Error"
+End Sub
+
+' ===========================================================================
+' ExportAllPRNs  - exports a PRN file for every column in both Raw data tabs.
+'                  Flow columns -> type "flow".
+'                  Pressure columns -> type "pressure" or "depth" per Point Index.
+' ===========================================================================
+Sub ExportAllPRNs()
+
+    Const CLIENT_ROW As Long = 8
+    Const PATH_ROW   As Long = 9
+    Const INPUT_COL  As Long = 15  ' O
+
+    Dim wsDash As Worksheet
+    Set wsDash = Worksheets("Dashboard")
+
+    Dim clientName As String
+    Dim exportPath As String
+    clientName = Trim(CStr(wsDash.Cells(CLIENT_ROW, INPUT_COL).Value))
+    exportPath  = Trim(CStr(wsDash.Cells(PATH_ROW,   INPUT_COL).Value))
+
+    If exportPath = "" Then
+        MsgBox "Please enter an Export Path in cell O9 on the Dashboard.", _
+               vbExclamation, "Export Path Missing"
+        Exit Sub
+    End If
+    If Right(exportPath, 1) <> "\\" Then exportPath = exportPath & "\\"
+    If clientName = "" Then clientName = "Wessex Logger"
+
+    Dim wsFlow As Worksheet
+    Dim wsPres As Worksheet
+    On Error Resume Next
+    Set wsFlow = Worksheets("Raw Flow Data")
+    Set wsPres = Worksheets("Raw Pressure Data")
+    On Error GoTo 0
+
+    Dim exported As Long: exported = 0
+    Dim errCount As Long: errCount = 0
+    Dim errList  As String: errList = ""
+
+    Application.ScreenUpdating = False
+
+    If Not wsFlow Is Nothing Then
+        Dim lastColF As Long
+        lastColF = wsFlow.Cells(1, wsFlow.Columns.Count).End(xlToLeft).Column
+        Dim j As Long
+        For j = 2 To lastColF
+            Dim sName As String
+            sName = Trim(wsFlow.Cells(1, j).Value)
+            If sName <> "" Then
+                On Error Resume Next
+                WriteOnePRNFile sName, "flow", "l/s", _
+                                GetLoggerIDFromPointIndex(sName), _
+                                wsFlow, clientName, exportPath
+                If Err.Number <> 0 Then
+                    errCount = errCount + 1
+                    errList = errList & Chr(10) & "  " & sName & ": " & Err.Description
+                    Err.Clear
+                Else
+                    exported = exported + 1
+                End If
+                On Error GoTo 0
+            End If
+        Next j
+    End If
+
+    If Not wsPres Is Nothing Then
+        Dim lastColP As Long
+        lastColP = wsPres.Cells(1, wsPres.Columns.Count).End(xlToLeft).Column
+        Dim k As Long
+        For k = 2 To lastColP
+            sName = Trim(wsPres.Cells(1, k).Value)
+            If sName <> "" Then
+                Dim presType As String
+                presType = GetSensorTypeFromPointIndex(sName)
+                On Error Resume Next
+                WriteOnePRNFile sName, presType, "m", _
+                                GetLoggerIDFromPointIndex(sName), _
+                                wsPres, clientName, exportPath
+                If Err.Number <> 0 Then
+                    errCount = errCount + 1
+                    errList = errList & Chr(10) & "  " & sName & ": " & Err.Description
+                    Err.Clear
+                Else
+                    exported = exported + 1
+                End If
+                On Error GoTo 0
+            End If
+        Next k
+    End If
+
+    Application.ScreenUpdating = True
+
+    Dim msg As String
+    msg = "Export complete: " & exported & " PRN file(s) written."
+    If errCount > 0 Then
+        msg = msg & Chr(10) & errCount & " error(s):" & errList
+        MsgBox msg, vbExclamation, "PRN Export"
+    Else
+        MsgBox msg, vbInformation, "PRN Export"
+    End If
+End Sub
+
+' ===========================================================================
+' WriteOnePRNFile  - writes one .prn file for a single sensor.
+'   Silently overwrites any existing file with the same name.
+'   sensorName : exact column header in wsRaw
+'   chanType   : "flow", "pressure", or "depth"
+'   chanUnit   : "l/s" or "m"
+'   loggerID   : string, "0" if blank/unknown
+'   wsRaw      : Raw Flow Data or Raw Pressure Data worksheet
+'   clientName : text for the Title line
+'   exportPath : folder path ending in "\\"
+' ===========================================================================
+Private Sub WriteOnePRNFile(sensorName As String, chanType As String, _
+                             chanUnit As String, loggerID As String, _
+                             wsRaw As Worksheet, clientName As String, _
+                             exportPath As String)
+
+    Dim lastHdrCol As Long
+    lastHdrCol = wsRaw.Cells(1, wsRaw.Columns.Count).End(xlToLeft).Column
+    Dim sensorCol As Long: sensorCol = 0
+    Dim k As Long
+    For k = 2 To lastHdrCol
+        If Trim(wsRaw.Cells(1, k).Value) = sensorName Then
+            sensorCol = k
+            Exit For
+        End If
+    Next k
+    If sensorCol = 0 Then
+        Err.Raise vbObjectError + 1, "WriteOnePRNFile", _
+                  "Sensor '" & sensorName & "' not found in " & wsRaw.Name
+        Exit Sub
+    End If
+
+    Dim lastRow As Long
+    lastRow = wsRaw.Cells(wsRaw.Rows.Count, 1).End(xlUp).Row
+    Dim dataRows As Long: dataRows = lastRow - 1
+    If dataRows < 1 Then Exit Sub
+
+    Dim firstDate As Variant
+    firstDate = wsRaw.Cells(2, 1).Value
+    Dim dateStr As String: dateStr = Format(Now, "DD/MM/YY")
+    Dim timeStr As String: timeStr = "00:00"
+    If IsDate(firstDate) Then
+        dateStr = Format(CDate(firstDate), "DD/MM/YY")
+        timeStr = Format(CDate(firstDate), "HH:MM")
+    End If
+    If loggerID = "" Then loggerID = "0"
+
+    Dim srcArr As Variant
+    srcArr = wsRaw.Range(wsRaw.Cells(2, sensorCol), _
+                          wsRaw.Cells(lastRow, sensorCol)).Value
+
+    Dim filePath As String
+    filePath = exportPath & sensorName & ".prn"
+    Dim fileNum As Integer
+    fileNum = FreeFile
+    Open filePath For Output As #fileNum
+
+    Dim q As String: q = Chr(34)
+    Print #fileNum, q & "text" & q & "," & q & "Title:" & clientName & ": ID - " & sensorName & q
+    Print #fileNum, q & "text" & q & "," & q & "Site:0" & q
+    Print #fileNum, q & "text" & q & "," & q & "Logger:" & loggerID & q
+    Print #fileNum, q & "ch" & q & ",1," & q & chanType & q & "," & q & chanUnit & q
+    Print #fileNum, q & "time" & q & "," & dateStr & "," & timeStr & ",15," & q & "min" & q & "," & dataRows
+
+    Dim i As Long
+    Dim rawVal As Variant
+    Dim outVal As Double
+    Dim valStr As String
+    Dim padLen As Long
+    For i = 1 To dataRows
+        rawVal = srcArr(i, 1)
+        If IsNumeric(rawVal) Then
+            outVal = IIf(CDbl(rawVal) = -999, -99, CDbl(rawVal))
+        Else
+            outVal = -99
+        End If
+        valStr = Format(outVal, "0.000")
+        padLen = 9 - Len(valStr)
+        If padLen > 0 Then valStr = String(padLen, " ") & valStr
+        Print #fileNum, valStr
+    Next i
+
+    Close #fileNum
+End Sub
+
+' ===========================================================================
+' GetLoggerIDFromPointIndex  - returns the "Logger ID" for a sensor,
+'                               or "0" if the column / sensor is not found.
+' ===========================================================================
+Function GetLoggerIDFromPointIndex(sensorName As String) As String
+
+    GetLoggerIDFromPointIndex = "0"
+
+    Dim wsIdx As Worksheet
+    Dim ws As Worksheet
+    For Each ws In ThisWorkbook.Worksheets
+        If LCase(Trim(ws.Name)) = "point index" Then
+            Set wsIdx = ws
+            Exit For
+        End If
+    Next ws
+    If wsIdx Is Nothing Then Exit Function
+
+    Dim lastHdrCol As Long
+    lastHdrCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    Dim pointRefCol As Long: pointRefCol = 0
+    Dim loggerCol   As Long: loggerCol   = 0
+    Dim c As Long
+    For c = 1 To lastHdrCol
+        Select Case LCase(Trim(wsIdx.Cells(1, c).Value))
+            Case "point ref": pointRefCol = c
+            Case "logger id": loggerCol   = c
+        End Select
+    Next c
+    If pointRefCol = 0 Or loggerCol = 0 Then Exit Function
+
+    Dim lastRow As Long
+    lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
+    Dim r As Long
+    For r = 2 To lastRow
+        If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
+            Dim logVal As Variant
+            logVal = wsIdx.Cells(r, loggerCol).Value
+            If IsEmpty(logVal) Or Trim(CStr(logVal)) = "" Then
+                GetLoggerIDFromPointIndex = "0"
+            Else
+                GetLoggerIDFromPointIndex = Trim(CStr(logVal))
+            End If
+            Exit Function
+        End If
+    Next r
+End Function
+
+' ===========================================================================
+' GetSensorTypeFromPointIndex  - returns "depth" if any cell in the sensor row
+'                                 in Point Index contains "depth" (partial,
+'                                 case-insensitive). Returns "pressure" otherwise.
+' ===========================================================================
+Function GetSensorTypeFromPointIndex(sensorName As String) As String
+
+    GetSensorTypeFromPointIndex = "pressure"
+
+    Dim wsIdx As Worksheet
+    Dim ws As Worksheet
+    For Each ws In ThisWorkbook.Worksheets
+        If LCase(Trim(ws.Name)) = "point index" Then
+            Set wsIdx = ws
+            Exit For
+        End If
+    Next ws
+    If wsIdx Is Nothing Then Exit Function
+
+    Dim lastHdrCol As Long
+    lastHdrCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    Dim pointRefCol As Long: pointRefCol = 0
+    Dim c As Long
+    For c = 1 To lastHdrCol
+        If LCase(Trim(wsIdx.Cells(1, c).Value)) = "point ref" Then
+            pointRefCol = c
+            Exit For
+        End If
+    Next c
+    If pointRefCol = 0 Then Exit Function
+
+    Dim lastRow As Long
+    lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
+    Dim lastCol As Long
+    lastCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    Dim r As Long
+    For r = 2 To lastRow
+        If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
+            For c = 1 To lastCol
+                If InStr(1, LCase(Trim(CStr(wsIdx.Cells(r, c).Value))), "depth") > 0 Then
+                    GetSensorTypeFromPointIndex = "depth"
+                    Exit Function
+                End If
+            Next c
+            Exit Function
+        End If
+    Next r
+End Function
 """
 
 VBA_SHEET = """\
@@ -776,9 +1144,9 @@ End Sub
 
 ' Worksheet_Change: auto-populates col J elevation when a pressure sensor
 '                   name is selected or pasted into col G (rows 3-22).
-'                   Also resets the 💾 button colour when a sensor name changes.
+'                   Also resets the \U0001f4be button colour when a sensor name changes.
 '                   When +Z is ON, live-refreshes the chart column if Offset (H)
-'                   or Δt (I) is edited.
+'                   or \u0394t (I) is edited.
 '                   Handles both single-cell selection and multi-cell paste.
 '                   EnableEvents is always restored even if an inner call errors.
 Private Sub Worksheet_Change(ByVal Target As Range)
@@ -818,14 +1186,20 @@ Private Sub Worksheet_Change(ByVal Target As Range)
     Next cell
 End Sub
 
-' Worksheet_SelectionChange: handles the \U0001f4be click-to-save buttons and the
-'                            elevation toggle button (L7).
+' Worksheet_SelectionChange: handles the \U0001f4be click-to-save buttons, PRN export
+'                            buttons (col F for flow, col L for pressure),
+'                            the elevation toggle button (N7), and the
+'                            Export All PRNs button (N10).
 Private Sub Worksheet_SelectionChange(ByVal Target As Range)
 
     Const FLOW_SAVE_COL   As Long = 5    ' E \u2014 flow \U0001f4be cells
+    Const FLOW_PRN_COL    As Long = 6    ' F \u2014 flow PRN export cells
     Const PRES_SAVE_COL   As Long = 11   ' K \u2014 pres \U0001f4be cells
-    Const ELEV_TOGGLE_COL As Long = 12   ' L
-    Const ELEV_TOGGLE_ROW As Long = 7    ' L7 \u2014 elevation toggle button
+    Const PRES_PRN_COL    As Long = 12   ' L \u2014 pres PRN export cells
+    Const ELEV_TOGGLE_COL As Long = 14   ' N
+    Const ELEV_TOGGLE_ROW As Long = 7    ' N7 \u2014 elevation toggle button
+    Const EXPORT_ALL_COL  As Long = 14   ' N
+    Const EXPORT_ALL_ROW  As Long = 10   ' N10 \u2014 Export All PRNs button
     Const SEL_START       As Long = 3    ' first selector row
     Const SEL_END         As Long = 22   ' last selector row
 
@@ -838,6 +1212,13 @@ Private Sub Worksheet_SelectionChange(ByVal Target As Range)
         Application.EnableEvents = True
         SaveOneSensor True, Target.Row - SEL_START + 1
 
+    ElseIf Target.Column = FLOW_PRN_COL And _
+           Target.Row >= SEL_START And Target.Row <= SEL_END Then
+        Application.EnableEvents = False
+        Target.Offset(0, -1).Select
+        Application.EnableEvents = True
+        ExportOnePRN True, Target.Row - SEL_START + 1
+
     ElseIf Target.Column = PRES_SAVE_COL And _
            Target.Row >= SEL_START And Target.Row <= SEL_END Then
         Application.EnableEvents = False
@@ -845,12 +1226,26 @@ Private Sub Worksheet_SelectionChange(ByVal Target As Range)
         Application.EnableEvents = True
         SaveOneSensor False, Target.Row - SEL_START + 1
 
+    ElseIf Target.Column = PRES_PRN_COL And _
+           Target.Row >= SEL_START And Target.Row <= SEL_END Then
+        Application.EnableEvents = False
+        Target.Offset(0, -1).Select
+        Application.EnableEvents = True
+        ExportOnePRN False, Target.Row - SEL_START + 1
+
     ElseIf Target.Column = ELEV_TOGGLE_COL And _
            Target.Row = ELEV_TOGGLE_ROW Then
         Application.EnableEvents = False
         Target.Offset(0, -1).Select
         Application.EnableEvents = True
         ToggleElevationAdjust
+
+    ElseIf Target.Column = EXPORT_ALL_COL And _
+           Target.Row = EXPORT_ALL_ROW Then
+        Application.EnableEvents = False
+        Target.Offset(0, -1).Select
+        Application.EnableEvents = True
+        ExportAllPRNs
     End If
 End Sub
 """
@@ -1383,7 +1778,250 @@ def _add_elevation_column(xml):
     return xml
 
 
+# ---------------------------------------------------------------------------
+# PRN button layout and Point Index Logger ID
+# ---------------------------------------------------------------------------
 
+def _add_prn_buttons(xml):
+    """
+    Repurpose column F (was '#' row numbers) as Flow PRN export buttons and
+    column L (was chart-controls labels) as Pres PRN export buttons.
+    Move the chart-controls panel from L-M (rows 3-7) to N-O (rows 3-7).
+    Add Client Name (N8/O8), Export Path (N9/O9), and 'All PRNs' button (N10).
+
+    Column layout after this function:
+      F  (6)  = Flow PRN button  (was row '#' numbers)
+      L  (12) = Pres PRN button  (was chart-labels column)
+      N  (14) = Chart Controls labels (was L)
+      O  (15) = Chart Controls values (was M)
+
+    VBA constants updated accordingly:
+      TOGGLE_COL         12 (L) -> 14 (N)
+      Chart value refs   $M$3/$M$4/$M$5/$M$6 -> $O$3/$O$4/$O$5/$O$6
+    """
+    # Idempotent guard: skip if N7 already has the toggle
+    if 'r="N7"' in xml and '+Z ' in xml[xml.find('r="N7"'):xml.find('r="N7"')+120]:
+        return xml
+
+    # ── 1. Global formula reference updates ──────────────────────────────────
+    xml = (xml
+        .replace("$M$3", "$O$3")
+        .replace("$M$4", "$O$4")
+        .replace("$M$5", "$O$5")
+        .replace("$M$6", "$O$6")
+    )
+
+    # ── 2. Column widths ──────────────────────────────────────────────────────
+    # Split the 13-42 range to add N(14) = 14 wide
+    xml = xml.replace(
+        '<col min="13" max="42" width="13" customWidth="1"/>',
+        '<col min="13" max="13" width="13" customWidth="1"/>'
+        '<col min="14" max="14" width="14" customWidth="1"/>'
+        '<col min="15" max="42" width="13" customWidth="1"/>',
+    )
+
+    # ── 3. Row 2: F2 "#" header → "PRN"; L2 "Chart Controls" → "PRN"; add N2 ──
+    xml = xml.replace(
+        '<c r="F2" s="7" t="s"><v>18</v></c>',
+        '<c r="F2" s="7" t="inlineStr"><is><t>PRN</t></is></c>',
+    )
+    xml = xml.replace(
+        '<c r="L2" s="74" t="s"><v>25</v></c>',
+        '<c r="L2" s="7" t="inlineStr"><is><t>PRN</t></is></c>'
+        '<c r="N2" s="74" t="inlineStr"><is><t>Chart Controls</t></is></c>',
+    )
+    xml = xml.replace('<row r="2" spans="1:12"', '<row r="2" spans="1:14"')
+
+    # ── 4. Row 3: F3→PRN, L3 "Start ►"→PRN and move to N3, M3 date→O3 ──────
+    xml = xml.replace(
+        '<c r="L3" s="17" t="s"><v>26</v></c>'
+        '<c r="M3" s="18"><v>46056</v></c>',
+        '<c r="L3" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+        '<c r="N3" s="17" t="s"><v>26</v></c>'
+        '<c r="O3" s="18"><v>46056</v></c>',
+    )
+    xml = re.sub(
+        r'<c r="F3" s="\d+"><v>1</v></c>',
+        '<c r="F3" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+        xml,
+    )
+
+    # ── 5. Row 4: F4→PRN, L4 "End ►"→PRN and move to N4, M4 date→O4 ────────
+    xml = xml.replace(
+        '<c r="L4" s="17" t="s"><v>27</v></c>'
+        '<c r="M4" s="18"><v>46058</v></c>',
+        '<c r="L4" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+        '<c r="N4" s="17" t="s"><v>27</v></c>'
+        '<c r="O4" s="18"><v>46058</v></c>',
+    )
+    xml = re.sub(
+        r'<c r="F4" s="\d+"><v>2</v></c>',
+        '<c r="F4" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+        xml,
+    )
+
+    # ── 6. Row 5: F5→PRN, L5 "* s.row:"→PRN+N5, M5 formula→O5 ──────────────
+    o5_formula = (
+        "IF($O$3=\"\",2,IFERROR(MATCH($O$3,"
+        "'Raw Flow Data'!$A$2:$A$50001,1)+1,2))"
+    )
+    xml = re.sub(
+        r'<c r="J5" s="15"/>'
+        r'<c r="K5" s="16" t="s"><v>22</v></c>'
+        r'<c r="L5" s="23" t="s"><v>28</v></c>'
+        r'<c r="M5" s="24">.*?</c>',
+        (
+            '<c r="J5" s="15"/>'
+            '<c r="K5" s="16" t="s"><v>22</v></c>'
+            '<c r="L5" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+            '<c r="N5" s="23" t="s"><v>28</v></c>'
+            f'<c r="O5" s="24"><f>{o5_formula}</f><v>2</v></c>'
+        ),
+        xml,
+        flags=re.DOTALL,
+    )
+    xml = re.sub(
+        r'<c r="F5" s="\d+"><v>3</v></c>',
+        '<c r="F5" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+        xml,
+    )
+
+    # ── 7. Row 6: F6→PRN, L6 "* e.row:"→PRN+N6, M6 formula→O6 ──────────────
+    o6_formula = (
+        "IF($O$4=\"\",9999999,IFERROR(MATCH($O$4,"
+        "'Raw Flow Data'!$A$2:$A$50001,1)+1,9999999))"
+    )
+    xml = re.sub(
+        r'<c r="J6" s="15"/>'
+        r'<c r="K6" s="16" t="s"><v>22</v></c>'
+        r'<c r="L6" s="23" t="s"><v>29</v></c>'
+        r'<c r="M6" s="24">.*?</c>',
+        (
+            '<c r="J6" s="15"/>'
+            '<c r="K6" s="16" t="s"><v>22</v></c>'
+            '<c r="L6" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+            '<c r="N6" s="23" t="s"><v>29</v></c>'
+            f'<c r="O6" s="24"><f>{o6_formula}</f><v>9999999</v></c>'
+        ),
+        xml,
+        flags=re.DOTALL,
+    )
+    xml = re.sub(
+        r'<c r="F6" s="\d+"><v>4</v></c>',
+        '<c r="F6" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+        xml,
+    )
+
+    # Update spans for rows 3-6 (now have cells up to O = col 15)
+    for r in (3, 4, 5, 6):
+        xml = xml.replace(f'<row r="{r}" spans="1:13"', f'<row r="{r}" spans="1:15"')
+
+    # ── 8. Row 7: F7→PRN, L7 toggle→N7, L7→PRN ──────────────────────────────
+    xml = xml.replace(
+        '<c r="J7" s="15"/>'
+        '<c r="K7" s="16" t="s"><v>22</v></c>'
+        '<c r="L7" s="74" t="inlineStr"><is><t>+Z OFF</t></is></c>',
+        '<c r="J7" s="15"/>'
+        '<c r="K7" s="16" t="s"><v>22</v></c>'
+        '<c r="L7" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+        '<c r="N7" s="74" t="inlineStr"><is><t>+Z OFF</t></is></c>',
+    )
+    xml = re.sub(
+        r'<c r="F7" s="\d+"><v>5</v></c>',
+        '<c r="F7" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+        xml,
+    )
+    xml = xml.replace('<row r="7" spans="1:12"', '<row r="7" spans="1:14"')
+
+    # ── 9. Rows 8-22: F→PRN, add L→PRN (K cell already exists in each row) ──
+    for r in range(8, 23):
+        val = r - 2  # F8=6, F9=7, ..., F22=20
+        xml = re.sub(
+            rf'<c r="F{r}" s="\d+"><v>{val}</v></c>',
+            f'<c r="F{r}" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+            xml,
+        )
+        # Add L PRN button immediately after the K button cell
+        k_cell = f'<c r="K{r}" s="16" t="s"><v>22</v></c>'
+        l_cell = f'<c r="L{r}" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+        xml = xml.replace(k_cell, k_cell + l_cell)
+
+    # ── 10. Rows 8/9/10: add Client Name, Export Path, All PRNs inputs ────────
+    # Row 8: Client Name label N8, empty input O8
+    xml = xml.replace(
+        f'<c r="L8" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+        f'<c r="L8" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+        f'<c r="N8" s="17" t="inlineStr"><is><t>Client Name:</t></is></c>'
+        f'<c r="O8" s="18"/>',
+    )
+    # Row 9: Export Path label N9, empty input O9
+    xml = xml.replace(
+        f'<c r="L9" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+        f'<c r="L9" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+        f'<c r="N9" s="17" t="inlineStr"><is><t>Export Path:</t></is></c>'
+        f'<c r="O9" s="18"/>',
+    )
+    # Row 10: All PRNs button N10 (dark-blue style like toggle)
+    xml = xml.replace(
+        f'<c r="L10" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+        f'<c r="L10" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+        f'<c r="N10" s="74" t="inlineStr"><is><t>\U0001f4c4 All PRNs</t></is></c>',
+    )
+
+    # ── 11. Spans for rows 8/9/10 (extend to O=15 or N=14) ───────────────────
+    xml = xml.replace('<row r="8" spans="1:12"',  '<row r="8" spans="1:15"')
+    xml = xml.replace('<row r="9" spans="1:12"',  '<row r="9" spans="1:15"')
+    xml = xml.replace('<row r="10" spans="1:12"', '<row r="10" spans="1:14"')
+
+    # ── 12. Merge cells: L2:M2 → N2:O2 ──────────────────────────────────────
+    xml = xml.replace('<mergeCell ref="L2:M2"/>', '<mergeCell ref="N2:O2"/>')
+
+    return xml
+
+
+def _add_point_index_logger_id(xml):
+    """
+    Insert a 'Logger ID' column at column B in the Point Index sheet,
+    shifting the existing columns B-J to C-K.
+
+    Applied idempotently: if the B1 cell already holds 'Logger ID' the
+    function returns xml unchanged.
+    """
+    # Idempotent guard
+    if 'Logger ID' in xml and 'r="B1"' in xml:
+        b1 = re.search(r'<c r="B1"[^>]*>.*?</c>|<c r="B1"[^/]*/>', xml, re.DOTALL)
+        if b1 and 'Logger ID' in b1.group():
+            return xml
+
+    # Shift column letters B→C, C→D, …, J→K in all cell r="Xn" attributes.
+    # Process in reverse order to avoid double-shifting.
+    for old_col, new_col in zip('JIHGFEDCB', 'KJIHGFEDC'):
+        xml = re.sub(
+            rf'(<c r="){old_col}(\d+")',
+            lambda m, nc=new_col: f'{m.group(1)}{nc}{m.group(2)}',
+            xml,
+        )
+
+    # Insert Logger ID header at B1 (after A1 = "Point Ref")
+    xml = xml.replace(
+        '<c r="A1" s="79" t="s"><v>529</v></c>',
+        '<c r="A1" s="79" t="s"><v>529</v></c>'
+        '<c r="B1" s="79" t="inlineStr"><is><t>Logger ID</t></is></c>',
+    )
+
+    # Update row spans from "1:10" to "1:11"
+    xml = re.sub(r' spans="1:10"', ' spans="1:11"', xml)
+
+    # Update column width range
+    xml = xml.replace(
+        '<col min="1" max="10" width="20.140625" customWidth="1"/>',
+        '<col min="1" max="11" width="20.140625" customWidth="1"/>',
+    )
+
+    # Update sheet dimension (A1:Jn → A1:Kn)
+    xml = re.sub(r'(<dimension ref="A1:)J(\d+")', r'\1K\2', xml)
+
+    return xml
 
 
 # ---------------------------------------------------------------------------
@@ -1437,8 +2075,14 @@ def main():
             elif name == "xl/worksheets/sheet1.xml":
                 txt = _clear_save_rest_cell(data.decode("utf-8"))
                 txt = _add_elevation_column(txt)
+                txt = _add_prn_buttons(txt)
                 data = txt.encode("utf-8")
-                print(f"  patched   {name}  (elevation column, toggle button, chart-controls shift)")
+                print(f"  patched   {name}  (elevation column, PRN buttons, chart-controls shift)")
+
+            elif name == "xl/worksheets/sheet2.xml":
+                txt = _add_point_index_logger_id(data.decode("utf-8"))
+                data = txt.encode("utf-8")
+                print(f"  patched   {name}  (Logger ID column added to Point Index)")
 
             elif name == "xl/worksheets/sheet7.xml":
                 data = new_instr_xml
@@ -1470,12 +2114,14 @@ def main():
     print("  3. Re-save the file as .xlsm to retain the macros.")
     print()
     print("New features in this build:")
-    print("  • Col J (Elevation Z m): auto-populated from 'Point Index' tab when a")
-    print("    pressure sensor is chosen. Can be overridden; saved to Point Index on 💾.")
-    print("  • Pressure save button moved from col J to col K.")
-    print("  • Chart Controls panel shifted from K/L to L/M.")
-    print("  • Cell L7 — elevation toggle button (+Z OFF / +Z ON): click to add or")
-    print("    remove the Z(m) elevation offset from all pressure chart series.")
+    print("  \u2022 Col F (rows 3-22): PRN export button for each flow sensor.")
+    print("  \u2022 Col L (rows 3-22): PRN export button for each pressure sensor.")
+    print("  \u2022 Chart Controls panel shifted from L-M to N-O.")
+    print("  \u2022 Cell N7 \u2014 elevation toggle button (+Z OFF / +Z ON).")
+    print("  \u2022 N8/O8 \u2014 Client Name input (used in PRN title line).")
+    print("  \u2022 N9/O9 \u2014 Export Path input (folder for PRN files).")
+    print("  \u2022 N10  \u2014 'All PRNs' button: exports every column in both Raw tabs.")
+    print("  \u2022 Point Index: 'Logger ID' column added at column B.")
 
 
 if __name__ == "__main__":
