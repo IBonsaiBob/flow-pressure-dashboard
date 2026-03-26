@@ -6,25 +6,28 @@ Generates Flow_Pressure_Dashboard.xlsx
 
 Dashboard layout
 ────────────────
-  Selector area  (rows 1-12, cols A-F)
+  Selector area  (rows 1-22, cols A-L)
   ─────────────────────────────────────────────────────────────────────────
     Row 1  : Title
     Row 2  : Column sub-headers
-    Rows 3-12: 10 selector rows — one per flow/pressure slot
+    Rows 3-22: 20 selector rows — one per flow/pressure slot
       Col A  "Flow N ▼" label  |  Col B  flow dropdown  |  Col C  scaling factor
-      Col D  "Pres N ▼" label  |  Col E  pressure dropdown  |  Col F  offset
+      Col D  flow Δt  |  Col E  flow 💾 save button
+      Col F  "Pres N ▼" label  |  Col G  pressure dropdown  |  Col H  offset
+      Col I  pres Δt  |  Col J  pres 💾 save button
+    Chart controls (cols K-L, rows 3-7): Start/End date filters + Save Rest button
     Row 23 : Notes
     Row 24 : DATA TABLE banner
     Row 25 : Data table column headers
     Row 26+: Formula rows
 
-  Data table (rows 25+, cols A-AE — same sheet, different rows)
+  Data table (rows 25+, cols A-AO — same sheet, different rows)
   ─────────────────────────────────────────────────────────────────────────
     A     = Date
-    B-U   = Flow 1-20 Adjusted   (name from B3-B22 × scale from C3-C22)
-    V-AO  = Pres 1-20 Adjusted   (name from F3-F22 + offset from G3-G22)
+    B-U   = Flow 1-20 Adjusted   (name from B3-B22 × scale from C3-C22 + Δt from D3-D22)
+    V-AO  = Pres 1-20 Adjusted   (name from G3-G22 + offset from H3-H22 + Δt from I3-I22)
 
-  Chart: anchored at K1, floats right — does not overlap selector area.
+  Chart: anchored at M1, floats right — does not overlap selector area.
 
 Usage:
     python3 generate_dashboard.py
@@ -121,17 +124,18 @@ PRES_ROWS = [
 
 # ── Layout constants ───────────────────────────────────────────────────────────
 #
-#  Dashboard selector area  (rows 1-22, cols A-J):
+#  Dashboard selector area  (rows 1-22, cols A-L):
 #
 #    Row 1  : Title banner
 #    Row 2  : Column sub-headers
 #    Rows 3-22: 20 selector rows  (rows 3-22 serve both flow[0-19] and pres[0-19])
-#      Col A  row-number  |  Col B  flow dropdown  |  Col C  scale  |  Col D  flow Δt
-#      Col E  row-number  |  Col F  pressure dropdown  |  Col G  offset  |  Col H  pres Δt
+#      Col A  row-number  |  Col B  flow dropdown  |  Col C  scale  |  Col D  flow Δt  |  Col E  flow 💾
+#      Col F  row-number  |  Col G  pressure dropdown  |  Col H  offset  |  Col I  pres Δt  |  Col J  pres 💾
 #
-#  Chart controls  (rows 2-6, cols I-J — right of selector, left of chart):
-#      J3  Start Date filter  |  J4  End Date filter
-#      J5  MATCH helper – start raw row  |  J6  MATCH helper – end raw row
+#  Chart controls  (rows 2-7, cols K-L — right of selector, left of chart):
+#      L3  Start Date filter  |  L4  End Date filter
+#      L5  MATCH helper – start raw row  |  L6  MATCH helper – end raw row
+#      K-L7  Save Rest button
 #
 #    Row 23 : Note / instructions
 #    Row 24 : DATA TABLE section banner
@@ -141,9 +145,9 @@ PRES_ROWS = [
 #  Data table  (rows 25+, cols A-AO  — same sheet, different rows):
 #    A     = Date
 #    B-U   = Flow 1-20 Adjusted  (driven by B3-B22 name + C3-C22 scale + D3-D22 Δt)
-#    V-AO  = Pres 1-20 Adjusted  (driven by F3-F22 name + G3-G22 offset + H3-H22 Δt)
+#    V-AO  = Pres 1-20 Adjusted  (driven by G3-G22 name + H3-H22 offset + I3-I22 Δt)
 #
-#  Chart: anchored at K1, floats to the right — does not overlap control area.
+#  Chart: anchored at M1, floats to the right — does not overlap control area.
 
 MAX_FLOW = 20
 MAX_PRES = 20
@@ -163,28 +167,31 @@ DATA_ROWS       = 2000
 COL_FLOW_LABEL  = 1   # A  row number
 COL_FLOW_SEL    = 2   # B  flow name dropdown
 COL_FLOW_SCALE  = 3   # C  scaling factor
-COL_FLOW_DT     = 4   # D  per-row timestep offset (NEW)
-COL_PRES_LABEL  = 5   # E  row number           (was D=4)
-COL_PRES_SEL    = 6   # F  pressure name dropdown  (was E=5)
-COL_PRES_OFFSET = 7   # G  offset               (was F=6)
-COL_PRES_DT     = 8   # H  per-row timestep offset (NEW)
+COL_FLOW_DT     = 4   # D  per-row timestep offset
+COL_FLOW_SAVE   = 5   # E  per-row save button
+COL_PRES_LABEL  = 6   # F  row number
+COL_PRES_SEL    = 7   # G  pressure name dropdown
+COL_PRES_OFFSET = 8   # H  offset
+COL_PRES_DT     = 9   # I  per-row timestep offset
+COL_PRES_SAVE   = 10  # J  per-row save button
 
 # Data table column indices (rows DATA_HDR_ROW+, same sheet)
 COL_DATE          = 1   # A
 COL_FLOW_ADJ_BASE = 2   # B = Flow 1 Adj … U = Flow 20 Adj  (index = base + n)
 COL_PRES_ADJ_BASE = 22  # V = Pres 1 Adj … AO = Pres 20 Adj (index = base + n)
 
-CHART_ANCHOR     = "K1"   # starts immediately right of control area at I-J
+CHART_ANCHOR     = "M1"   # starts immediately right of control area at K-L
 CHART_WIDTH_CM   = 30
 CHART_HEIGHT_CM  = 20
 
-# ── Control area (cols I-J, right of selector, rows 2-6) ──────────────────────
-CTRL_LABEL_COL      = 9                        # I
-CTRL_INPUT_COL      = 10                       # J
+# ── Control area (cols K-L, right of selector, rows 2-7) ──────────────────────
+CTRL_LABEL_COL      = 11                       # K
+CTRL_INPUT_COL      = 12                       # L
 CTRL_START_DATE_ROW  = SEL_START_ROW           # 3  – Start Date filter
 CTRL_END_DATE_ROW    = SEL_START_ROW + 1       # 4  – End Date filter
 CTRL_HELP_START_ROW  = SEL_START_ROW + 2       # 5  – MATCH helper: start raw row
 CTRL_HELP_END_ROW    = SEL_START_ROW + 3       # 6  – MATCH helper: end raw row
+CTRL_SAVE_REST_ROW   = SEL_START_ROW + 4       # 7  – Save Rest button
 
 
 # ── Style helpers ──────────────────────────────────────────────────────────────
@@ -271,13 +278,15 @@ def build_dashboard(ws, flow_names):
     ws.column_dimensions["B"].width = 15   # flow dropdown / flow 1 adj
     ws.column_dimensions["C"].width = 10   # scale / flow 2 adj
     ws.column_dimensions["D"].width = 8    # flow Δt / flow 3 adj
-    ws.column_dimensions["E"].width = 6    # pres row # / flow 4 adj
-    ws.column_dimensions["F"].width = 15   # pres dropdown / flow 5 adj
-    ws.column_dimensions["G"].width = 10   # pres offset / flow 6 adj
-    ws.column_dimensions["H"].width = 8    # pres Δt / flow 7 adj
-    ws.column_dimensions["I"].width = 14   # chart control labels / flow 8 adj
-    ws.column_dimensions["J"].width = 13   # chart control inputs / flow 9 adj
-    for col in [get_column_letter(i) for i in range(11, COL_PRES_ADJ_BASE + MAX_PRES + 1)]:
+    ws.column_dimensions["E"].width = 5    # flow 💾 save / flow 4 adj
+    ws.column_dimensions["F"].width = 6    # pres row # / flow 5 adj
+    ws.column_dimensions["G"].width = 15   # pres dropdown / flow 6 adj
+    ws.column_dimensions["H"].width = 10   # pres offset / flow 7 adj
+    ws.column_dimensions["I"].width = 8    # pres Δt / flow 8 adj
+    ws.column_dimensions["J"].width = 5    # pres 💾 save / flow 9 adj
+    ws.column_dimensions["K"].width = 14   # chart control labels / flow 10 adj
+    ws.column_dimensions["L"].width = 13   # chart control inputs / flow 11 adj
+    for col in [get_column_letter(i) for i in range(13, COL_PRES_ADJ_BASE + MAX_PRES + 1)]:
         ws.column_dimensions[col].width = 13
 
     # ── Row 1: Title ──────────────────────────────────────────────────────────
@@ -286,7 +295,7 @@ def build_dashboard(ws, flow_names):
     tc.font = Font(bold=True, color=WHITE, size=14)
     tc.fill = PatternFill(fill_type="solid", fgColor=DARK_BLUE)
     tc.alignment = Alignment(horizontal="left", vertical="center", indent=1)
-    ws.merge_cells("A1:J1")
+    ws.merge_cells(f"A1:{get_column_letter(CTRL_INPUT_COL)}1")
 
     # ── Row 2: Sub-headers ────────────────────────────────────────────────────
     ws.row_dimensions[SEL_HDR_ROW].height = 22
@@ -295,18 +304,22 @@ def build_dashboard(ws, flow_names):
         ("Flow  ▼", MID_BLUE),
         ("Scale",   MID_BLUE),
         ("Δt",      MID_BLUE),
+        ("💾",      MID_BLUE),
         ("#",       DARK_ORANGE),
         ("Pres  ▼", DARK_ORANGE),
         ("Offset",  DARK_ORANGE),
         ("Δt",      DARK_ORANGE),
+        ("💾",      DARK_ORANGE),
     ], start=1):
         c = ws.cell(SEL_HDR_ROW, ci, value=txt)
         c.font = Font(bold=True, color=WHITE, size=9)
         c.fill = PatternFill(fill_type="solid", fgColor=bg)
         c.alignment = Alignment(horizontal="center", vertical="center")
         c.border = _thin()
-    # "Chart Controls" header spanning I2:J2
-    ws.merge_cells(f"I{SEL_HDR_ROW}:J{SEL_HDR_ROW}")
+    # "Chart Controls" header spanning K2:L2
+    _cl = get_column_letter(CTRL_LABEL_COL)
+    _ci = get_column_letter(CTRL_INPUT_COL)
+    ws.merge_cells(f"{_cl}{SEL_HDR_ROW}:{_ci}{SEL_HDR_ROW}")
     cc = ws.cell(SEL_HDR_ROW, CTRL_LABEL_COL, value="Chart Controls")
     cc.font = Font(bold=True, color=WHITE, size=9)
     cc.fill = PatternFill(fill_type="solid", fgColor=PURPLE)
@@ -349,6 +362,12 @@ def build_dashboard(ws, flow_names):
             dtf = ws.cell(r, COL_FLOW_DT)
             style_input(dtf, 0, bg=YELLOW_BG, num_fmt="0")
 
+            fsave = ws.cell(r, COL_FLOW_SAVE, value="💾")
+            fsave.fill = PatternFill(fill_type="solid", fgColor=MID_BLUE)
+            fsave.font = Font(color=WHITE, size=9)
+            fsave.alignment = Alignment(horizontal="center", vertical="center")
+            fsave.border = _thin()
+
         # ── Pressure side ──────────────────────────────────────────────────
         if n < MAX_PRES:
             lp = ws.cell(r, COL_PRES_LABEL, value=n + 1)
@@ -367,7 +386,13 @@ def build_dashboard(ws, flow_names):
             dtp = ws.cell(r, COL_PRES_DT)
             style_input(dtp, 0, bg=YELLOW_BG, num_fmt="0")
 
-    # ── Control area (cols I-J, rows 3-6) ────────────────────────────────────
+            psave = ws.cell(r, COL_PRES_SAVE, value="💾")
+            psave.fill = PatternFill(fill_type="solid", fgColor=DARK_ORANGE)
+            psave.font = Font(color=WHITE, size=9)
+            psave.alignment = Alignment(horizontal="center", vertical="center")
+            psave.border = _thin()
+
+    # ── Control area (cols K-L, rows 3-7) ────────────────────────────────────
     # Date format DD/MM/YY is intentionally compact (user preference).
     _ctrl_rows = [
         (CTRL_START_DATE_ROW, "Start ▶", "", "DD/MM/YY", LIGHT_BLUE),
@@ -381,7 +406,7 @@ def build_dashboard(ws, flow_names):
                     bg=inp_bg, num_fmt=num_fmt)
 
     # Helper formulas — derived from Start/End Date; users should not edit these
-    _ic_ltr = get_column_letter(CTRL_INPUT_COL)   # "J"
+    _ic_ltr = get_column_letter(CTRL_INPUT_COL)   # "L"
     _help_rows = [
         (CTRL_HELP_START_ROW, "▸ s.row:",
          f"=IF(${_ic_ltr}${CTRL_START_DATE_ROW}=\"\",2,"
@@ -400,6 +425,16 @@ def build_dashboard(ws, flow_names):
         hc.font = Font(color=DARK_GRAY, size=8)
         hc.alignment = Alignment(horizontal="center", vertical="center")
         hc.number_format = "0"
+
+    # "Save Rest" button — click to save all sensors not yet in MOD sheets
+    _cl = get_column_letter(CTRL_LABEL_COL)
+    _ci = get_column_letter(CTRL_INPUT_COL)
+    ws.merge_cells(f"{_cl}{CTRL_SAVE_REST_ROW}:{_ci}{CTRL_SAVE_REST_ROW}")
+    sr_cell = ws.cell(CTRL_SAVE_REST_ROW, CTRL_LABEL_COL, value="💾 Save Rest")
+    sr_cell.fill = PatternFill(fill_type="solid", fgColor=PURPLE)
+    sr_cell.font = Font(bold=True, color=WHITE, size=9)
+    sr_cell.alignment = Alignment(horizontal="center", vertical="center")
+    sr_cell.border = _thin()
 
     # ── Note row ──────────────────────────────────────────────────────────────
     ws.row_dimensions[NOTE_ROW].height = 44
@@ -436,18 +471,23 @@ def build_dashboard(ws, flow_names):
         )
     for n in range(MAX_PRES):
         sel_row = SEL_START_ROW + n
+        _psel_ltr = get_column_letter(COL_PRES_SEL)
         style_header(ws.cell(DATA_HDR_ROW, COL_PRES_ADJ_BASE + n), "", bg=GREEN_DARK)
         ws.cell(DATA_HDR_ROW, COL_PRES_ADJ_BASE + n).value = (
-            f'=IF($F${sel_row}="","",$F${sel_row})'
+            f'=IF(${_psel_ltr}${sel_row}="","",${_psel_ltr}${sel_row})'
         )
 
     # ── DATA TABLE formula rows ────────────────────────────────────────────────
-    _sr = CTRL_HELP_START_ROW   # K5 – start raw-data row
-    _er = CTRL_HELP_END_ROW     # K6 – end raw-data row
-    # Per-series Δt: flow uses $D${sel_row}, pres uses $H${sel_row}
-    _ic = get_column_letter(CTRL_INPUT_COL)   # "J"
+    _sr = CTRL_HELP_START_ROW   # L5 – start raw-data row
+    _er = CTRL_HELP_END_ROW     # L6 – end raw-data row
+    # Per-series Δt: flow uses $D${sel_row}, pres uses $I${sel_row}
+    _ic = get_column_letter(CTRL_INPUT_COL)   # "L"
     _fd = get_column_letter(COL_FLOW_DT)      # "D"
-    _pd = get_column_letter(COL_PRES_DT)      # "H"
+    _pd = get_column_letter(COL_PRES_DT)      # "I"
+    _fsel = get_column_letter(COL_FLOW_SEL)    # "B"
+    _fscl = get_column_letter(COL_FLOW_SCALE)  # "C"
+    _psel = get_column_letter(COL_PRES_SEL)    # "G"
+    _poff = get_column_letter(COL_PRES_OFFSET) # "H"
     for r in range(DATA_START_ROW, DATA_START_ROW + DATA_ROWS):
         ws.row_dimensions[r].height = 15
         alt = (r % 2 == 0)
@@ -473,31 +513,31 @@ def build_dashboard(ws, flow_names):
             c = ws.cell(r, col)
             c.value = (
                 f"=IFERROR("
-                f"IF($B${sel_row}=\"\",NA(),"
+                f"IF(${_fsel}${sel_row}=\"\",NA(),"
                 f"IF(${_ic}${_sr}+ROW()-{DATA_START_ROW}>${_ic}${_er},NA(),"
                 f"IF(INDEX('Raw Flow Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}-${_fd}${sel_row},"
-                f"MATCH($B${sel_row},'Raw Flow Data'!$1:$1,0))=-999,NA(),"
+                f"MATCH(${_fsel}${sel_row},'Raw Flow Data'!$1:$1,0))=-999,NA(),"
                 f"INDEX('Raw Flow Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}-${_fd}${sel_row},"
-                f"MATCH($B${sel_row},'Raw Flow Data'!$1:$1,0))*$C${sel_row}))),NA())"
+                f"MATCH(${_fsel}${sel_row},'Raw Flow Data'!$1:$1,0))*${_fscl}${sel_row}))),NA())"
             )
             c.number_format = "0.000"
             c.alignment = Alignment(horizontal="right")
             if alt_fill:
                 c.fill = alt_fill
 
-        # Cols V-AO: Pressure 1-20 Adjusted  (row offset per-series from col H)
+        # Cols V-AO: Pressure 1-20 Adjusted  (row offset per-series from col I)
         for n in range(MAX_PRES):
             sel_row = SEL_START_ROW + n
             col = COL_PRES_ADJ_BASE + n
             c = ws.cell(r, col)
             c.value = (
                 f"=IFERROR("
-                f"IF($F${sel_row}=\"\",NA(),"
+                f"IF(${_psel}${sel_row}=\"\",NA(),"
                 f"IF(${_ic}${_sr}+ROW()-{DATA_START_ROW}>${_ic}${_er},NA(),"
                 f"IF(INDEX('Raw Pressure Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}-${_pd}${sel_row},"
-                f"MATCH($F${sel_row},'Raw Pressure Data'!$1:$1,0))=-999,NA(),"
+                f"MATCH(${_psel}${sel_row},'Raw Pressure Data'!$1:$1,0))=-999,NA(),"
                 f"INDEX('Raw Pressure Data'!$A:$ZZ,${_ic}${_sr}+ROW()-{DATA_START_ROW}-${_pd}${sel_row},"
-                f"MATCH($F${sel_row},'Raw Pressure Data'!$1:$1,0))+$G${sel_row}))),NA())"
+                f"MATCH(${_psel}${sel_row},'Raw Pressure Data'!$1:$1,0))+${_poff}${sel_row}))),NA())"
             )
             c.number_format = "0.000"
             c.alignment = Alignment(horizontal="right")
@@ -941,22 +981,26 @@ def build_instructions(ws):
         "Step 3:  Go to the Dashboard sheet.",
         "Step 4:  Rows 3-22 (col B) are the 20 flow selectors — pick a sensor from the dropdown.",
         "         Leave unused rows blank to hide that series.",
-        "Step 5:  Rows 3-22 (col F) are the 20 pressure selectors — same idea.",
-        "Step 6:  Adjust the Scale (col C) for each flow row and the Offset (col G) for",
+        "Step 5:  Rows 3-22 (col G) are the 20 pressure selectors — same idea.",
+        "Step 6:  Adjust the Scale (col C) for each flow row and the Offset (col H) for",
         "         each pressure row independently.  Default Scale = 1.000, Offset = 0.000.",
         "Step 7:  The input cell for each series is coloured to match its chart line.",
         "         Flow lines and pressure lines are both solid.",
-        "Step 8:  Use the Chart Controls panel (cols I-J, top right of the Dashboard):",
+        "Step 8:  Use the Chart Controls panel (cols K-L, top right of the Dashboard):",
         "         • Start Date / End Date  — enter dates to filter the formula table and chart.",
         "           Leave blank to show all available data.  Dates must exist in 'Raw Flow Data'.",
-        "Step 9:  Each flow row (col D) and each pressure row (col H) has its own Δt cell.",
+        "Step 9:  Each flow row (col D) and each pressure row (col I) has its own Δt cell.",
         "         Enter an integer to shift that series in time:",
         "         +2 = read from 2 timesteps later;  -3 = read from 3 timesteps earlier.",
         "         Use this to align sensors with different transit / delay times.",
-        "Step 10: When satisfied, run the SaveToMOD macro to store the adjusted data.",
-        "         SaveToMOD reads the COMPLETE raw dataset (all dates, not just the current",
-        "         dashboard window), applies each sensor's Scale / Offset / Δt settings, and",
-        "         writes the full result to MOD Flow and MOD Pressure (cleared each run).",
+        "Step 10: To save a single sensor click its 💾 cell (col E for flow, col J for pressure).",
+        "         After setting up the VBA (see section 4) a single click writes only that",
+        "         sensor's adjusted data into the MOD sheet without touching other columns.",
+        "Step 11: Click '💾 Save Rest' (top-right, row 7) to save all remaining sensors",
+        "         that have not yet been individually saved to the MOD sheets.",
+        "Step 12: To rebuild both MOD sheets completely from scratch, run SaveToMOD.",
+        "         SaveToMOD reads the COMPLETE raw dataset, applies Scale / Offset / Δt,",
+        "         and clears/rewrites MOD Flow and MOD Pressure entirely.",
         "",
         "NOTE:  Up to 20 flow series (left Y-axis, blue/teal shades — solid lines) and 20",
         "       pressure series (right Y-axis, warm/cool shades — solid lines) shown simultaneously.",
@@ -1013,26 +1057,36 @@ def build_instructions(ws):
         r += 1
     blank(r); r += 1
 
-    # ── 4. VBA Save button ────────────────────────────────────────────────────
-    section(r, "4.  VBA SAVE BUTTON  (paste this into a Module — Alt+F11 → Insert → Module)",
-            bg=PURPLE)
+    # ── 4. VBA Save macros ────────────────────────────────────────────────────
+    section(r, "4.  VBA SAVE MACROS — two steps:", bg=PURPLE)
     r += 1
-    body(r, "Assign the macro to a button on the Dashboard: Developer tab → Insert → Button (Form Control).",
-         indent=2, italic=True, fg=DARK_GRAY)
-    r += 1
+    for line in [
+        "Step A:  Press Alt+F11 to open the VBA editor.",
+        "Step B:  Click Insert → Module and paste the code block labelled",
+        "         'STANDARD MODULE CODE' below.  This adds SaveToMOD,",
+        "         SaveOneSensorToMOD, and SaveRemainingToMOD.",
+        "Step C:  In the Project tree (left panel) double-click the Dashboard",
+        "         sheet module (usually 'Sheet1 (Dashboard)') and paste the",
+        "         code block labelled 'DASHBOARD SHEET MODULE CODE' below.",
+        "         This makes the 💾 cells and the 'Save Rest' cell clickable.",
+        "Step D:  Close the VBA editor and save the file as .xlsm.",
+    ]:
+        body(r, line, indent=2)
+        r += 1
     blank(r); r += 1
 
     vba = r"""' ═══════════════════════════════════════════════════════════════════════════
-' SaveToMOD  —  applies Scale, Offset, and Δt settings to the COMPLETE raw
-'               dataset and writes the result to MOD Flow / MOD Pressure.
-'               Changes apply to every row in the raw sheets, not just the
-'               date window currently visible on the Dashboard.
+' STANDARD MODULE CODE — paste into a new Module (Alt+F11 → Insert → Module)
+' ═══════════════════════════════════════════════════════════════════════════
+
+' SaveToMOD  —  clears and rewrites BOTH MOD sheets from scratch using the
+'               current Scale, Offset, and Δt settings for ALL sensors.
 '
 ' Dashboard selector rows 3-22:
 '   Col B (2) = Flow sensor name    Col C (3) = Flow scale multiplier
 '   Col D (4) = Flow Δt (row offset)
-'   Col F (6) = Pressure sensor name  Col G (7) = Pressure offset addend
-'   Col H (8) = Pressure Δt (row offset)
+'   Col G (7) = Pressure sensor name  Col H (8) = Pressure offset addend
+'   Col I (9) = Pressure Δt (row offset)
 ' ═══════════════════════════════════════════════════════════════════════════
 Sub SaveToMOD()
 
@@ -1041,9 +1095,9 @@ Sub SaveToMOD()
     Const FLOW_SEL_COL   As Long = 2    ' B – flow sensor name
     Const FLOW_SCALE_COL As Long = 3    ' C – scale multiplier
     Const FLOW_DT_COL    As Long = 4    ' D – timestep offset
-    Const PRES_SEL_COL   As Long = 6    ' F – pressure sensor name
-    Const PRES_OFF_COL   As Long = 7    ' G – offset addend
-    Const PRES_DT_COL    As Long = 8    ' H – timestep offset
+    Const PRES_SEL_COL   As Long = 7    ' G – pressure sensor name
+    Const PRES_OFF_COL   As Long = 8    ' H – offset addend
+    Const PRES_DT_COL    As Long = 9    ' I – timestep offset
 
     Dim wsDash    As Worksheet
     Dim wsRawFlow As Worksheet
@@ -1213,9 +1267,282 @@ NextPresRow:
                vbInformation, "Save Complete"
     End If
 
+End Sub
+
+' ═══════════════════════════════════════════════════════════════════════════
+' SaveOneSensorToMOD  —  saves adjusted data for ONE sensor row to the
+'                        appropriate MOD sheet WITHOUT clearing other columns.
+'
+' sType   : "Flow" or "Pressure"
+' sRow    : selector row index 1-20
+' Silent  : suppress the confirmation MsgBox (used by SaveRemainingToMOD)
+' ═══════════════════════════════════════════════════════════════════════════
+Sub SaveOneSensorToMOD(sType As String, sRow As Long, _
+                       Optional Silent As Boolean = False)
+
+    Const SEL_START    As Long = 3
+    Const FLOW_NAME    As Long = 2   ' B
+    Const FLOW_SCALE   As Long = 3   ' C
+    Const FLOW_DT      As Long = 4   ' D
+    Const PRES_NAME    As Long = 7   ' G
+    Const PRES_OFF     As Long = 8   ' H
+    Const PRES_DT      As Long = 9   ' I
+
+    Dim wsDash  As Worksheet
+    Dim wsRaw   As Worksheet
+    Dim wsMod   As Worksheet
+
+    Set wsDash = Worksheets("Dashboard")
+
+    Dim sensorName As String
+    Dim scale      As Double
+    Dim offset     As Double
+    Dim dt         As Long
+    Dim dashRow    As Long
+    dashRow = SEL_START + sRow - 1
+
+    If sType = "Flow" Then
+        sensorName = Trim(wsDash.Cells(dashRow, FLOW_NAME).Value)
+        If sensorName = "" Then
+            If Not Silent Then
+                MsgBox "No sensor selected in Flow row " & sRow, vbExclamation
+            End If
+            Exit Sub
+        End If
+        scale  = CDbl(wsDash.Cells(dashRow, FLOW_SCALE).Value)
+        If scale = 0 Then scale = 1
+        dt     = CLng(wsDash.Cells(dashRow, FLOW_DT).Value)
+        Set wsRaw = Worksheets("Raw Flow Data")
+        Set wsMod = Worksheets("MOD Flow")
+    Else
+        sensorName = Trim(wsDash.Cells(dashRow, PRES_NAME).Value)
+        If sensorName = "" Then
+            If Not Silent Then
+                MsgBox "No sensor selected in Pressure row " & sRow, vbExclamation
+            End If
+            Exit Sub
+        End If
+        offset = CDbl(wsDash.Cells(dashRow, PRES_OFF).Value)
+        dt     = CLng(wsDash.Cells(dashRow, PRES_DT).Value)
+        Set wsRaw = Worksheets("Raw Pressure Data")
+        Set wsMod = Worksheets("MOD Pressure")
+    End If
+
+    ' --- Find sensor column in raw sheet ---
+    Dim lastRawHdrCol As Long
+    lastRawHdrCol = wsRaw.Cells(1, wsRaw.Columns.Count).End(xlToLeft).Column
+    Dim rawSensorCol As Long: rawSensorCol = 0
+    Dim k As Long
+    For k = 2 To lastRawHdrCol
+        If Trim(wsRaw.Cells(1, k).Value) = sensorName Then
+            rawSensorCol = k
+            Exit For
+        End If
+    Next k
+    If rawSensorCol = 0 Then
+        If Not Silent Then
+            MsgBox "Sensor '" & sensorName & "' not found in " & wsRaw.Name, _
+                   vbExclamation, "Sensor Not Found"
+        End If
+        Exit Sub
+    End If
+
+    ' --- Ensure MOD sheet has a Date header ---
+    If wsMod.Cells(1, 1).Value = "" Then wsMod.Cells(1, 1).Value = "Date"
+
+    ' --- Extend date column in MOD to match raw sheet ---
+    Dim lastRawRow As Long
+    lastRawRow = wsRaw.Cells(wsRaw.Rows.Count, 1).End(xlUp).Row
+    Dim lastModRow As Long
+    lastModRow = wsMod.Cells(wsMod.Rows.Count, 1).End(xlUp).Row
+
+    Dim j As Long
+    Dim dtVal As Variant
+    Dim startFill As Long
+    startFill = IIf(lastModRow < 2, 2, lastModRow + 1)
+    If startFill <= lastRawRow Then
+        For j = startFill To lastRawRow
+            dtVal = wsRaw.Cells(j, 1).Value
+            If Not (IsEmpty(dtVal) Or dtVal = "") Then
+                wsMod.Cells(j, 1).Value        = dtVal
+                wsMod.Cells(j, 1).NumberFormat = "DD/MM/YYYY HH:MM"
+            End If
+        Next j
+    End If
+
+    ' --- Find or create column for this sensor in MOD ---
+    Dim lastModHdrCol As Long
+    lastModHdrCol = wsMod.Cells(1, wsMod.Columns.Count).End(xlToLeft).Column
+    Dim modSensorCol As Long: modSensorCol = 0
+    For k = 2 To lastModHdrCol
+        If Trim(wsMod.Cells(1, k).Value) = sensorName Then
+            modSensorCol = k
+            Exit For
+        End If
+    Next k
+    If modSensorCol = 0 Then
+        modSensorCol = lastModHdrCol + 1
+        wsMod.Cells(1, modSensorCol).Value = sensorName
+    End If
+
+    ' --- Write adjusted sensor data ---
+    Application.ScreenUpdating = False
+    Dim totalSaved As Long: totalSaved = 0
+    Dim rawVal As Variant
+    Dim srcRow As Long
+
+    For j = 2 To lastRawRow
+        dtVal = wsRaw.Cells(j, 1).Value
+        If IsEmpty(dtVal) Or dtVal = "" Then GoTo NextSensorRow
+        srcRow = j - dt
+        If srcRow >= 2 And srcRow <= lastRawRow Then
+            rawVal = wsRaw.Cells(srcRow, rawSensorCol).Value
+            If IsNumeric(rawVal) And CDbl(rawVal) <> -999 Then
+                If sType = "Flow" Then
+                    wsMod.Cells(j, modSensorCol).Value = CDbl(rawVal) * scale
+                Else
+                    wsMod.Cells(j, modSensorCol).Value = CDbl(rawVal) + offset
+                End If
+                wsMod.Cells(j, modSensorCol).NumberFormat = "0.000"
+                totalSaved = totalSaved + 1
+            End If
+        End If
+NextSensorRow:
+    Next j
+
+    Application.ScreenUpdating = True
+
+    If Not Silent Then
+        MsgBox "Saved " & totalSaved & " values for '" & sensorName & "'.", _
+               vbInformation, "Sensor Saved"
+    End If
+End Sub
+
+' ═══════════════════════════════════════════════════════════════════════════
+' SaveRemainingToMOD  —  saves all sensors selected on the Dashboard that do
+'                        NOT yet have a column in the corresponding MOD sheet.
+'                        Run this after finishing individual per-row saves.
+' ═══════════════════════════════════════════════════════════════════════════
+Sub SaveRemainingToMOD()
+
+    Const SEL_START  As Long = 3
+    Const MAX_ROWS   As Long = 20
+    Const FLOW_NAME  As Long = 2    ' B
+    Const PRES_NAME  As Long = 7    ' G
+
+    Dim wsDash    As Worksheet
+    Dim wsModFlow As Worksheet
+    Dim wsModPres As Worksheet
+
+    Set wsDash    = Worksheets("Dashboard")
+    Set wsModFlow = Worksheets("MOD Flow")
+    Set wsModPres = Worksheets("MOD Pressure")
+
+    Dim i As Long, k As Long
+    Dim sensorName As String
+    Dim found As Boolean
+    Dim lastHdrCol As Long
+    Dim savedCount As Long: savedCount = 0
+
+    For i = 0 To MAX_ROWS - 1
+        ' --- Flow ---
+        sensorName = Trim(wsDash.Cells(SEL_START + i, FLOW_NAME).Value)
+        If sensorName <> "" Then
+            found = False
+            lastHdrCol = wsModFlow.Cells(1, wsModFlow.Columns.Count).End(xlToLeft).Column
+            For k = 2 To lastHdrCol
+                If Trim(wsModFlow.Cells(1, k).Value) = sensorName Then
+                    found = True
+                    Exit For
+                End If
+            Next k
+            If Not found Then
+                SaveOneSensorToMOD "Flow", i + 1, True
+                savedCount = savedCount + 1
+            End If
+        End If
+
+        ' --- Pressure ---
+        sensorName = Trim(wsDash.Cells(SEL_START + i, PRES_NAME).Value)
+        If sensorName <> "" Then
+            found = False
+            lastHdrCol = wsModPres.Cells(1, wsModPres.Columns.Count).End(xlToLeft).Column
+            For k = 2 To lastHdrCol
+                If Trim(wsModPres.Cells(1, k).Value) = sensorName Then
+                    found = True
+                    Exit For
+                End If
+            Next k
+            If Not found Then
+                SaveOneSensorToMOD "Pressure", i + 1, True
+                savedCount = savedCount + 1
+            End If
+        End If
+    Next i
+
+    If savedCount = 0 Then
+        MsgBox "All sensors already saved — nothing to do.", _
+               vbInformation, "Save Rest"
+    Else
+        MsgBox "Saved remaining " & savedCount & " sensor(s) to MOD sheets.", _
+               vbInformation, "Save Rest Complete"
+    End If
 End Sub"""
 
     body(r, vba, sz=9, bg=LIGHT_GRAY, height=17)
+    r += 1
+    blank(r); r += 1
+
+    # ── Dashboard sheet module code ───────────────────────────────────────────
+    section(r, "DASHBOARD SHEET MODULE CODE  (paste into the Dashboard sheet's code module)",
+            bg=PURPLE)
+    r += 1
+    body(r,
+         "In the VBA editor Project tree, double-click 'Sheet1 (Dashboard)' and paste the "
+         "code below.  This makes the 💾 cells (cols E and J, rows 3-22) and the "
+         "'💾 Save Rest' cell (col K row 7) respond to single clicks.",
+         indent=2, italic=True, fg=DARK_GRAY)
+    r += 1
+    blank(r); r += 1
+
+    vba_sheet = r"""' ═══════════════════════════════════════════════════════════════════════════
+' DASHBOARD SHEET MODULE CODE
+' Paste into the Dashboard sheet module (double-click Sheet1 in Project tree)
+' ═══════════════════════════════════════════════════════════════════════════
+Private Sub Worksheet_SelectionChange(ByVal Target As Range)
+
+    Const FLOW_SAVE_COL    As Long = 5    ' E – flow 💾 cells
+    Const PRES_SAVE_COL    As Long = 10   ' J – pres 💾 cells
+    Const SAVE_REST_COL    As Long = 11   ' K – Save Rest button (merged K:L)
+    Const SEL_START        As Long = 3    ' first selector row
+    Const SEL_END          As Long = 22   ' last selector row
+    Const SAVE_REST_ROW    As Long = 7    ' Save Rest row
+
+    If Target.Count > 1 Then Exit Sub
+
+    If Target.Column = FLOW_SAVE_COL And _
+       Target.Row >= SEL_START And Target.Row <= SEL_END Then
+        Application.EnableEvents = False
+        Target.Offset(0, -1).Select   ' move focus so next click re-fires
+        Application.EnableEvents = True
+        SaveOneSensorToMOD "Flow", Target.Row - SEL_START + 1
+
+    ElseIf Target.Column = PRES_SAVE_COL And _
+           Target.Row >= SEL_START And Target.Row <= SEL_END Then
+        Application.EnableEvents = False
+        Target.Offset(0, -1).Select
+        Application.EnableEvents = True
+        SaveOneSensorToMOD "Pressure", Target.Row - SEL_START + 1
+
+    ElseIf Target.Column = SAVE_REST_COL And Target.Row = SAVE_REST_ROW Then
+        Application.EnableEvents = False
+        Target.Offset(1, 0).Select
+        Application.EnableEvents = True
+        SaveRemainingToMOD
+    End If
+End Sub"""
+
+    body(r, vba_sheet, sz=9, bg=LIGHT_GRAY, height=17)
     r += 1
     blank(r); r += 1
 
@@ -1243,12 +1570,14 @@ End Sub"""
         "Dashboard data table (rows 26+):",
         "  Col A     = Date",
         "  Cols B-U  = Flow 1-20 Adjusted  (Name in B3-B22 × Scale in C3-C22 + Δt in D3-D22)",
-        "  Cols V-AO = Pres 1-20 Adjusted  (Name in F3-F22 + Offset in G3-G22 + Δt in H3-H22)",
+        "  Cols V-AO = Pres 1-20 Adjusted  (Name in G3-G22 + Offset in H3-H22 + Δt in I3-I22)",
         "",
-        "MOD Flow / MOD Pressure (written by SaveToMOD):",
+        "MOD Flow / MOD Pressure:",
+        "  SaveToMOD       — clears and rewrites both sheets from scratch.",
+        "  💾 per-row cells — add/update just that sensor's column (non-destructive).",
+        "  💾 Save Rest    — saves all sensors not yet present in the MOD sheets.",
         "  Row 1  = Date | SensorCode1 | SensorCode2 | ...  (headers)",
         "  Row 2+ = adjusted values in matching columns",
-        "  Note: the sheet is cleared and rewritten on every SaveToMOD run.",
         "",
         "Leave a Name cell blank to hide that series (formula returns empty, not plotted).",
     ]:

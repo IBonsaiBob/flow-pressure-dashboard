@@ -47,34 +47,45 @@ Date              | AL012       | AL013       | AL014       | ...
 ### Daily use
 1. **Select flows** — rows 3-22 each have a `Flow N ▼` dropdown (col **B**).  
    Pick up to 20 flow meters; leave unused rows blank.
-2. **Select pressures** — rows 3-22 each have a `Pres N ▼` dropdown (col **F**).  
+2. **Select pressures** — rows 3-22 each have a `Pres N ▼` dropdown (col **G**).  
    Pick up to 20 pressure points; leave unused rows blank.
 3. **Adjust per-series values**:
    - `Scale` (col **C**, rows 3-22) — multiplies each flow by its own factor (default 1.000)
-   - `Offset` (col **G**, rows 3-22) — adds a constant to each pressure (default 0.000)
+   - `Offset` (col **H**, rows 3-22) — adds a constant to each pressure (default 0.000)
 4. The **dual-axis chart** (20 flow series on left axis — solid lines; 20 pressure on right — solid lines) and
    **formula table** (rows 26+, cols A-AO) update instantly
-5. When satisfied, run the **SaveToMOD** macro to append all active series to the MOD tabs
+5. Click a **💾** cell (col **E** for flow, col **J** for pressure) to save that sensor to its MOD tab.
+   Click **💾 Save Rest** (top-right, row 7) to save all remaining sensors at once.
+   Run **SaveToMOD** to rebuild both MOD tabs completely from scratch.
 
 ### After pasting your own data
 Each Name dropdown reads directly from the Raw tab headers.  
 If your column range extends beyond the default, update the source:
 - Right-click any **Flow Name** cell (B3-B22) → Data Validation → change Source to
   e.g. `'Raw Flow Data'!$B$1:$BZ$1`
-- Do the same for any **Pressure Name** cell (F3-F22) using `'Raw Pressure Data'`
+- Do the same for any **Pressure Name** cell (G3-G22) using `'Raw Pressure Data'`
 
 ---
 
-## VBA Save Button
+## VBA Save Macros
 
-The full `SaveToMOD` macro code is in the **Instructions** sheet.
+The full VBA code is in the **Instructions** sheet (section 4).
 
-To add it:
+Three macros are provided:
+
+| Macro | What it does |
+|---|---|
+| `SaveOneSensorToMOD` | Saves one sensor row to its MOD tab (non-destructive) |
+| `SaveRemainingToMOD` | Saves all sensors not yet in MOD (called by 💾 Save Rest) |
+| `SaveToMOD` | Clears and rebuilds both MOD tabs from scratch |
+
+To install:
 1. Press **Alt+F11** to open the VBA editor
-2. **Insert → Module** and paste the code from the Instructions sheet
-3. **Developer tab → Insert → Button (Form Control)** — draw on the Dashboard and assign `SaveToMOD`
+2. **Insert → Module** and paste the **"STANDARD MODULE CODE"** block from the Instructions sheet
+3. In the Project tree, double-click **Sheet1 (Dashboard)** and paste the **"DASHBOARD SHEET MODULE CODE"** block
+4. Save the file as `.xlsm`
 
-The macro appends rows to MOD Flow and MOD Pressure (history is never overwritten).
+Once installed, clicking a **💾** cell (col E = flow, col J = pressure, rows 3-22) saves that sensor, and **💾 Save Rest** (row 7, top right) saves all remaining sensors.
 
 ---
 
