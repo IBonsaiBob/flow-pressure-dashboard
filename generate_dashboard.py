@@ -181,13 +181,13 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
         Dim elevForNote As Variant
         elevForNote = wsDash.Cells(dashRow, PRES_ELEV).Value
         If IsNumeric(elevForNote) Then
-            zPart = " | Z: " & Format(CDbl(elevForNote), "0.000")
+            zPart = " | Z: " & Format(CDbl(elevForNote), "0.###")
         Else
             zPart = ""
         End If
     End If
     Dim piNote As String
-    piNote = Format(Now, "dd/mm/yyyy HH:mm") & " | " & sensorName & _
+    piNote = Format(Now, "dd/mm/yyyy HH:mm") & _
              zPart & " | " & adjLabel & " | Dt: " & dt
     WriteDataNoteToPointIndex sensorName, piNote
 
@@ -460,7 +460,7 @@ End Sub
 '                              If col K already has content the new note is placed
 '                              below the existing text, separated by a blank line.
 ' sensorName : sensor name to look up in the "Point Ref" column
-' noteText   : compact note string, e.g. "26/03/2026 14:35 | AM026 | Offset: 10.000 | Dt: 4"
+' noteText   : compact note string, e.g. "26/03/2026 14:35 | Z: 33.95 | Offset: 10.000 | Dt: 4"
 ' ===========================================================================
 Sub WriteDataNoteToPointIndex(sensorName As String, noteText As String)
 
