@@ -161,8 +161,94 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
         SaveElevationToPointIndex sRow
     End If
 
+    ' --- Mark the save button green and add a timestamped note ---
+    Dim adjParam As Double
+    adjParam = IIf(isFlow, scaleFactor, offset)
+    MarkSaved isFlow, sRow, sensorName, adjParam, dt
+
     MsgBox "Saved " & totalSaved & " values for '" & sensorName & _
            "' into " & wsRaw.Name & ".", vbInformation, "Save Complete"
+End Sub
+
+' ===========================================================================
+' MarkSaved  - highlights the 💾 save-button cell green and attaches a note
+'              recording the save timestamp, sensor name, and parameters used.
+'              Called by SaveOneSensor after a successful save.
+' isFlow    : True = flow (col E button), False = pressure (col K button)
+' sRow      : selector row index 1-20
+' sensorName: name written to raw sheet
+' adjVal    : scaleFactor (flow) or offset (pressure) actually applied
+' dt        : time-step shift applied
+' ===========================================================================
+Sub MarkSaved(isFlow As Boolean, sRow As Long, sensorName As String, _
+              adjVal As Double, dt As Long)
+
+    Const SEL_START As Long = 3
+    Const FLOW_SAVE As Long = 5   ' E
+    Const PRES_SAVE As Long = 11  ' K
+
+    Dim wsDash As Worksheet
+    Set wsDash = Worksheets("Dashboard")
+
+    Dim saveCol As Long
+    Dim adjLabel As String
+    If isFlow Then
+        saveCol   = FLOW_SAVE
+        adjLabel  = "Scale: " & Format(adjVal, "0.000")
+    Else
+        saveCol   = PRES_SAVE
+        adjLabel  = "Offset: " & Format(adjVal, "0.000")
+    End If
+
+    Dim saveCell As Range
+    Set saveCell = wsDash.Cells(SEL_START + sRow - 1, saveCol)
+
+    ' Green fill to show the row has been saved
+    saveCell.Interior.Color = RGB(198, 239, 206)
+
+    ' Add / replace note with save details
+    On Error Resume Next
+    saveCell.Comment.Delete
+    On Error GoTo 0
+
+    Dim noteText As String
+    noteText = "Saved: " & Format(Now, "dd/mm/yyyy HH:mm") & Chr(10) & _
+               "Sensor: " & sensorName & Chr(10) & _
+               adjLabel & Chr(10) & _
+               "Dt: " & dt
+
+    With saveCell.AddComment(noteText)
+        .Shape.Width  = 185
+        .Shape.Height = 65
+    End With
+End Sub
+
+' ===========================================================================
+' ClearSavedMark  - removes the green fill and note from the 💾 save-button
+'                   cell for a given row.  Called automatically by
+'                   Worksheet_Change when the user picks a new sensor, so the
+'                   row goes back to "unsaved" appearance.
+' isFlow : True = flow (col E button), False = pressure (col K button)
+' sRow   : selector row index 1-20
+' ===========================================================================
+Sub ClearSavedMark(isFlow As Boolean, sRow As Long)
+
+    Const SEL_START As Long = 3
+    Const FLOW_SAVE As Long = 5   ' E
+    Const PRES_SAVE As Long = 11  ' K
+
+    Dim wsDash As Worksheet
+    Set wsDash = Worksheets("Dashboard")
+
+    Dim saveCell As Range
+    Set saveCell = wsDash.Cells(SEL_START + sRow - 1, _
+                                IIf(isFlow, FLOW_SAVE, PRES_SAVE))
+
+    saveCell.Interior.ColorIndex = -4142   ' xlColorIndexNone — restore style colour
+
+    On Error Resume Next
+    saveCell.Comment.Delete
+    On Error GoTo 0
 End Sub
 
 ' ===========================================================================
@@ -462,20 +548,29 @@ End Sub
 
 ' Worksheet_Change: auto-populates col J elevation when a pressure sensor
 '                   name is selected or pasted into col G (rows 3-22).
+'                   Also clears the saved mark when a sensor name changes so
+'                   the 💾 button returns to its "unsaved" colour.
 '                   Handles both single-cell selection and multi-cell paste.
 Private Sub Worksheet_Change(ByVal Target As Range)
 
     Const SEL_START As Long = 3
     Const SEL_END   As Long = 22
+    Const FLOW_NAME As Long = 2   ' B
     Const PRES_NAME As Long = 7   ' G
 
     Dim cell As Range
     For Each cell In Target
-        If cell.Column = PRES_NAME And _
-           cell.Row >= SEL_START And cell.Row <= SEL_END Then
-            Application.EnableEvents = False
-            PopulateElevation cell.Row - SEL_START + 1
-            Application.EnableEvents = True
+        If cell.Row >= SEL_START And cell.Row <= SEL_END Then
+            If cell.Column = PRES_NAME Then
+                Application.EnableEvents = False
+                ClearSavedMark False, cell.Row - SEL_START + 1
+                PopulateElevation cell.Row - SEL_START + 1
+                Application.EnableEvents = True
+            ElseIf cell.Column = FLOW_NAME Then
+                Application.EnableEvents = False
+                ClearSavedMark True, cell.Row - SEL_START + 1
+                Application.EnableEvents = True
+            End If
         End If
     Next cell
 End Sub
@@ -711,7 +806,9 @@ def _build_instructions_xml():
                "This makes the \U0001f4be cells (col E for flow, col K for pressure, rows 3\u201322) "
                "respond to a single click, auto-populates the col J elevation from the "
                "'Point Index' tab when a pressure sensor is chosen (single-cell or paste), "
-               "and re-populates all Z values whenever you switch to the Dashboard tab.")])); r += 1
+               "re-populates all Z values whenever you switch to the Dashboard tab, "
+               "and turns the \U0001f4be cell green with a hover-note after each save "
+               "(note resets automatically when a new sensor is selected).")])); r += 1
     blank(r); r += 1
 
     rows.append((r, 17, [_cell("A" + str(r), S_CODE, VBA_SHEET)])); r += 1

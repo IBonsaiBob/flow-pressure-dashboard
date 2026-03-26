@@ -13,20 +13,29 @@ End Sub
 
 ' Worksheet_Change: auto-populates col J elevation when a pressure sensor
 '                   name is selected or pasted into col G (rows 3-22).
+'                   Also clears the saved mark when a sensor name changes so
+'                   the 💾 button returns to its "unsaved" colour.
 '                   Handles both single-cell selection and multi-cell paste.
 Private Sub Worksheet_Change(ByVal Target As Range)
 
     Const SEL_START As Long = 3
     Const SEL_END   As Long = 22
+    Const FLOW_NAME As Long = 2   ' B
     Const PRES_NAME As Long = 7   ' G
 
     Dim cell As Range
     For Each cell In Target
-        If cell.Column = PRES_NAME And _
-           cell.Row >= SEL_START And cell.Row <= SEL_END Then
-            Application.EnableEvents = False
-            PopulateElevation cell.Row - SEL_START + 1
-            Application.EnableEvents = True
+        If cell.Row >= SEL_START And cell.Row <= SEL_END Then
+            If cell.Column = PRES_NAME Then
+                Application.EnableEvents = False
+                ClearSavedMark False, cell.Row - SEL_START + 1
+                PopulateElevation cell.Row - SEL_START + 1
+                Application.EnableEvents = True
+            ElseIf cell.Column = FLOW_NAME Then
+                Application.EnableEvents = False
+                ClearSavedMark True, cell.Row - SEL_START + 1
+                Application.EnableEvents = True
+            End If
         End If
     Next cell
 End Sub
