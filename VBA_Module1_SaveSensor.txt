@@ -33,6 +33,7 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
     Dim offset      As Double
     Dim dt          As Long
     Dim dashRow     As Long
+    Dim cellVal     As Variant
     dashRow = SEL_START + sRow - 1
 
     If isFlow Then
@@ -41,9 +42,11 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
             MsgBox "No sensor selected in Flow row " & sRow, vbExclamation
             Exit Sub
         End If
-        scaleFactor = ToDouble(wsDash.Cells(dashRow, FLOW_SCALE).Value)
+        cellVal = wsDash.Cells(dashRow, FLOW_SCALE).Value
+        If IsNumeric(cellVal) Then scaleFactor = CDbl(cellVal)
         If scaleFactor = 0 Then scaleFactor = 1
-        dt = ToLong(wsDash.Cells(dashRow, FLOW_DT).Value)
+        cellVal = wsDash.Cells(dashRow, FLOW_DT).Value
+        If IsNumeric(cellVal) Then dt = CLng(cellVal)
         Set wsRaw = Worksheets("Raw Flow Data")
     Else
         sensorName = Trim(wsDash.Cells(dashRow, PRES_NAME).Value)
@@ -51,8 +54,10 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
             MsgBox "No sensor selected in Pressure row " & sRow, vbExclamation
             Exit Sub
         End If
-        offset = ToDouble(wsDash.Cells(dashRow, PRES_OFF).Value)
-        dt = ToLong(wsDash.Cells(dashRow, PRES_DT).Value)
+        cellVal = wsDash.Cells(dashRow, PRES_OFF).Value
+        If IsNumeric(cellVal) Then offset = CDbl(cellVal)
+        cellVal = wsDash.Cells(dashRow, PRES_DT).Value
+        If IsNumeric(cellVal) Then dt = CLng(cellVal)
         Set wsRaw = Worksheets("Raw Pressure Data")
     End If
 
@@ -119,14 +124,3 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
     MsgBox "Saved " & totalSaved & " values for '" & sensorName & _
            "' into " & wsRaw.Name & ".", vbInformation, "Save Complete"
 End Sub
-
-' ===========================================================================
-' Safe numeric helpers
-' ===========================================================================
-Private Function ToDouble(v As Variant) As Double
-    If IsNumeric(v) Then ToDouble = CDbl(v)
-End Function
-
-Private Function ToLong(v As Variant) As Long
-    If IsNumeric(v) Then ToLong = CLng(v)
-End Function
