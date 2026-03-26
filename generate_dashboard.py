@@ -1591,8 +1591,9 @@ def _z_elev_formula(r):
     for the pressure sensor in dashboard row *r* from the Point Index sheet.
     Using dynamic column lookup so it is robust to Point Index column changes.
     """
+    # Note: OOXML <f> elements must NOT include the leading '=' sign.
     return (
-        "=IFERROR(INDEX('Point Index'!$A:$K,"
+        "IFERROR(INDEX('Point Index'!$A:$K,"
         f"MATCH($G{r},'Point Index'!$A:$A,0),"
         "MATCH(\"Z (m)\",'Point Index'!$1:$1,0)),\"\")"
     )
