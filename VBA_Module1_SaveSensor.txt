@@ -76,29 +76,45 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
     Dim lastRow As Long
     lastRow = wsRaw.Cells(wsRaw.Rows.Count, 1).End(xlUp).Row
 
-    ' --- Apply transformation and write back into the Raw tab ---
+    ' --- Read entire sensor column into memory (one round-trip) ---
+    Dim dataRows As Long: dataRows = lastRow - 1   ' rows 2..lastRow
+    Dim srcArr  As Variant
+    Dim outArr  As Variant
+    srcArr = wsRaw.Range(wsRaw.Cells(2, sensorCol), _
+                         wsRaw.Cells(lastRow, sensorCol)).Value  ' 2-D array (n,1)
+    outArr = srcArr   ' copy preserves original; we overwrite valid entries below
+
+    ' --- Process in memory ---
     Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+
     Dim totalSaved As Long: totalSaved = 0
     Dim rawVal As Variant
-    Dim srcRow As Long
+    Dim srcIdx As Long
     Dim j As Long
 
-    For j = 2 To lastRow
-        srcRow = j - dt
-        If srcRow >= 2 And srcRow <= lastRow Then
-            rawVal = wsRaw.Cells(srcRow, sensorCol).Value
+    For j = 1 To dataRows             ' outArr is 1-based
+        srcIdx = j - dt               ' dt shift (array-relative)
+        If srcIdx >= 1 And srcIdx <= dataRows Then
+            rawVal = srcArr(srcIdx, 1)
             If IsNumeric(rawVal) And CDbl(rawVal) <> -999 Then
                 If isFlow Then
-                    wsRaw.Cells(j, sensorCol).Value = CDbl(rawVal) * scaleFactor
+                    outArr(j, 1) = CDbl(rawVal) * scaleFactor
                 Else
-                    wsRaw.Cells(j, sensorCol).Value = CDbl(rawVal) + offset
+                    outArr(j, 1) = CDbl(rawVal) + offset
                 End If
-                wsRaw.Cells(j, sensorCol).NumberFormat = "0.000"
                 totalSaved = totalSaved + 1
             End If
         End If
     Next j
 
+    ' --- Write back and format in two round-trips (vs. 2*n previously) ---
+    With wsRaw.Range(wsRaw.Cells(2, sensorCol), wsRaw.Cells(lastRow, sensorCol))
+        .Value = outArr
+        .NumberFormat = "0.000"
+    End With
+
+    Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
     MsgBox "Saved " & totalSaved & " values for '" & sensorName & _
            "' into " & wsRaw.Name & ".", vbInformation, "Save Complete"
