@@ -57,6 +57,7 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
     Const PRES_NAME  As Long = 7   ' G
     Const PRES_OFF   As Long = 8   ' H
     Const PRES_DT    As Long = 9   ' I
+    Const PRES_ELEV  As Long = 10  ' J
 
     Dim wsDash  As Worksheet
     Dim wsRaw   As Worksheet
@@ -168,14 +169,23 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
 
     ' --- Write compact data note to Point Index tab col K ---
     Dim adjLabel As String
+    Dim zPart As String
     If isFlow Then
         adjLabel = "Scale: " & Format(adjParam, "0.000")
+        zPart = ""
     Else
         adjLabel = "Offset: " & Format(adjParam, "0.000")
+        Dim elevForNote As Variant
+        elevForNote = wsDash.Cells(dashRow, PRES_ELEV).Value
+        If IsNumeric(elevForNote) Then
+            zPart = " | Z: " & Format(CDbl(elevForNote), "0.000")
+        Else
+            zPart = ""
+        End If
     End If
     Dim piNote As String
     piNote = Format(Now, "dd/mm/yyyy HH:mm") & " | " & sensorName & _
-             " | " & adjLabel & " | Dt: " & dt
+             zPart & " | " & adjLabel & " | Dt: " & dt
     WriteDataNoteToPointIndex sensorName, piNote
 
     MsgBox "Saved " & totalSaved & " values for '" & sensorName & _
@@ -236,27 +246,39 @@ Sub MarkSaved(isFlow As Boolean, sRow As Long, sensorName As String, _
 End Sub
 
 ' ===========================================================================
-' ClearSavedMark  - removes the green fill and note from the 💾 save-button
-'                   cell for a given row.  Called automatically by
-'                   Worksheet_Change when the user picks a new sensor, so the
-'                   row goes back to "unsaved" appearance.
+' ClearSavedMark  - resets the 💾 save-button cell appearance when the user
+'                   picks a new sensor, so the row shows its "unsaved" state:
+'                     • sensor name present  → light yellow (not yet saved)
+'                     • sensor name cleared  → no fill (default/blank)
+'                   Also removes any existing hover-note on the button.
 ' isFlow : True = flow (col E button), False = pressure (col K button)
 ' sRow   : selector row index 1-20
 ' ===========================================================================
 Sub ClearSavedMark(isFlow As Boolean, sRow As Long)
 
     Const SEL_START As Long = 3
+    Const FLOW_NAME As Long = 2   ' B
     Const FLOW_SAVE As Long = 5   ' E
+    Const PRES_NAME As Long = 7   ' G
     Const PRES_SAVE As Long = 11  ' K
 
     Dim wsDash As Worksheet
     Set wsDash = Worksheets("Dashboard")
 
-    Dim saveCell As Range
-    Set saveCell = wsDash.Cells(SEL_START + sRow - 1, _
-                                IIf(isFlow, FLOW_SAVE, PRES_SAVE))
+    Dim dashRow As Long
+    dashRow = SEL_START + sRow - 1
 
-    saveCell.Interior.ColorIndex = -4142   ' xlColorIndexNone — restore style colour
+    Dim sensorName As String
+    sensorName = Trim(wsDash.Cells(dashRow, IIf(isFlow, FLOW_NAME, PRES_NAME)).Value)
+
+    Dim saveCell As Range
+    Set saveCell = wsDash.Cells(dashRow, IIf(isFlow, FLOW_SAVE, PRES_SAVE))
+
+    If sensorName = "" Then
+        saveCell.Interior.ColorIndex = -4142   ' No sensor — restore default colour
+    Else
+        saveCell.Interior.Color = RGB(255, 235, 156)   ' Sensor present, not yet saved — light yellow
+    End If
 
     On Error Resume Next
     saveCell.Comment.Delete
@@ -631,9 +653,9 @@ End Sub
 
 ' Worksheet_Change: auto-populates col J elevation when a pressure sensor
 '                   name is selected or pasted into col G (rows 3-22).
-'                   Also clears the saved mark when a sensor name changes so
-'                   the 💾 button returns to its "unsaved" colour.
+'                   Also resets the 💾 button colour when a sensor name changes.
 '                   Handles both single-cell selection and multi-cell paste.
+'                   EnableEvents is always restored even if an inner call errors.
 Private Sub Worksheet_Change(ByVal Target As Range)
 
     Const SEL_START As Long = 3
@@ -646,12 +668,16 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         If cell.Row >= SEL_START And cell.Row <= SEL_END Then
             If cell.Column = PRES_NAME Then
                 Application.EnableEvents = False
+                On Error Resume Next
                 ClearSavedMark False, cell.Row - SEL_START + 1
                 PopulateElevation cell.Row - SEL_START + 1
+                On Error GoTo 0
                 Application.EnableEvents = True
             ElseIf cell.Column = FLOW_NAME Then
                 Application.EnableEvents = False
+                On Error Resume Next
                 ClearSavedMark True, cell.Row - SEL_START + 1
+                On Error GoTo 0
                 Application.EnableEvents = True
             End If
         End If
