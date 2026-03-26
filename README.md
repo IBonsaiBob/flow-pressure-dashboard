@@ -52,7 +52,7 @@ Date              | AL012       | AL013       | AL014       | ...
 3. **Adjust per-series values**:
    - `Scale` (col **C**, rows 3-22) — multiplies each flow by its own factor (default 1.000)
    - `Offset` (col **G**, rows 3-22) — adds a constant to each pressure (default 0.000)
-4. The **dual-axis chart** (20 flow series on left axis — solid lines; 20 pressure on right — dashed lines) and
+4. The **dual-axis chart** (20 flow series on left axis — solid lines; 20 pressure on right — solid lines) and
    **formula table** (rows 26+, cols A-AO) update instantly
 5. When satisfied, run the **SaveToMOD** macro to append all active series to the MOD tabs
 

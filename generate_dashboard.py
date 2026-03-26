@@ -368,9 +368,10 @@ def build_dashboard(ws, flow_names):
             style_input(dtp, 0, bg=YELLOW_BG, num_fmt="0")
 
     # ── Control area (cols I-J, rows 3-6) ────────────────────────────────────
+    # Date format DD/MM/YY is intentionally compact (user preference).
     _ctrl_rows = [
-        (CTRL_START_DATE_ROW, "Start ▶", "", "DD/MM/YYYY HH:MM", LIGHT_BLUE),
-        (CTRL_END_DATE_ROW,   "End ▶",   "", "DD/MM/YYYY HH:MM", LIGHT_BLUE),
+        (CTRL_START_DATE_ROW, "Start ▶", "", "DD/MM/YY", LIGHT_BLUE),
+        (CTRL_END_DATE_ROW,   "End ▶",   "", "DD/MM/YY", LIGHT_BLUE),
     ]
     for (row, label_txt, default_val, num_fmt, inp_bg) in _ctrl_rows:
         lc = ws.cell(row, CTRL_LABEL_COL, value=label_txt)
@@ -612,7 +613,7 @@ def _build_correct_chart_xml():
         for n in range(MAX_FLOW)
     )
     pres_xml = "\n".join(
-        _ser(MAX_FLOW + n, PRES_COLORS[n], get_column_letter(COL_PRES_ADJ_BASE + n), dashed=True)
+        _ser(MAX_FLOW + n, PRES_COLORS[n], get_column_letter(COL_PRES_ADJ_BASE + n))
         for n in range(MAX_PRES)
     )
 
@@ -944,7 +945,7 @@ def build_instructions(ws):
         "Step 6:  Adjust the Scale (col C) for each flow row and the Offset (col G) for",
         "         each pressure row independently.  Default Scale = 1.000, Offset = 0.000.",
         "Step 7:  The input cell for each series is coloured to match its chart line.",
-        "         Flow lines are solid; pressure lines are dashed for easy distinction.",
+        "         Flow lines and pressure lines are both solid.",
         "Step 8:  Use the Chart Controls panel (cols I-J, top right of the Dashboard):",
         "         • Start Date / End Date  — enter dates to filter the formula table and chart.",
         "           Leave blank to show all available data.  Dates must exist in 'Raw Flow Data'.",
@@ -958,7 +959,7 @@ def build_instructions(ws):
         "         writes the full result to MOD Flow and MOD Pressure (cleared each run).",
         "",
         "NOTE:  Up to 20 flow series (left Y-axis, blue/teal shades — solid lines) and 20",
-        "       pressure series (right Y-axis, warm/cool shades — dashed lines) shown simultaneously.",
+        "       pressure series (right Y-axis, warm/cool shades — solid lines) shown simultaneously.",
         "",
         "NOTE:  After pasting your own data, right-click each Name cell → Data Validation",
         "       → update the Source to cover your column range, e.g. 'Raw Flow Data'!$B$1:$BZ$1",
