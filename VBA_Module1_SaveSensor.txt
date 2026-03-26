@@ -5,6 +5,8 @@
 ' SaveOneSensor  - applies Scale / Offset / Dt for ONE sensor and writes the
 '                  adjusted values back into the corresponding Raw data tab,
 '                  overwriting that sensor column in place.
+'                  For pressure sensors the elevation in col J is also written
+'                  back to the "Point Index" tab.
 '
 ' isFlow : True  -> Flow sensor   (Raw Flow Data,     Scale * value,  col D Dt)
 '          False -> Pressure      (Raw Pressure Data, value + Offset, col I Dt)
@@ -13,6 +15,7 @@
 ' Dashboard selector rows 3-22:
 '   Col B (2) = Flow name    Col C (3) = Scale    Col D (4) = Flow Dt
 '   Col G (7) = Pres name    Col H (8) = Offset   Col I (9) = Pres Dt
+'   Col J (10) = Elevation Z (m) — auto-populated from Point Index tab
 ' ===========================================================================
 Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
 
@@ -121,6 +124,265 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
 
     Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
+
+    ' --- For pressure sensors: write elevation back to Point Index tab ---
+    If Not isFlow Then
+        SaveElevationToPointIndex sRow
+    End If
+
     MsgBox "Saved " & totalSaved & " values for '" & sensorName & _
            "' into " & wsRaw.Name & ".", vbInformation, "Save Complete"
+End Sub
+
+' ===========================================================================
+' PopulateElevation  - looks up Z (m) from the "Point Index" tab for the
+'                      selected pressure sensor and writes it to col J.
+'                      Called automatically when a pressure sensor is chosen.
+' sRow : selector row index 1-20
+' ===========================================================================
+Sub PopulateElevation(sRow As Long)
+
+    Const SEL_START As Long = 3
+    Const PRES_NAME As Long = 7   ' G
+    Const PRES_ELEV As Long = 10  ' J
+
+    Dim wsDash As Worksheet
+    Set wsDash = Worksheets("Dashboard")
+
+    Dim dashRow As Long
+    dashRow = SEL_START + sRow - 1
+
+    Dim sensorName As String
+    sensorName = Trim(wsDash.Cells(dashRow, PRES_NAME).Value)
+
+    ' Clear elevation if no sensor selected
+    If sensorName = "" Then
+        wsDash.Cells(dashRow, PRES_ELEV).ClearContents
+        Exit Sub
+    End If
+
+    ' Find the "Point Index" worksheet
+    Dim wsIdx As Worksheet
+    Dim ws As Worksheet
+    For Each ws In ThisWorkbook.Worksheets
+        If LCase(Trim(ws.Name)) = "point index" Then
+            Set wsIdx = ws
+            Exit For
+        End If
+    Next ws
+    If wsIdx Is Nothing Then Exit Sub
+
+    ' Find "Point Ref" and "Z (m)" column headers
+    Dim lastHdrCol As Long
+    lastHdrCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    Dim pointRefCol As Long: pointRefCol = 0
+    Dim zCol As Long: zCol = 0
+    Dim c As Long
+    For c = 1 To lastHdrCol
+        Select Case Trim(wsIdx.Cells(1, c).Value)
+            Case "Point Ref": pointRefCol = c
+            Case "Z (m)":     zCol = c
+        End Select
+    Next c
+    If pointRefCol = 0 Or zCol = 0 Then Exit Sub
+
+    ' Look up the sensor and populate elevation
+    Dim lastRow As Long
+    lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
+    Dim r As Long
+    For r = 2 To lastRow
+        If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
+            wsDash.Cells(dashRow, PRES_ELEV).Value = wsIdx.Cells(r, zCol).Value
+            Exit Sub
+        End If
+    Next r
+
+    ' Sensor not found in Point Index — leave elevation blank
+    wsDash.Cells(dashRow, PRES_ELEV).ClearContents
+End Sub
+
+' ===========================================================================
+' SaveElevationToPointIndex  - writes the elevation value in col J back to
+'                              the "Point Index" tab Z (m) column.
+'                              Called by SaveOneSensor for pressure sensors.
+' sRow : selector row index 1-20
+' ===========================================================================
+Sub SaveElevationToPointIndex(sRow As Long)
+
+    Const SEL_START As Long = 3
+    Const PRES_NAME As Long = 7   ' G
+    Const PRES_ELEV As Long = 10  ' J
+
+    Dim wsDash As Worksheet
+    Set wsDash = Worksheets("Dashboard")
+
+    Dim dashRow As Long
+    dashRow = SEL_START + sRow - 1
+
+    Dim sensorName As String
+    sensorName = Trim(wsDash.Cells(dashRow, PRES_NAME).Value)
+    If sensorName = "" Then Exit Sub
+
+    Dim elevVal As Variant
+    elevVal = wsDash.Cells(dashRow, PRES_ELEV).Value
+    If Not IsNumeric(elevVal) Then Exit Sub
+
+    ' Find the "Point Index" worksheet
+    Dim wsIdx As Worksheet
+    Dim ws As Worksheet
+    For Each ws In ThisWorkbook.Worksheets
+        If LCase(Trim(ws.Name)) = "point index" Then
+            Set wsIdx = ws
+            Exit For
+        End If
+    Next ws
+    If wsIdx Is Nothing Then
+        MsgBox "Worksheet 'Point Index' not found.", vbExclamation
+        Exit Sub
+    End If
+
+    ' Find "Point Ref" and "Z (m)" column headers
+    Dim lastHdrCol As Long
+    lastHdrCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    Dim pointRefCol As Long: pointRefCol = 0
+    Dim zCol As Long: zCol = 0
+    Dim c As Long
+    For c = 1 To lastHdrCol
+        Select Case Trim(wsIdx.Cells(1, c).Value)
+            Case "Point Ref": pointRefCol = c
+            Case "Z (m)":     zCol = c
+        End Select
+    Next c
+    If pointRefCol = 0 Or zCol = 0 Then
+        MsgBox "Could not find 'Point Ref' or 'Z (m)' column in 'Point Index'.", vbExclamation
+        Exit Sub
+    End If
+
+    ' Find and update the matching row
+    Dim lastRow As Long
+    lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
+    Dim r As Long
+    For r = 2 To lastRow
+        If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
+            wsIdx.Cells(r, zCol).Value = CDbl(elevVal)
+            Exit Sub
+        End If
+    Next r
+
+    MsgBox "Sensor '" & sensorName & "' not found in 'Point Index'.", vbExclamation
+End Sub
+
+' ===========================================================================
+' ToggleElevationAdjust  - adds or removes the elevation Z (m) offset from
+'                          all active pressure columns in the formula table
+'                          for chart display purposes only.
+'
+' Toggle state is stored as the value of cell L7 on the Dashboard:
+'   "+Z OFF"  -> elevation not applied (normal pressure display)
+'   "+Z ON"   -> elevation applied (pressure + Z shown on chart)
+'
+' When turning ON : formula-table cells are overwritten with value + elevation.
+' When turning OFF: the original pressure formulas are rebuilt from the
+'                   known template so the chart returns to base values.
+'
+' NOTE: While the toggle is ON the pressure columns contain static values.
+'       Any changes to raw data will not update the chart until the toggle
+'       is turned OFF first and then back ON.
+' ===========================================================================
+Sub ToggleElevationAdjust()
+
+    Const SEL_START     As Long = 3
+    Const SEL_END       As Long = 22
+    Const PRES_NAME     As Long = 7   ' G
+    Const PRES_ELEV     As Long = 10  ' J
+    Const FT_START_ROW  As Long = 26  ' first formula-table data row
+    Const PRES_FT_FIRST As Long = 22  ' V  — first pressure formula-table column
+    Const TOGGLE_COL    As Long = 12  ' L
+    Const TOGGLE_ROW    As Long = 7   ' row of the toggle button (L7)
+
+    Dim wsDash As Worksheet
+    Set wsDash = Worksheets("Dashboard")
+
+    ' Determine current toggle state
+    Dim currentState As String
+    currentState = Trim(CStr(wsDash.Cells(TOGGLE_ROW, TOGGLE_COL).Value))
+    Dim turningOn As Boolean
+    turningOn = (LCase(currentState) <> "+z on")
+
+    ' Find last formula-table data row (date in col A)
+    Dim lastFTRow As Long
+    lastFTRow = wsDash.Cells(wsDash.Rows.Count, 1).End(xlUp).Row
+    If lastFTRow < FT_START_ROW Then
+        MsgBox "No formula table data found.", vbInformation
+        Exit Sub
+    End If
+
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+
+    Dim pIdx As Long   ' 0-based pressure sensor index (0 = sensor 1 in row 3)
+    For pIdx = 0 To (SEL_END - SEL_START)
+        Dim dashRow As Long
+        dashRow = SEL_START + pIdx
+
+        Dim sensorName As String
+        sensorName = Trim(wsDash.Cells(dashRow, PRES_NAME).Value)
+        If sensorName = "" Then GoTo NextSensor
+
+        Dim elevVal As Variant
+        elevVal = wsDash.Cells(dashRow, PRES_ELEV).Value
+        If Not IsNumeric(elevVal) Then GoTo NextSensor
+
+        Dim elev As Double
+        elev = CDbl(elevVal)
+        If elev = 0 Then GoTo NextSensor
+
+        Dim ftCol As Long
+        ftCol = PRES_FT_FIRST + pIdx   ' V for sensor 1, W for sensor 2, ...
+
+        Dim rng As Range
+        Set rng = wsDash.Range(wsDash.Cells(FT_START_ROW, ftCol), _
+                               wsDash.Cells(lastFTRow, ftCol))
+
+        If turningOn Then
+            ' Evaluate formulas, add elevation, store as static values
+            Dim arr As Variant
+            arr = rng.Value
+            Dim i As Long
+            For i = 1 To UBound(arr, 1)
+                If IsNumeric(arr(i, 1)) Then
+                    arr(i, 1) = CDbl(arr(i, 1)) + elev
+                End If
+            Next i
+            rng.Value = arr
+        Else
+            ' Rebuild original pressure formulas from the known template.
+            ' Use Chr(34) to embed double-quote chars without nested VBA string escapes.
+            Dim q As String: q = Chr(34)
+            Dim n As String
+            n = CStr(dashRow)
+            rng.Formula = "=IFERROR(IF($G$" & n & "=" & q & q & ",NA()," & _
+                "IF($M$5+ROW()-26>$M$6,NA()," & _
+                "IF(INDEX('Raw Pressure Data'!$A:$ZZ," & _
+                "$M$5+ROW()-26-$I$" & n & "," & _
+                "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))=-999,NA()," & _
+                "INDEX('Raw Pressure Data'!$A:$ZZ," & _
+                "$M$5+ROW()-26-$I$" & n & "," & _
+                "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))" & _
+                "+$H$" & n & "))),NA())"
+        End If
+
+NextSensor:
+    Next pIdx
+
+    ' Update toggle button label
+    wsDash.Cells(TOGGLE_ROW, TOGGLE_COL).Value = IIf(turningOn, "+Z ON", "+Z OFF")
+
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+
+    MsgBox IIf(turningOn, _
+        "Elevation added to all pressure series. Click again to remove.", _
+        "Elevation removed. Pressure formulas restored."), _
+        vbInformation, "Elevation Toggle"
 End Sub

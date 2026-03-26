@@ -36,6 +36,8 @@ VBA_MODULE = """\
 ' SaveOneSensor  - applies Scale / Offset / Dt for ONE sensor and writes the
 '                  adjusted values back into the corresponding Raw data tab,
 '                  overwriting that sensor column in place.
+'                  For pressure sensors the elevation in col J is also written
+'                  back to the "Point Index" tab.
 '
 ' isFlow : True  -> Flow sensor   (Raw Flow Data,     Scale * value,  col D Dt)
 '          False -> Pressure      (Raw Pressure Data, value + Offset, col I Dt)
@@ -44,6 +46,7 @@ VBA_MODULE = """\
 ' Dashboard selector rows 3-22:
 '   Col B (2) = Flow name    Col C (3) = Scale    Col D (4) = Flow Dt
 '   Col G (7) = Pres name    Col H (8) = Offset   Col I (9) = Pres Dt
+'   Col J (10) = Elevation Z (m) — auto-populated from Point Index tab
 ' ===========================================================================
 Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
 
@@ -64,6 +67,7 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
     Dim offset      As Double
     Dim dt          As Long
     Dim dashRow     As Long
+    Dim cellVal     As Variant
     dashRow = SEL_START + sRow - 1
 
     If isFlow Then
@@ -72,9 +76,11 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
             MsgBox "No sensor selected in Flow row " & sRow, vbExclamation
             Exit Sub
         End If
-        scaleFactor = ToDouble(wsDash.Cells(dashRow, FLOW_SCALE).Value)
+        cellVal = wsDash.Cells(dashRow, FLOW_SCALE).Value
+        If IsNumeric(cellVal) Then scaleFactor = CDbl(cellVal)
         If scaleFactor = 0 Then scaleFactor = 1
-        dt = ToLong(wsDash.Cells(dashRow, FLOW_DT).Value)
+        cellVal = wsDash.Cells(dashRow, FLOW_DT).Value
+        If IsNumeric(cellVal) Then dt = CLng(cellVal)
         Set wsRaw = Worksheets("Raw Flow Data")
     Else
         sensorName = Trim(wsDash.Cells(dashRow, PRES_NAME).Value)
@@ -82,8 +88,10 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
             MsgBox "No sensor selected in Pressure row " & sRow, vbExclamation
             Exit Sub
         End If
-        offset = ToDouble(wsDash.Cells(dashRow, PRES_OFF).Value)
-        dt = ToLong(wsDash.Cells(dashRow, PRES_DT).Value)
+        cellVal = wsDash.Cells(dashRow, PRES_OFF).Value
+        If IsNumeric(cellVal) Then offset = CDbl(cellVal)
+        cellVal = wsDash.Cells(dashRow, PRES_DT).Value
+        If IsNumeric(cellVal) Then dt = CLng(cellVal)
         Set wsRaw = Worksheets("Raw Pressure Data")
     End If
 
@@ -107,44 +115,308 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
     Dim lastRow As Long
     lastRow = wsRaw.Cells(wsRaw.Rows.Count, 1).End(xlUp).Row
 
-    ' --- Apply transformation and write back into the Raw tab ---
+    ' --- Read entire sensor column into memory (one round-trip) ---
+    Dim dataRows As Long: dataRows = lastRow - 1   ' rows 2..lastRow
+    Dim srcArr  As Variant
+    Dim outArr  As Variant
+    srcArr = wsRaw.Range(wsRaw.Cells(2, sensorCol), _
+                         wsRaw.Cells(lastRow, sensorCol)).Value  ' 2-D array (n,1)
+    outArr = srcArr   ' copy preserves original; we overwrite valid entries below
+
+    ' --- Process in memory ---
     Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+
     Dim totalSaved As Long: totalSaved = 0
     Dim rawVal As Variant
-    Dim srcRow As Long
+    Dim srcIdx As Long
     Dim j As Long
 
-    For j = 2 To lastRow
-        srcRow = j - dt
-        If srcRow >= 2 And srcRow <= lastRow Then
-            rawVal = wsRaw.Cells(srcRow, sensorCol).Value
+    For j = 1 To dataRows             ' outArr is 1-based
+        srcIdx = j - dt               ' dt shift (array-relative)
+        If srcIdx >= 1 And srcIdx <= dataRows Then
+            rawVal = srcArr(srcIdx, 1)
             If IsNumeric(rawVal) And CDbl(rawVal) <> -999 Then
                 If isFlow Then
-                    wsRaw.Cells(j, sensorCol).Value = CDbl(rawVal) * scaleFactor
+                    outArr(j, 1) = CDbl(rawVal) * scaleFactor
                 Else
-                    wsRaw.Cells(j, sensorCol).Value = CDbl(rawVal) + offset
+                    outArr(j, 1) = CDbl(rawVal) + offset
                 End If
-                wsRaw.Cells(j, sensorCol).NumberFormat = "0.000"
                 totalSaved = totalSaved + 1
             End If
         End If
     Next j
 
+    ' --- Write back and format in two round-trips (vs. 2*n previously) ---
+    With wsRaw.Range(wsRaw.Cells(2, sensorCol), wsRaw.Cells(lastRow, sensorCol))
+        .Value = outArr
+        .NumberFormat = "0.000"
+    End With
+
+    Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
+
+    ' --- For pressure sensors: write elevation back to Point Index tab ---
+    If Not isFlow Then
+        SaveElevationToPointIndex sRow
+    End If
+
     MsgBox "Saved " & totalSaved & " values for '" & sensorName & _
            "' into " & wsRaw.Name & ".", vbInformation, "Save Complete"
 End Sub
 
 ' ===========================================================================
-' Safe numeric helpers
+' PopulateElevation  - looks up Z (m) from the "Point Index" tab for the
+'                      selected pressure sensor and writes it to col J.
+'                      Called automatically when a pressure sensor is chosen.
+' sRow : selector row index 1-20
 ' ===========================================================================
-Private Function ToDouble(v As Variant) As Double
-    If IsNumeric(v) Then ToDouble = CDbl(v)
-End Function
+Sub PopulateElevation(sRow As Long)
 
-Private Function ToLong(v As Variant) As Long
-    If IsNumeric(v) Then ToLong = CLng(v)
-End Function
+    Const SEL_START As Long = 3
+    Const PRES_NAME As Long = 7   ' G
+    Const PRES_ELEV As Long = 10  ' J
+
+    Dim wsDash As Worksheet
+    Set wsDash = Worksheets("Dashboard")
+
+    Dim dashRow As Long
+    dashRow = SEL_START + sRow - 1
+
+    Dim sensorName As String
+    sensorName = Trim(wsDash.Cells(dashRow, PRES_NAME).Value)
+
+    ' Clear elevation if no sensor selected
+    If sensorName = "" Then
+        wsDash.Cells(dashRow, PRES_ELEV).ClearContents
+        Exit Sub
+    End If
+
+    ' Find the "Point Index" worksheet
+    Dim wsIdx As Worksheet
+    Dim ws As Worksheet
+    For Each ws In ThisWorkbook.Worksheets
+        If LCase(Trim(ws.Name)) = "point index" Then
+            Set wsIdx = ws
+            Exit For
+        End If
+    Next ws
+    If wsIdx Is Nothing Then Exit Sub
+
+    ' Find "Point Ref" and "Z (m)" column headers
+    Dim lastHdrCol As Long
+    lastHdrCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    Dim pointRefCol As Long: pointRefCol = 0
+    Dim zCol As Long: zCol = 0
+    Dim c As Long
+    For c = 1 To lastHdrCol
+        Select Case Trim(wsIdx.Cells(1, c).Value)
+            Case "Point Ref": pointRefCol = c
+            Case "Z (m)":     zCol = c
+        End Select
+    Next c
+    If pointRefCol = 0 Or zCol = 0 Then Exit Sub
+
+    ' Look up the sensor and populate elevation
+    Dim lastRow As Long
+    lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
+    Dim r As Long
+    For r = 2 To lastRow
+        If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
+            wsDash.Cells(dashRow, PRES_ELEV).Value = wsIdx.Cells(r, zCol).Value
+            Exit Sub
+        End If
+    Next r
+
+    ' Sensor not found in Point Index — leave elevation blank
+    wsDash.Cells(dashRow, PRES_ELEV).ClearContents
+End Sub
+
+' ===========================================================================
+' SaveElevationToPointIndex  - writes the elevation value in col J back to
+'                              the "Point Index" tab Z (m) column.
+'                              Called by SaveOneSensor for pressure sensors.
+' sRow : selector row index 1-20
+' ===========================================================================
+Sub SaveElevationToPointIndex(sRow As Long)
+
+    Const SEL_START As Long = 3
+    Const PRES_NAME As Long = 7   ' G
+    Const PRES_ELEV As Long = 10  ' J
+
+    Dim wsDash As Worksheet
+    Set wsDash = Worksheets("Dashboard")
+
+    Dim dashRow As Long
+    dashRow = SEL_START + sRow - 1
+
+    Dim sensorName As String
+    sensorName = Trim(wsDash.Cells(dashRow, PRES_NAME).Value)
+    If sensorName = "" Then Exit Sub
+
+    Dim elevVal As Variant
+    elevVal = wsDash.Cells(dashRow, PRES_ELEV).Value
+    If Not IsNumeric(elevVal) Then Exit Sub
+
+    ' Find the "Point Index" worksheet
+    Dim wsIdx As Worksheet
+    Dim ws As Worksheet
+    For Each ws In ThisWorkbook.Worksheets
+        If LCase(Trim(ws.Name)) = "point index" Then
+            Set wsIdx = ws
+            Exit For
+        End If
+    Next ws
+    If wsIdx Is Nothing Then
+        MsgBox "Worksheet 'Point Index' not found.", vbExclamation
+        Exit Sub
+    End If
+
+    ' Find "Point Ref" and "Z (m)" column headers
+    Dim lastHdrCol As Long
+    lastHdrCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    Dim pointRefCol As Long: pointRefCol = 0
+    Dim zCol As Long: zCol = 0
+    Dim c As Long
+    For c = 1 To lastHdrCol
+        Select Case Trim(wsIdx.Cells(1, c).Value)
+            Case "Point Ref": pointRefCol = c
+            Case "Z (m)":     zCol = c
+        End Select
+    Next c
+    If pointRefCol = 0 Or zCol = 0 Then
+        MsgBox "Could not find 'Point Ref' or 'Z (m)' column in 'Point Index'.", vbExclamation
+        Exit Sub
+    End If
+
+    ' Find and update the matching row
+    Dim lastRow As Long
+    lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
+    Dim r As Long
+    For r = 2 To lastRow
+        If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
+            wsIdx.Cells(r, zCol).Value = CDbl(elevVal)
+            Exit Sub
+        End If
+    Next r
+
+    MsgBox "Sensor '" & sensorName & "' not found in 'Point Index'.", vbExclamation
+End Sub
+
+' ===========================================================================
+' ToggleElevationAdjust  - adds or removes the elevation Z (m) offset from
+'                          all active pressure columns in the formula table
+'                          for chart display purposes only.
+'
+' Toggle state is stored as the value of cell L7 on the Dashboard:
+'   "+Z OFF"  -> elevation not applied (normal pressure display)
+'   "+Z ON"   -> elevation applied (pressure + Z shown on chart)
+'
+' When turning ON : formula-table cells are overwritten with value + elevation.
+' When turning OFF: the original pressure formulas are rebuilt from the
+'                   known template so the chart returns to base values.
+'
+' NOTE: While the toggle is ON the pressure columns contain static values.
+'       Any changes to raw data will not update the chart until the toggle
+'       is turned OFF first and then back ON.
+' ===========================================================================
+Sub ToggleElevationAdjust()
+
+    Const SEL_START     As Long = 3
+    Const SEL_END       As Long = 22
+    Const PRES_NAME     As Long = 7   ' G
+    Const PRES_ELEV     As Long = 10  ' J
+    Const FT_START_ROW  As Long = 26  ' first formula-table data row
+    Const PRES_FT_FIRST As Long = 22  ' V  — first pressure formula-table column
+    Const TOGGLE_COL    As Long = 12  ' L
+    Const TOGGLE_ROW    As Long = 7   ' row of the toggle button (L7)
+
+    Dim wsDash As Worksheet
+    Set wsDash = Worksheets("Dashboard")
+
+    ' Determine current toggle state
+    Dim currentState As String
+    currentState = Trim(CStr(wsDash.Cells(TOGGLE_ROW, TOGGLE_COL).Value))
+    Dim turningOn As Boolean
+    turningOn = (LCase(currentState) <> "+z on")
+
+    ' Find last formula-table data row (date in col A)
+    Dim lastFTRow As Long
+    lastFTRow = wsDash.Cells(wsDash.Rows.Count, 1).End(xlUp).Row
+    If lastFTRow < FT_START_ROW Then
+        MsgBox "No formula table data found.", vbInformation
+        Exit Sub
+    End If
+
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+
+    Dim pIdx As Long   ' 0-based pressure sensor index (0 = sensor 1 in row 3)
+    For pIdx = 0 To (SEL_END - SEL_START)
+        Dim dashRow As Long
+        dashRow = SEL_START + pIdx
+
+        Dim sensorName As String
+        sensorName = Trim(wsDash.Cells(dashRow, PRES_NAME).Value)
+        If sensorName = "" Then GoTo NextSensor
+
+        Dim elevVal As Variant
+        elevVal = wsDash.Cells(dashRow, PRES_ELEV).Value
+        If Not IsNumeric(elevVal) Then GoTo NextSensor
+
+        Dim elev As Double
+        elev = CDbl(elevVal)
+        If elev = 0 Then GoTo NextSensor
+
+        Dim ftCol As Long
+        ftCol = PRES_FT_FIRST + pIdx   ' V for sensor 1, W for sensor 2, ...
+
+        Dim rng As Range
+        Set rng = wsDash.Range(wsDash.Cells(FT_START_ROW, ftCol), _
+                               wsDash.Cells(lastFTRow, ftCol))
+
+        If turningOn Then
+            ' Evaluate formulas, add elevation, store as static values
+            Dim arr As Variant
+            arr = rng.Value
+            Dim i As Long
+            For i = 1 To UBound(arr, 1)
+                If IsNumeric(arr(i, 1)) Then
+                    arr(i, 1) = CDbl(arr(i, 1)) + elev
+                End If
+            Next i
+            rng.Value = arr
+        Else
+            ' Rebuild original pressure formulas from the known template.
+            ' Use Chr(34) to embed double-quote chars without nested VBA string escapes.
+            Dim q As String: q = Chr(34)
+            Dim n As String
+            n = CStr(dashRow)
+            rng.Formula = "=IFERROR(IF($G$" & n & "=" & q & q & ",NA()," & _
+                "IF($M$5+ROW()-26>$M$6,NA()," & _
+                "IF(INDEX('Raw Pressure Data'!$A:$ZZ," & _
+                "$M$5+ROW()-26-$I$" & n & "," & _
+                "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))=-999,NA()," & _
+                "INDEX('Raw Pressure Data'!$A:$ZZ," & _
+                "$M$5+ROW()-26-$I$" & n & "," & _
+                "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))" & _
+                "+$H$" & n & "))),NA())"
+        End If
+
+NextSensor:
+    Next pIdx
+
+    ' Update toggle button label
+    wsDash.Cells(TOGGLE_ROW, TOGGLE_COL).Value = IIf(turningOn, "+Z ON", "+Z OFF")
+
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+
+    MsgBox IIf(turningOn, _
+        "Elevation added to all pressure series. Click again to remove.", _
+        "Elevation removed. Pressure formulas restored."), _
+        vbInformation, "Elevation Toggle"
+End Sub
 """
 
 VBA_SHEET = """\
@@ -152,12 +424,35 @@ VBA_SHEET = """\
 ' DASHBOARD SHEET MODULE CODE
 ' Paste into the Dashboard sheet module (double-click Sheet1 in Project tree)
 ' ===========================================================================
+
+' Worksheet_Change: auto-populates col J elevation when a pressure sensor
+'                   name is selected from the col G dropdown.
+Private Sub Worksheet_Change(ByVal Target As Range)
+
+    Const SEL_START As Long = 3
+    Const SEL_END   As Long = 22
+    Const PRES_NAME As Long = 7   ' G
+
+    If Target.Count > 1 Then Exit Sub
+
+    If Target.Column = PRES_NAME And _
+       Target.Row >= SEL_START And Target.Row <= SEL_END Then
+        Application.EnableEvents = False
+        PopulateElevation Target.Row - SEL_START + 1
+        Application.EnableEvents = True
+    End If
+End Sub
+
+' Worksheet_SelectionChange: handles the \U0001f4be click-to-save buttons and the
+'                            elevation toggle button (L7).
 Private Sub Worksheet_SelectionChange(ByVal Target As Range)
 
-    Const FLOW_SAVE_COL As Long = 5    ' E - flow 💾 cells
-    Const PRES_SAVE_COL As Long = 10   ' J - pres 💾 cells
-    Const SEL_START     As Long = 3    ' first selector row
-    Const SEL_END       As Long = 22   ' last selector row
+    Const FLOW_SAVE_COL   As Long = 5    ' E \u2014 flow \U0001f4be cells
+    Const PRES_SAVE_COL   As Long = 11   ' K \u2014 pres \U0001f4be cells
+    Const ELEV_TOGGLE_COL As Long = 12   ' L
+    Const ELEV_TOGGLE_ROW As Long = 7    ' L7 \u2014 elevation toggle button
+    Const SEL_START       As Long = 3    ' first selector row
+    Const SEL_END         As Long = 22   ' last selector row
 
     If Target.Count > 1 Then Exit Sub
 
@@ -174,6 +469,13 @@ Private Sub Worksheet_SelectionChange(ByVal Target As Range)
         Target.Offset(0, -1).Select
         Application.EnableEvents = True
         SaveOneSensor False, Target.Row - SEL_START + 1
+
+    ElseIf Target.Column = ELEV_TOGGLE_COL And _
+           Target.Row = ELEV_TOGGLE_ROW Then
+        Application.EnableEvents = False
+        Target.Offset(0, -1).Select
+        Application.EnableEvents = True
+        ToggleElevationAdjust
     End If
 End Sub
 """
@@ -267,17 +569,27 @@ def _build_instructions_xml():
         "         each pressure row independently.  Default Scale = 1.000, Offset = 0.000.",
         "Step 7:  The input cell for each series is coloured to match its chart line.",
         "         Flow lines and pressure lines are both solid.",
-        "Step 8:  Use the Chart Controls panel (cols K-L, top right of the Dashboard):",
+        "Step 8:  Use the Chart Controls panel (cols L-M, top right of the Dashboard):",
         "         \u2022 Start Date / End Date \u2014 enter dates to filter the formula table and chart.",
         "           Leave blank to show all available data.  Dates must exist in 'Raw Flow Data'.",
         "Step 9:  Each flow row (col D) and each pressure row (col I) has its own \u0394t cell.",
         "         Enter an integer to shift that series in time:",
         "         +2 = read from 2 timesteps later;  -3 = read from 3 timesteps earlier.",
         "         Use this to align sensors with different transit / delay times.",
-        "Step 10: Click a \U0001f4be cell (col E for flow, col J for pressure) to save that sensor.",
+        "Step 10: Col J (Elevation) is auto-populated from the 'Point Index' tab when a",
+        "         pressure sensor name is chosen.  You can override the value directly.",
+        "         Clicking the pressure \U0001f4be (col K) also writes the col J elevation back",
+        "         to the 'Point Index' tab Z (m) column.",
+        "Step 11: Click a \U0001f4be cell (col E for flow, col K for pressure) to save that sensor.",
         "         Scale / Offset / \u0394t are applied and the adjusted values are written directly",
         "         into the corresponding Raw tab, overwriting the original column in place.",
         "         IMPORTANT: Keep a backup of your raw data before clicking Save.",
+        "Step 12: Click the '+Z OFF' / '+Z ON' button (cell L7) to toggle elevation adjustment",
+        "         for all active pressure series on the chart.",
+        "         When ON, the chart displays  pressure + Z (m)  for every selected sensor.",
+        "         This is a display-only toggle — raw data is never modified.",
+        "         NOTE: While ON, pressure columns hold static values.  Turn OFF before",
+        "         making changes to raw data, then turn ON again to refresh the display.",
         "",
         "NOTE:  Up to 20 flow series (left Y-axis, blue/teal shades) and 20 pressure series",
         "       (right Y-axis, warm/cool shades) are shown simultaneously.",
@@ -359,8 +671,9 @@ def _build_instructions_xml():
         [_cell("A" + str(r), S_ITALIC,
                "Open VBA_Dashboard_Sheet.txt in Notepad, press Ctrl+A, Ctrl+C, then paste into "
                "the Dashboard sheet module (double-click 'Sheet1 (Dashboard)' in the Project tree). "
-               "This makes the \U0001f4be cells (col E for flow, col J for pressure, rows 3\u201322) "
-               "respond to a single click.")])); r += 1
+               "This makes the \U0001f4be cells (col E for flow, col K for pressure, rows 3\u201322) "
+               "respond to a single click, and auto-populates the col J elevation from the "
+               "'Point Index' tab when a pressure sensor is chosen.")])); r += 1
     blank(r); r += 1
 
     rows.append((r, 17, [_cell("A" + str(r), S_CODE, VBA_SHEET)])); r += 1
@@ -391,9 +704,26 @@ def _build_instructions_xml():
         "  Cols B-U  = Flow 1-20 Adjusted  (Name in B3-B22 \u00d7 Scale in C3-C22 + \u0394t in D3-D22)",
         "  Cols V-AO = Pres 1-20 Adjusted  (Name in G3-G22 + Offset in H3-H22 + \u0394t in I3-I22)",
         "",
-        "\U0001f4be Save buttons (col E = flow, col J = pressure):",
+        "Dashboard selector columns (rows 3-22):",
+        "  Col G = Pressure sensor name   Col H = Offset   Col I = \u0394t",
+        "  Col J = Elevation Z (m)        Col K = \U0001f4be Save",
+        "  Col L = Chart Controls labels  Col M = Chart Controls values",
+        "  L7    = '+Z OFF' / '+Z ON' elevation toggle button",
+        "",
+        "\U0001f4be Save buttons (col E = flow, col K = pressure):",
         "  Clicking \U0001f4be applies the current Scale / Offset / \u0394t and overwrites that",
-        "  sensor's column in the Raw tab.  Keep a backup before saving.",
+        "  sensor's column in the Raw tab.  For pressure sensors the elevation in",
+        "  col J is also written back to the 'Point Index' tab.  Keep a backup before saving.",
+        "",
+        "Elevation column (col J):",
+        "  Auto-populated from the 'Point Index' tab (column 'Point Ref' matched to",
+        "  'Z (m)') when a pressure sensor name is chosen.  Can be overridden manually.",
+        "  Changes are saved to Point Index when the \U0001f4be button is clicked.",
+        "",
+        "Elevation toggle (cell L7):",
+        "  Click '+Z OFF' to add Z (m) to all pressure series on the chart (display only).",
+        "  Click '+Z ON' to restore the original pressure formulas.",
+        "  Raw data is never modified by this toggle.",
         "",
         "Leave a Name cell blank to hide that series (formula returns empty, not plotted).",
     ]:
@@ -495,17 +825,187 @@ def _remove_mod_content_types(xml):
 def _clear_save_rest_cell(xml):
     """
     Clear the value of cell K7 (Save Rest button) in the Dashboard sheet XML.
-    The cell keeps its style but its shared-string value is removed.
+    Only acts on the original Save Rest shared-string (index 30); leaves
+    all other K7 content untouched to support idempotent re-runs.
     """
-    # Replace  <c r="K7" s="74" t="s"><v>30</v></c>
-    # with     <c r="K7" s="74"/>
+    # Replace the specific original pattern:
+    #   <c r="K7" s="74" t="s"><v>30</v></c>  (shared string 30 = "💾 Save Rest")
+    # with the empty self-closing form:
+    #   <c r="K7" s="74"/>
+    return xml.replace(
+        '<c r="K7" s="74" t="s"><v>30</v></c>',
+        '<c r="K7" s="74"/>',
+    )
+
+
+def _add_elevation_column(xml):
+    """
+    Modify the Dashboard sheet XML to add the elevation column (col J) and
+    shift the pressure save button from J to K, with chart-controls moving
+    from K/L to L/M.
+
+    Changes applied:
+      1. Replace $L$5 / $L$6 formula refs → $M$5 / $M$6 throughout.
+      2. Column widths: J wider (8), K narrow (5), L=14, 13-42 stays 13.
+      3. Row 1: extend title merge and spans to include M1.
+      4. Header row 2: J2=Z(m), K2=💾, L2=Chart Controls.
+      5. Rows 3-4: J→elevation, K→💾, chart-label K→L, date-value L→M.
+      6. Rows 5-6: J→elevation, K→💾, label K→L, formula L→M (updated refs).
+      7. Row 7: J→elevation, K→💾, L→toggle "+Z OFF".
+      8. Rows 8-22: J→elevation, add K→💾.
+      9. Update merge cells (A1:L1→A1:M1, K2:L2→L2:M2, remove K7:L7).
+    """
+    # ── 1. Global formula reference update ──────────────────────────────────
+    xml = xml.replace("$L$5", "$M$5").replace("$L$6", "$M$6")
+
+    # ── 2. Column widths ─────────────────────────────────────────────────────
+    xml = xml.replace(
+        '<col min="10" max="10" width="5" customWidth="1"/>',
+        '<col min="10" max="10" width="8" customWidth="1"/>',
+    )
+    xml = xml.replace(
+        '<col min="11" max="11" width="14" customWidth="1"/>',
+        '<col min="11" max="11" width="5" customWidth="1"/>'
+        '<col min="12" max="12" width="14" customWidth="1"/>',
+    )
+    xml = xml.replace(
+        '<col min="12" max="42" width="13" customWidth="1"/>',
+        '<col min="13" max="42" width="13" customWidth="1"/>',
+    )
+
+    # ── 3. Row 1: extend title to cover new M column ──────────────────────────
     xml = re.sub(
-        r'<c r="K7" s="\d+"[^>]*>.*?</c>',
-        lambda m: re.sub(r'\s+t="[^"]*"', "", m.group(0).split(">")[0]) + "/>",
+        r'<row r="1" spans="1:12"',
+        '<row r="1" spans="1:13"',
+        xml,
+        count=1,
+    )
+    # Add M1 only when it does not already follow L1 (idempotent)
+    xml = re.sub(
+        r'<c r="L1" s="73"/>(?!<c r="M1")',
+        '<c r="L1" s="73"/><c r="M1" s="73"/>',
+        xml,
+    )
+
+    # ── 4. Header row 2 ──────────────────────────────────────────────────────
+    # J2: 💾(22) → Z(m)(1351), same style s=7
+    # K2: Chart Controls(25) s=74 → 💾(22) s=7
+    # L2: empty s=73 → Chart Controls(25) s=74
+    xml = xml.replace(
+        '<c r="J2" s="7" t="s"><v>22</v></c>'
+        '<c r="K2" s="74" t="s"><v>25</v></c>'
+        '<c r="L2" s="73"/>',
+        '<c r="J2" s="7" t="s"><v>1351</v></c>'
+        '<c r="K2" s="7" t="s"><v>22</v></c>'
+        '<c r="L2" s="74" t="s"><v>25</v></c>',
+    )
+
+    # ── 5. Rows 3-4: chart-label K→L, date-value L→M ─────────────────────────
+    xml = xml.replace(
+        '<c r="J3" s="16" t="s"><v>22</v></c>'
+        '<c r="K3" s="17" t="s"><v>26</v></c>'
+        '<c r="L3" s="18"><v>46056</v></c>',
+        '<c r="J3" s="15"/>'
+        '<c r="K3" s="16" t="s"><v>22</v></c>'
+        '<c r="L3" s="17" t="s"><v>26</v></c>'
+        '<c r="M3" s="18"><v>46056</v></c>',
+    )
+    xml = xml.replace(
+        '<c r="J4" s="16" t="s"><v>22</v></c>'
+        '<c r="K4" s="17" t="s"><v>27</v></c>'
+        '<c r="L4" s="18"><v>46058</v></c>',
+        '<c r="J4" s="15"/>'
+        '<c r="K4" s="16" t="s"><v>22</v></c>'
+        '<c r="L4" s="17" t="s"><v>27</v></c>'
+        '<c r="M4" s="18"><v>46058</v></c>',
+    )
+
+    # ── 6. Rows 5-6: label K→L, formula L→M (updated $M$3/$M$4) ─────────────
+    m5_formula = (
+        "IF($M$3=\"\",2,IFERROR(MATCH($M$3,"
+        "'Raw Flow Data'!$A$2:$A$50001,1)+1,2))"
+    )
+    xml = re.sub(
+        r'<c r="J5" s="16" t="s"><v>22</v></c>'
+        r'<c r="K5" s="23" t="s"><v>28</v></c>'
+        r'<c r="L5" s="24">.*?</c>',
+        (
+            '<c r="J5" s="15"/>'
+            '<c r="K5" s="16" t="s"><v>22</v></c>'
+            '<c r="L5" s="23" t="s"><v>28</v></c>'
+            f'<c r="M5" s="24"><f>{m5_formula}</f><v>2</v></c>'
+        ),
         xml,
         flags=re.DOTALL,
     )
+    m6_formula = (
+        "IF($M$4=\"\",9999999,IFERROR(MATCH($M$4,"
+        "'Raw Flow Data'!$A$2:$A$50001,1)+1,9999999))"
+    )
+    xml = re.sub(
+        r'<c r="J6" s="16" t="s"><v>22</v></c>'
+        r'<c r="K6" s="23" t="s"><v>29</v></c>'
+        r'<c r="L6" s="24">.*?</c>',
+        (
+            '<c r="J6" s="15"/>'
+            '<c r="K6" s="16" t="s"><v>22</v></c>'
+            '<c r="L6" s="23" t="s"><v>29</v></c>'
+            f'<c r="M6" s="24"><f>{m6_formula}</f><v>9999999</v></c>'
+        ),
+        xml,
+        flags=re.DOTALL,
+    )
+
+    # ── 7. Row 7: handle both cleared K7 (s="74"/>) and original Save Rest ──────
+    # State 1: K7 already empty (previous script run)
+    xml = xml.replace(
+        '<c r="J7" s="16" t="s"><v>22</v></c>'
+        '<c r="K7" s="74"/>'
+        '<c r="L7" s="73"/>',
+        '<c r="J7" s="15"/>'
+        '<c r="K7" s="16" t="s"><v>22</v></c>'
+        '<c r="L7" s="74" t="inlineStr"><is><t>+Z OFF</t></is></c>',
+    )
+    # State 2: K7 still has original Save Rest shared-string (fresh Excel)
+    xml = re.sub(
+        r'<c r="J7" s="16" t="s"><v>22</v></c>'
+        r'<c r="K7" s="\d+" t="s"><v>\d+</v></c>'
+        r'<c r="L7" s="\d+"/>',
+        '<c r="J7" s="15"/>'
+        '<c r="K7" s="16" t="s"><v>22</v></c>'
+        '<c r="L7" s="74" t="inlineStr"><is><t>+Z OFF</t></is></c>',
+        xml,
+    )
+
+    # ── 8. Rows 8-22: J→elevation, add K=💾 ──────────────────────────────────
+    for r in range(8, 23):
+        xml = xml.replace(
+            f'<c r="J{r}" s="16" t="s"><v>22</v></c>',
+            f'<c r="J{r}" s="15"/>'
+            f'<c r="K{r}" s="16" t="s"><v>22</v></c>',
+        )
+
+    # ── 9. Spans for rows 3-6 (new M column) ─────────────────────────────────
+    for r in (3, 4, 5, 6):
+        xml = xml.replace(
+            f'<row r="{r}" spans="1:12"',
+            f'<row r="{r}" spans="1:13"',
+        )
+
+    # ── 10. Merge cells ───────────────────────────────────────────────────────
+    # Title row: A1:L1 → A1:M1
+    xml = xml.replace('<mergeCell ref="A1:L1"/>', '<mergeCell ref="A1:M1"/>')
+    # Chart Controls header: K2:L2 → L2:M2
+    xml = xml.replace('<mergeCell ref="K2:L2"/>', '<mergeCell ref="L2:M2"/>')
+    # Save Rest button merge no longer needed (K7 and L7 are separate)
+    xml = xml.replace('<mergeCell ref="K7:L7"/>', '')
+    # Update merge-cell count (6 → 5)
+    xml = xml.replace('<mergeCells count="6">', '<mergeCells count="5">')
+
     return xml
+
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -557,8 +1057,10 @@ def main():
                 print(f"  patched   {name}  (removed MOD content types)")
 
             elif name == "xl/worksheets/sheet1.xml":
-                data = _clear_save_rest_cell(data.decode("utf-8")).encode("utf-8")
-                print(f"  patched   {name}  (cleared Save Rest cell K7)")
+                txt = _clear_save_rest_cell(data.decode("utf-8"))
+                txt = _add_elevation_column(txt)
+                data = txt.encode("utf-8")
+                print(f"  patched   {name}  (elevation column, toggle button, chart-controls shift)")
 
             elif name == "xl/worksheets/sheet7.xml":
                 data = new_instr_xml
@@ -588,6 +1090,14 @@ def main():
     print("  1. Open 'Model Build Dashboard v1.21.xlsx' in Excel.")
     print("  2. Install the VBA macros (see Instructions sheet, section 4).")
     print("  3. Re-save the file as .xlsm to retain the macros.")
+    print()
+    print("New features in this build:")
+    print("  • Col J (Elevation Z m): auto-populated from 'Point Index' tab when a")
+    print("    pressure sensor is chosen. Can be overridden; saved to Point Index on 💾.")
+    print("  • Pressure save button moved from col J to col K.")
+    print("  • Chart Controls panel shifted from K/L to L/M.")
+    print("  • Cell L7 — elevation toggle button (+Z OFF / +Z ON): click to add or")
+    print("    remove the Z(m) elevation offset from all pressure chart series.")
 
 
 if __name__ == "__main__":

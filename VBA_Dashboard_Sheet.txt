@@ -2,12 +2,35 @@
 ' DASHBOARD SHEET MODULE CODE
 ' Paste into the Dashboard sheet module (double-click Sheet1 in Project tree)
 ' ===========================================================================
+
+' Worksheet_Change: auto-populates col J elevation when a pressure sensor
+'                   name is selected from the col G dropdown.
+Private Sub Worksheet_Change(ByVal Target As Range)
+
+    Const SEL_START As Long = 3
+    Const SEL_END   As Long = 22
+    Const PRES_NAME As Long = 7   ' G
+
+    If Target.Count > 1 Then Exit Sub
+
+    If Target.Column = PRES_NAME And _
+       Target.Row >= SEL_START And Target.Row <= SEL_END Then
+        Application.EnableEvents = False
+        PopulateElevation Target.Row - SEL_START + 1
+        Application.EnableEvents = True
+    End If
+End Sub
+
+' Worksheet_SelectionChange: handles the 💾 click-to-save buttons and the
+'                            elevation toggle button (L7).
 Private Sub Worksheet_SelectionChange(ByVal Target As Range)
 
-    Const FLOW_SAVE_COL As Long = 5    ' E - flow 💾 cells
-    Const PRES_SAVE_COL As Long = 10   ' J - pres 💾 cells
-    Const SEL_START     As Long = 3    ' first selector row
-    Const SEL_END       As Long = 22   ' last selector row
+    Const FLOW_SAVE_COL   As Long = 5    ' E — flow 💾 cells
+    Const PRES_SAVE_COL   As Long = 11   ' K — pres 💾 cells
+    Const ELEV_TOGGLE_COL As Long = 12   ' L
+    Const ELEV_TOGGLE_ROW As Long = 7    ' L7 — elevation toggle button
+    Const SEL_START       As Long = 3    ' first selector row
+    Const SEL_END         As Long = 22   ' last selector row
 
     If Target.Count > 1 Then Exit Sub
 
@@ -24,5 +47,12 @@ Private Sub Worksheet_SelectionChange(ByVal Target As Range)
         Target.Offset(0, -1).Select
         Application.EnableEvents = True
         SaveOneSensor False, Target.Row - SEL_START + 1
+
+    ElseIf Target.Column = ELEV_TOGGLE_COL And _
+           Target.Row = ELEV_TOGGLE_ROW Then
+        Application.EnableEvents = False
+        Target.Offset(0, -1).Select
+        Application.EnableEvents = True
+        ToggleElevationAdjust
     End If
 End Sub

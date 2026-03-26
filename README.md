@@ -53,11 +53,16 @@ Date              | AL012       | AL013       | AL014       | ...
    - `Scale` (col **C**, rows 3–22) — multiplies each flow by its own factor (default 1.000)
    - `Offset` (col **H**, rows 3–22) — adds a constant to each pressure (default 0.000)
    - `Δt` (col **D** / col **I**) — integer timestep shift to align sensors in time
+   - `Z (m)` (col **J**, rows 3–22) — elevation, auto-filled from the **Point Index** tab when a pressure sensor is chosen; can be overridden manually
 4. The **dual-axis chart** (20 flow series on left axis; 20 pressure on right) and
    **formula table** (rows 26+, cols A–AO) update instantly
-5. Click a **💾** cell (col **E** for flow, col **J** for pressure, rows 3–22) to apply the
+5. Click a **💾** cell (col **E** for flow, col **K** for pressure, rows 3–22) to apply the
    current Scale / Offset / Δt and write the adjusted values back into the Raw tab.  
+   For pressure sensors the col J elevation is also written back to the **Point Index** tab.  
    **Keep a backup of your original raw data before clicking Save.**
+6. Click the **+Z OFF** button (cell **L7**) to add the Z (m) elevation to all pressure
+   series on the chart for display purposes. Click **+Z ON** to restore base values.  
+   Raw data is never modified by this toggle.
 
 ### After pasting your own data
 Each Name dropdown reads directly from the Raw tab headers.  
