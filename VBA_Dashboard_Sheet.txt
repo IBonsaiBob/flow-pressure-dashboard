@@ -57,18 +57,18 @@ End Sub
 
 ' Worksheet_SelectionChange: handles the 💾 click-to-save buttons, PRN export
 '                            buttons (col F for flow, col L for pressure),
-'                            the elevation toggle button (N7), and the
-'                            Export All PRNs button (N10).
+'                            the elevation toggle button (M7), and the
+'                            Export All PRNs button (M10).
 Private Sub Worksheet_SelectionChange(ByVal Target As Range)
 
     Const FLOW_SAVE_COL   As Long = 5    ' E — flow 💾 cells
     Const FLOW_PRN_COL    As Long = 6    ' F — flow PRN export cells
     Const PRES_SAVE_COL   As Long = 11   ' K — pres 💾 cells
     Const PRES_PRN_COL    As Long = 12   ' L — pres PRN export cells
-    Const ELEV_TOGGLE_COL As Long = 14   ' N
-    Const ELEV_TOGGLE_ROW As Long = 7    ' N7 — elevation toggle button
-    Const EXPORT_ALL_COL  As Long = 14   ' N
-    Const EXPORT_ALL_ROW  As Long = 10   ' N10 — Export All PRNs button
+    Const ELEV_TOGGLE_COL As Long = 13   ' M
+    Const ELEV_TOGGLE_ROW As Long = 7    ' M7 — elevation toggle button
+    Const EXPORT_ALL_COL  As Long = 13   ' M
+    Const EXPORT_ALL_ROW  As Long = 10   ' M10 — Export All PRNs button
     Const SEL_START       As Long = 3    ' first selector row
     Const SEL_END         As Long = 22   ' last selector row
 

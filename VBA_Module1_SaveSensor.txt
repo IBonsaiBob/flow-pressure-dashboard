@@ -559,7 +559,7 @@ End Sub
 ' ===========================================================================
 Sub RefreshElevatedColumnIfOn(sRow As Long, wsDash As Worksheet, dashRow As Long)
 
-    Const TOGGLE_COL    As Long = 14  ' N
+    Const TOGGLE_COL    As Long = 13  ' M
     Const TOGGLE_ROW    As Long = 7
     Const FT_START_ROW  As Long = 26  ' first formula-table data row
     Const PRES_FT_FIRST As Long = 22  ' V = column 22
@@ -589,12 +589,12 @@ Sub RefreshElevatedColumnIfOn(sRow As Long, wsDash As Worksheet, dashRow As Long
     Dim q As String: q = Chr(34)
     Dim n As String: n = CStr(dashRow)
     ftrng.Formula = "=IFERROR(IF($G$" & n & "=" & q & q & ",NA()," & _
-        "IF($O$5+ROW()-26>$O$6,NA()," & _
+        "IF($N$5+ROW()-26>$N$6,NA()," & _
         "IF(INDEX('Raw Pressure Data'!$A:$ZZ," & _
-        "$O$5+ROW()-26-$I$" & n & "," & _
+        "$N$5+ROW()-26-$I$" & n & "," & _
         "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))=-999,NA()," & _
         "INDEX('Raw Pressure Data'!$A:$ZZ," & _
-        "$O$5+ROW()-26-$I$" & n & "," & _
+        "$N$5+ROW()-26-$I$" & n & "," & _
         "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))" & _
         "+$H$" & n & "))),NA())"
 
@@ -617,7 +617,7 @@ End Sub
 '                          all active pressure columns in the formula table
 '                          for chart display purposes only.
 '
-' Toggle state is stored as the value of cell N7 on the Dashboard:
+' Toggle state is stored as the value of cell M7 on the Dashboard:
 '   "+Z OFF"  -> elevation not applied (normal pressure display)
 '   "+Z ON"   -> elevation applied (pressure + Z shown on chart)
 '
@@ -637,8 +637,8 @@ Sub ToggleElevationAdjust()
     Const PRES_ELEV     As Long = 10  ' J
     Const FT_START_ROW  As Long = 26  ' first formula-table data row
     Const PRES_FT_FIRST As Long = 22  ' V  — first pressure formula-table column
-    Const TOGGLE_COL    As Long = 14  ' N
-    Const TOGGLE_ROW    As Long = 7   ' row of the toggle button (N7)
+    Const TOGGLE_COL    As Long = 13  ' M
+    Const TOGGLE_ROW    As Long = 7   ' row of the toggle button (M7)
 
     Dim wsDash As Worksheet
     Set wsDash = Worksheets("Dashboard")
@@ -702,12 +702,12 @@ Sub ToggleElevationAdjust()
             Dim n As String
             n = CStr(dashRow)
             rng.Formula = "=IFERROR(IF($G$" & n & "=" & q & q & ",NA()," & _
-                "IF($O$5+ROW()-26>$O$6,NA()," & _
+                "IF($N$5+ROW()-26>$N$6,NA()," & _
                 "IF(INDEX('Raw Pressure Data'!$A:$ZZ," & _
-                "$O$5+ROW()-26-$I$" & n & "," & _
+                "$N$5+ROW()-26-$I$" & n & "," & _
                 "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))=-999,NA()," & _
                 "INDEX('Raw Pressure Data'!$A:$ZZ," & _
-                "$O$5+ROW()-26-$I$" & n & "," & _
+                "$N$5+ROW()-26-$I$" & n & "," & _
                 "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))" & _
                 "+$H$" & n & "))),NA())"
         End If
@@ -733,9 +733,9 @@ End Sub
 ' Dashboard layout (rows 3-22):
 '   Col B (2)  = Flow name       Col F (6)  = Flow PRN button
 '   Col G (7)  = Pres name       Col L (12) = Pres PRN button
-'   Col N (14) = Client Name label   Col O (15) = Client Name value (row 8)
-'                                    Col O (15) = Export Path value  (row 9)
-'   Col N (14) = Export All PRNs button (row 10)
+'   Col M (13) = Client Name label   Col N (14) = Client Name value (row 8)
+'                                    Col N (14) = Export Path value  (row 9)
+'   Col M (13) = Export All PRNs button (row 10)
 '
 ' isFlow : True  = flow row (col B name, Raw Flow Data)
 '          False = pressure/depth row (col G name, Raw Pressure Data)
@@ -746,9 +746,9 @@ Sub ExportOnePRN(isFlow As Boolean, sRow As Long)
     Const SEL_START  As Long = 3
     Const FLOW_NAME  As Long = 2   ' B
     Const PRES_NAME  As Long = 7   ' G
-    Const CLIENT_ROW As Long = 8   ' O8 = client name value
-    Const PATH_ROW   As Long = 9   ' O9 = export path value
-    Const INPUT_COL  As Long = 15  ' O
+    Const CLIENT_ROW As Long = 8   ' N8 = client name value
+    Const PATH_ROW   As Long = 9   ' N9 = export path value
+    Const INPUT_COL  As Long = 14  ' N
 
     Dim wsDash As Worksheet
     Set wsDash = Worksheets("Dashboard")
@@ -777,7 +777,7 @@ Sub ExportOnePRN(isFlow As Boolean, sRow As Long)
     exportPath  = Trim(CStr(wsDash.Cells(PATH_ROW,   INPUT_COL).Value))
 
     If exportPath = "" Then
-        MsgBox "Please enter an Export Path in cell O9 on the Dashboard.", _
+        MsgBox "Please enter an Export Path in cell N9 on the Dashboard.", _
                vbExclamation, "Export Path Missing"
         Exit Sub
     End If
@@ -822,7 +822,7 @@ Sub ExportAllPRNs()
 
     Const CLIENT_ROW As Long = 8
     Const PATH_ROW   As Long = 9
-    Const INPUT_COL  As Long = 15  ' O
+    Const INPUT_COL  As Long = 14  ' N
 
     Dim wsDash As Worksheet
     Set wsDash = Worksheets("Dashboard")
@@ -833,7 +833,7 @@ Sub ExportAllPRNs()
     exportPath  = Trim(CStr(wsDash.Cells(PATH_ROW,   INPUT_COL).Value))
 
     If exportPath = "" Then
-        MsgBox "Please enter an Export Path in cell O9 on the Dashboard.", _
+        MsgBox "Please enter an Export Path in cell N9 on the Dashboard.", _
                vbExclamation, "Export Path Missing"
         Exit Sub
     End If

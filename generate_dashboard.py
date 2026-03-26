@@ -590,7 +590,7 @@ End Sub
 ' ===========================================================================
 Sub RefreshElevatedColumnIfOn(sRow As Long, wsDash As Worksheet, dashRow As Long)
 
-    Const TOGGLE_COL    As Long = 14  ' N
+    Const TOGGLE_COL    As Long = 13  ' M
     Const TOGGLE_ROW    As Long = 7
     Const FT_START_ROW  As Long = 26  ' first formula-table data row
     Const PRES_FT_FIRST As Long = 22  ' V = column 22
@@ -620,12 +620,12 @@ Sub RefreshElevatedColumnIfOn(sRow As Long, wsDash As Worksheet, dashRow As Long
     Dim q As String: q = Chr(34)
     Dim n As String: n = CStr(dashRow)
     ftrng.Formula = "=IFERROR(IF($G$" & n & "=" & q & q & ",NA()," & _
-        "IF($O$5+ROW()-26>$O$6,NA()," & _
+        "IF($N$5+ROW()-26>$N$6,NA()," & _
         "IF(INDEX('Raw Pressure Data'!$A:$ZZ," & _
-        "$O$5+ROW()-26-$I$" & n & "," & _
+        "$N$5+ROW()-26-$I$" & n & "," & _
         "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))=-999,NA()," & _
         "INDEX('Raw Pressure Data'!$A:$ZZ," & _
-        "$O$5+ROW()-26-$I$" & n & "," & _
+        "$N$5+ROW()-26-$I$" & n & "," & _
         "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))" & _
         "+$H$" & n & "))),NA())"
 
@@ -648,7 +648,7 @@ End Sub
 '                          all active pressure columns in the formula table
 '                          for chart display purposes only.
 '
-' Toggle state is stored as the value of cell N7 on the Dashboard:
+' Toggle state is stored as the value of cell M7 on the Dashboard:
 '   "+Z OFF"  -> elevation not applied (normal pressure display)
 '   "+Z ON"   -> elevation applied (pressure + Z shown on chart)
 '
@@ -668,8 +668,8 @@ Sub ToggleElevationAdjust()
     Const PRES_ELEV     As Long = 10  ' J
     Const FT_START_ROW  As Long = 26  ' first formula-table data row
     Const PRES_FT_FIRST As Long = 22  ' V  — first pressure formula-table column
-    Const TOGGLE_COL    As Long = 14  ' N
-    Const TOGGLE_ROW    As Long = 7   ' row of the toggle button (N7)
+    Const TOGGLE_COL    As Long = 13  ' M
+    Const TOGGLE_ROW    As Long = 7   ' row of the toggle button (M7)
 
     Dim wsDash As Worksheet
     Set wsDash = Worksheets("Dashboard")
@@ -733,12 +733,12 @@ Sub ToggleElevationAdjust()
             Dim n As String
             n = CStr(dashRow)
             rng.Formula = "=IFERROR(IF($G$" & n & "=" & q & q & ",NA()," & _
-                "IF($O$5+ROW()-26>$O$6,NA()," & _
+                "IF($N$5+ROW()-26>$N$6,NA()," & _
                 "IF(INDEX('Raw Pressure Data'!$A:$ZZ," & _
-                "$O$5+ROW()-26-$I$" & n & "," & _
+                "$N$5+ROW()-26-$I$" & n & "," & _
                 "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))=-999,NA()," & _
                 "INDEX('Raw Pressure Data'!$A:$ZZ," & _
-                "$O$5+ROW()-26-$I$" & n & "," & _
+                "$N$5+ROW()-26-$I$" & n & "," & _
                 "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))" & _
                 "+$H$" & n & "))),NA())"
         End If
@@ -764,9 +764,9 @@ End Sub
 ' Dashboard layout (rows 3-22):
 '   Col B (2)  = Flow name       Col F (6)  = Flow PRN button
 '   Col G (7)  = Pres name       Col L (12) = Pres PRN button
-'   Col N (14) = Client Name label   Col O (15) = Client Name value (row 8)
-'                                    Col O (15) = Export Path value  (row 9)
-'   Col N (14) = Export All PRNs button (row 10)
+'   Col M (13) = Client Name label   Col N (14) = Client Name value (row 8)
+'                                    Col N (14) = Export Path value  (row 9)
+'   Col M (13) = Export All PRNs button (row 10)
 '
 ' isFlow : True  = flow row (col B name, Raw Flow Data)
 '          False = pressure/depth row (col G name, Raw Pressure Data)
@@ -777,9 +777,9 @@ Sub ExportOnePRN(isFlow As Boolean, sRow As Long)
     Const SEL_START  As Long = 3
     Const FLOW_NAME  As Long = 2   ' B
     Const PRES_NAME  As Long = 7   ' G
-    Const CLIENT_ROW As Long = 8   ' O8 = client name value
-    Const PATH_ROW   As Long = 9   ' O9 = export path value
-    Const INPUT_COL  As Long = 15  ' O
+    Const CLIENT_ROW As Long = 8   ' N8 = client name value
+    Const PATH_ROW   As Long = 9   ' N9 = export path value
+    Const INPUT_COL  As Long = 14  ' N
 
     Dim wsDash As Worksheet
     Set wsDash = Worksheets("Dashboard")
@@ -808,7 +808,7 @@ Sub ExportOnePRN(isFlow As Boolean, sRow As Long)
     exportPath  = Trim(CStr(wsDash.Cells(PATH_ROW,   INPUT_COL).Value))
 
     If exportPath = "" Then
-        MsgBox "Please enter an Export Path in cell O9 on the Dashboard.", _
+        MsgBox "Please enter an Export Path in cell N9 on the Dashboard.", _
                vbExclamation, "Export Path Missing"
         Exit Sub
     End If
@@ -853,7 +853,7 @@ Sub ExportAllPRNs()
 
     Const CLIENT_ROW As Long = 8
     Const PATH_ROW   As Long = 9
-    Const INPUT_COL  As Long = 15  ' O
+    Const INPUT_COL  As Long = 14  ' N
 
     Dim wsDash As Worksheet
     Set wsDash = Worksheets("Dashboard")
@@ -864,7 +864,7 @@ Sub ExportAllPRNs()
     exportPath  = Trim(CStr(wsDash.Cells(PATH_ROW,   INPUT_COL).Value))
 
     If exportPath = "" Then
-        MsgBox "Please enter an Export Path in cell O9 on the Dashboard.", _
+        MsgBox "Please enter an Export Path in cell N9 on the Dashboard.", _
                vbExclamation, "Export Path Missing"
         Exit Sub
     End If
@@ -1188,18 +1188,18 @@ End Sub
 
 ' Worksheet_SelectionChange: handles the \U0001f4be click-to-save buttons, PRN export
 '                            buttons (col F for flow, col L for pressure),
-'                            the elevation toggle button (N7), and the
-'                            Export All PRNs button (N10).
+'                            the elevation toggle button (M7), and the
+'                            Export All PRNs button (M10).
 Private Sub Worksheet_SelectionChange(ByVal Target As Range)
 
     Const FLOW_SAVE_COL   As Long = 5    ' E \u2014 flow \U0001f4be cells
     Const FLOW_PRN_COL    As Long = 6    ' F \u2014 flow PRN export cells
     Const PRES_SAVE_COL   As Long = 11   ' K \u2014 pres \U0001f4be cells
     Const PRES_PRN_COL    As Long = 12   ' L \u2014 pres PRN export cells
-    Const ELEV_TOGGLE_COL As Long = 14   ' N
-    Const ELEV_TOGGLE_ROW As Long = 7    ' N7 \u2014 elevation toggle button
-    Const EXPORT_ALL_COL  As Long = 14   ' N
-    Const EXPORT_ALL_ROW  As Long = 10   ' N10 \u2014 Export All PRNs button
+    Const ELEV_TOGGLE_COL As Long = 13   ' M
+    Const ELEV_TOGGLE_ROW As Long = 7    ' M7 \u2014 elevation toggle button
+    Const EXPORT_ALL_COL  As Long = 13   ' M
+    Const EXPORT_ALL_ROW  As Long = 10   ' M10 \u2014 Export All PRNs button
     Const SEL_START       As Long = 3    ' first selector row
     Const SEL_END         As Long = 22   ' last selector row
 
@@ -1339,7 +1339,7 @@ def _build_instructions_xml():
         "         each pressure row independently.  Default Scale = 1.000, Offset = 0.000.",
         "Step 7:  The input cell for each series is coloured to match its chart line.",
         "         Flow lines and pressure lines are both solid.",
-        "Step 8:  Use the Chart Controls panel (cols L-M, top right of the Dashboard):",
+        "Step 8:  Use the Chart Controls panel (cols M-N, top right of the Dashboard):",
         "         \u2022 Start Date / End Date \u2014 enter dates to filter the formula table and chart.",
         "           Leave blank to show all available data.  Dates must exist in 'Raw Flow Data'.",
         "Step 9:  Each flow row (col D) and each pressure row (col I) has its own \u0394t cell.",
@@ -1354,7 +1354,7 @@ def _build_instructions_xml():
         "         Scale / Offset / \u0394t are applied and the adjusted values are written directly",
         "         into the corresponding Raw tab, overwriting the original column in place.",
         "         IMPORTANT: Keep a backup of your raw data before clicking Save.",
-        "Step 12: Click the '+Z OFF' / '+Z ON' button (cell L7) to toggle elevation adjustment",
+        "Step 12: Click the '+Z OFF' / '+Z ON' button (cell M7) to toggle elevation adjustment",
         "         for all active pressure series on the chart.",
         "         When ON, the chart displays  pressure + Z (m)  for every selected sensor.",
         "         This is a display-only toggle — raw data is never modified.",
@@ -1455,8 +1455,8 @@ def _build_instructions_xml():
         "Dashboard selector columns (rows 3-22):",
         "  Col G = Pressure sensor name   Col H = Offset   Col I = \u0394t",
         "  Col J = Elevation Z (m)        Col K = \U0001f4be Save",
-        "  Col L = Chart Controls labels  Col M = Chart Controls values",
-        "  L7    = '+Z OFF' / '+Z ON' elevation toggle button",
+        "  Col M = Chart Controls labels  Col N = Chart Controls values",
+        "  M7    = '+Z OFF' / '+Z ON' elevation toggle button",
         "",
         "\U0001f4be Save buttons (col E = flow, col K = pressure):",
         "  Clicking \U0001f4be applies the current Scale / Offset / \u0394t and overwrites that",
@@ -1468,7 +1468,7 @@ def _build_instructions_xml():
         "  'Z (m)') when a pressure sensor name is chosen.  Can be overridden manually.",
         "  Changes are saved to Point Index when the \U0001f4be button is clicked.",
         "",
-        "Elevation toggle (cell L7):",
+        "Elevation toggle (cell M7):",
         "  Click '+Z OFF' to add Z (m) to all pressure series on the chart (display only).",
         "  Click '+Z ON' to restore the original pressure formulas.",
         "  Raw data is never modified by this toggle.",
@@ -1586,6 +1586,18 @@ def _clear_save_rest_cell(xml):
     )
 
 
+def _z_elev_formula(r):
+    """Return the INDEX-MATCH Excel formula that looks up the Z (m) elevation
+    for the pressure sensor in dashboard row *r* from the Point Index sheet.
+    Using dynamic column lookup so it is robust to Point Index column changes.
+    """
+    return (
+        "=IFERROR(INDEX('Point Index'!$A:$K,"
+        f"MATCH($G{r},'Point Index'!$A:$A,0),"
+        "MATCH(\"Z (m)\",'Point Index'!$1:$1,0)),\"\")"
+    )
+
+
 def _add_elevation_column(xml):
     """
     Modify the Dashboard sheet XML to add the elevation column (col J) and
@@ -1653,7 +1665,7 @@ def _add_elevation_column(xml):
         '<c r="J3" s="16" t="s"><v>22</v></c>'
         '<c r="K3" s="17" t="s"><v>26</v></c>'
         '<c r="L3" s="18"><v>46056</v></c>',
-        '<c r="J3" s="15"/>'
+        '<c r="J3" s="15"><f>' + _z_elev_formula(3) + '</f></c>'
         '<c r="K3" s="16" t="s"><v>22</v></c>'
         '<c r="L3" s="17" t="s"><v>26</v></c>'
         '<c r="M3" s="18"><v>46056</v></c>',
@@ -1662,7 +1674,7 @@ def _add_elevation_column(xml):
         '<c r="J4" s="16" t="s"><v>22</v></c>'
         '<c r="K4" s="17" t="s"><v>27</v></c>'
         '<c r="L4" s="18"><v>46058</v></c>',
-        '<c r="J4" s="15"/>'
+        '<c r="J4" s="15"><f>' + _z_elev_formula(4) + '</f></c>'
         '<c r="K4" s="16" t="s"><v>22</v></c>'
         '<c r="L4" s="17" t="s"><v>27</v></c>'
         '<c r="M4" s="18"><v>46058</v></c>',
@@ -1678,7 +1690,7 @@ def _add_elevation_column(xml):
         r'<c r="K5" s="23" t="s"><v>28</v></c>'
         r'<c r="L5" s="24">.*?</c>',
         (
-            '<c r="J5" s="15"/>'
+            '<c r="J5" s="15"><f>' + _z_elev_formula(5) + '</f></c>'
             '<c r="K5" s="16" t="s"><v>22</v></c>'
             '<c r="L5" s="23" t="s"><v>28</v></c>'
             f'<c r="M5" s="24"><f>{m5_formula}</f><v>2</v></c>'
@@ -1695,7 +1707,7 @@ def _add_elevation_column(xml):
         r'<c r="K6" s="23" t="s"><v>29</v></c>'
         r'<c r="L6" s="24">.*?</c>',
         (
-            '<c r="J6" s="15"/>'
+            '<c r="J6" s="15"><f>' + _z_elev_formula(6) + '</f></c>'
             '<c r="K6" s="16" t="s"><v>22</v></c>'
             '<c r="L6" s="23" t="s"><v>29</v></c>'
             f'<c r="M6" s="24"><f>{m6_formula}</f><v>9999999</v></c>'
@@ -1710,7 +1722,7 @@ def _add_elevation_column(xml):
         '<c r="J7" s="16" t="s"><v>22</v></c>'
         '<c r="K7" s="74"/>'
         '<c r="L7" s="73"/>',
-        '<c r="J7" s="15"/>'
+        '<c r="J7" s="15"><f>' + _z_elev_formula(7) + '</f></c>'
         '<c r="K7" s="16" t="s"><v>22</v></c>'
         '<c r="L7" s="74" t="inlineStr"><is><t>+Z OFF</t></is></c>',
     )
@@ -1719,17 +1731,17 @@ def _add_elevation_column(xml):
         r'<c r="J7" s="16" t="s"><v>22</v></c>'
         r'<c r="K7" s="\d+" t="s"><v>\d+</v></c>'
         r'<c r="L7" s="\d+"/>',
-        '<c r="J7" s="15"/>'
+        '<c r="J7" s="15"><f>' + _z_elev_formula(7) + '</f></c>'
         '<c r="K7" s="16" t="s"><v>22</v></c>'
         '<c r="L7" s="74" t="inlineStr"><is><t>+Z OFF</t></is></c>',
         xml,
     )
 
-    # ── 8. Rows 8-22: J→elevation, add K=💾 ──────────────────────────────────
+    # ── 8. Rows 8-22: J→elevation formula, add K=💾 ───────────────────────────
     for r in range(8, 23):
         xml = xml.replace(
             f'<c r="J{r}" s="16" t="s"><v>22</v></c>',
-            f'<c r="J{r}" s="15"/>'
+            f'<c r="J{r}" s="15"><f>{_z_elev_formula(r)}</f></c>'
             f'<c r="K{r}" s="16" t="s"><v>22</v></c>',
         )
 
@@ -1738,6 +1750,15 @@ def _add_elevation_column(xml):
         xml = xml.replace(
             f'<row r="{r}" spans="1:12"',
             f'<row r="{r}" spans="1:13"',
+        )
+
+    # ── 9b. Fallback: ensure J cells have elevation formula ──────────────────
+    # If rows 3-22 J cells are still self-closing blanks (previous script run),
+    # replace them with formula cells.
+    for r in range(3, 23):
+        xml = xml.replace(
+            f'<c r="J{r}" s="15"/>',
+            f'<c r="J{r}" s="15"><f>{_z_elev_formula(r)}</f></c>',
         )
 
     # ── 10. Merge cells ───────────────────────────────────────────────────────
@@ -1754,6 +1775,49 @@ def _add_elevation_column(xml):
 
 
 # ---------------------------------------------------------------------------
+# Styles patch – add F/G divider border
+# ---------------------------------------------------------------------------
+
+def _patch_styles_add_divider_border(xml):
+    """
+    Add a new border (index 4) with a thick right edge in dark navy to styles.xml,
+    then add two new cellXf styles (80 = s7-variant, 81 = s16-variant) that use
+    this border.  These are applied to F column cells to create a visible divider
+    between the Flow section and the Pressure section.
+
+    Idempotent: skips if <borders count="5"> already present.
+    """
+    if '<borders count="5">' in xml:
+        return xml
+
+    new_border = (
+        '<border>'
+        '<left style="thin"><color auto="1"/></left>'
+        '<right style="thick"><color rgb="FF1F3864"/></right>'
+        '<top style="thin"><color auto="1"/></top>'
+        '<bottom style="thin"><color auto="1"/></bottom>'
+        '<diagonal/>'
+        '</border>'
+    )
+    xml = xml.replace('<borders count="4">', '<borders count="5">')
+    xml = xml.replace('</borders>', new_border + '</borders>', 1)
+
+    new_xf_80 = (
+        '<xf numFmtId="0" fontId="3" fillId="4" borderId="4" xfId="0"'
+        ' applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">'
+        '<alignment horizontal="center" vertical="center"/></xf>'
+    )
+    new_xf_81 = (
+        '<xf numFmtId="0" fontId="7" fillId="4" borderId="4" xfId="0"'
+        ' applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">'
+        '<alignment horizontal="center" vertical="center"/></xf>'
+    )
+    xml = xml.replace('<cellXfs count="80">', '<cellXfs count="82">')
+    xml = xml.replace('</cellXfs>', new_xf_80 + new_xf_81 + '</cellXfs>', 1)
+    return xml
+
+
+# ---------------------------------------------------------------------------
 # PRN button layout and Point Index Logger ID
 # ---------------------------------------------------------------------------
 
@@ -1761,195 +1825,296 @@ def _add_prn_buttons(xml):
     """
     Repurpose column F (was '#' row numbers) as Flow PRN export buttons and
     column L (was chart-controls labels) as Pres PRN export buttons.
-    Move the chart-controls panel from L-M (rows 3-7) to N-O (rows 3-7).
-    Add Client Name (N8/O8), Export Path (N9/O9), and 'All PRNs' button (N10).
+    Move the chart-controls panel to M-N (rows 3-10), removing blank column M.
+    Add Client Name (M8/N8), Export Path (M9/N9), and 'All PRNs' button (M10).
+
+    Handles two input states idempotently:
+      State A: fresh file output from _add_elevation_column (chart controls at L/M)
+      State B: previously-processed file (chart controls at N/O, from old script run)
 
     Column layout after this function:
-      F  (6)  = Flow PRN button  (was row '#' numbers)
-      L  (12) = Pres PRN button  (was chart-labels column)
-      N  (14) = Chart Controls labels (was L)
-      O  (15) = Chart Controls values (was M)
+      F  (6)  = Flow PRN button — thick right border (styles 80/81)
+      L  (12) = Pres PRN button
+      M  (13) = Chart Controls labels
+      N  (14) = Chart Controls values
 
-    VBA constants updated accordingly:
-      TOGGLE_COL         12 (L) -> 14 (N)
-      Chart value refs   $M$3/$M$4/$M$5/$M$6 -> $O$3/$O$4/$O$5/$O$6
+    VBA constants: TOGGLE_COL 12(L)/14(N) → 13(M);  INPUT_COL 15(O) → 14(N)
     """
-    # Idempotent guard: skip if N7 already has the toggle
-    if 'r="N7"' in xml and '+Z ' in xml[xml.find('r="N7"'):xml.find('r="N7"')+120]:
+    # Idempotent guard: skip only when both M7 toggle and correct F-column styles
+    # are already in place (all F3-F22 use s=81).
+    if ('r="M7"' in xml
+            and '+Z ' in xml[xml.find('r="M7"'):xml.find('r="M7"')+120]
+            and '<c r="F3" s="81"' in xml):
         return xml
 
-    # ── 1. Global formula reference updates ──────────────────────────────────
+    # ── 1. Global formula reference normalisation ─────────────────────────────
+    # Handles State A ($M$n) and State B ($O$n) → final $N$n
     xml = (xml
-        .replace("$M$3", "$O$3")
-        .replace("$M$4", "$O$4")
-        .replace("$M$5", "$O$5")
-        .replace("$M$6", "$O$6")
+        .replace("$M$3", "$N$3").replace("$O$3", "$N$3")
+        .replace("$M$4", "$N$4").replace("$O$4", "$N$4")
+        .replace("$M$5", "$N$5").replace("$O$5", "$N$5")
+        .replace("$M$6", "$N$6").replace("$O$6", "$N$6")
     )
 
     # ── 2. Column widths ──────────────────────────────────────────────────────
-    # Split the 13-42 range to add N(14) = 14 wide
+    # State A: single range 13-42 → split to M(13)=14, N+(14)=13
     xml = xml.replace(
         '<col min="13" max="42" width="13" customWidth="1"/>',
+        '<col min="13" max="13" width="14" customWidth="1"/>'
+        '<col min="14" max="42" width="13" customWidth="1"/>',
+    )
+    # State B: already 3-part (13=13, 14=14, 15-42=13) → collapse to 2-part
+    xml = xml.replace(
         '<col min="13" max="13" width="13" customWidth="1"/>'
         '<col min="14" max="14" width="14" customWidth="1"/>'
         '<col min="15" max="42" width="13" customWidth="1"/>',
+        '<col min="13" max="13" width="14" customWidth="1"/>'
+        '<col min="14" max="42" width="13" customWidth="1"/>',
     )
 
-    # ── 3. Row 2: F2 "#" header → "PRN"; L2 "Chart Controls" → "PRN"; add N2 ──
+    # ── 3. Row 2: F2 header → PRN with divider; add M2 Chart Controls ─────────
+    # State A: F2 has "#" shared string
     xml = xml.replace(
         '<c r="F2" s="7" t="s"><v>18</v></c>',
-        '<c r="F2" s="7" t="inlineStr"><is><t>PRN</t></is></c>',
+        '<c r="F2" s="80" t="inlineStr"><is><t>PRN</t></is></c>',
     )
+    # State B: F2 already "PRN" inlineStr with s=7 → update style to 80
+    xml = xml.replace(
+        '<c r="F2" s="7" t="inlineStr"><is><t>PRN</t></is></c>',
+        '<c r="F2" s="80" t="inlineStr"><is><t>PRN</t></is></c>',
+    )
+    # State A: L2 has "Chart Controls" shared string → L2=PRN + M2=Chart Controls
     xml = xml.replace(
         '<c r="L2" s="74" t="s"><v>25</v></c>',
         '<c r="L2" s="7" t="inlineStr"><is><t>PRN</t></is></c>'
+        '<c r="M2" s="74" t="inlineStr"><is><t>Chart Controls</t></is></c>',
+    )
+    # State B: N2 already has Chart Controls inlineStr → rename to M2
+    xml = xml.replace(
         '<c r="N2" s="74" t="inlineStr"><is><t>Chart Controls</t></is></c>',
+        '<c r="M2" s="74" t="inlineStr"><is><t>Chart Controls</t></is></c>',
     )
     xml = xml.replace('<row r="2" spans="1:12"', '<row r="2" spans="1:14"')
 
-    # ── 4. Row 3: F3→PRN, L3 "Start ►"→PRN and move to N3, M3 date→O3 ──────
-    xml = xml.replace(
-        '<c r="L3" s="17" t="s"><v>26</v></c>'
-        '<c r="M3" s="18"><v>46056</v></c>',
-        '<c r="L3" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
-        '<c r="N3" s="17" t="s"><v>26</v></c>'
-        '<c r="O3" s="18"><v>46056</v></c>',
-    )
-    xml = re.sub(
-        r'<c r="F3" s="\d+"><v>1</v></c>',
-        '<c r="F3" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
-        xml,
-    )
+    # ── 4. Rows 3-4: Start/End date labels and values ─────────────────────────
+    for r, ss_label, date_val in [(3, 26, 46056), (4, 27, 46058)]:
+        # State A: L{r}=label(shared-str), M{r}=date → L=PRN, M=label, N=date
+        xml = xml.replace(
+            f'<c r="L{r}" s="17" t="s"><v>{ss_label}</v></c>'
+            f'<c r="M{r}" s="18"><v>{date_val}</v></c>',
+            f'<c r="L{r}" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+            f'<c r="M{r}" s="17" t="s"><v>{ss_label}</v></c>'
+            f'<c r="N{r}" s="18"><v>{date_val}</v></c>',
+        )
+        # State B: N{r}=label, O{r}=date → M=label, N=date
+        xml = xml.replace(
+            f'<c r="N{r}" s="17" t="s"><v>{ss_label}</v></c>'
+            f'<c r="O{r}" s="18"><v>{date_val}</v></c>',
+            f'<c r="M{r}" s="17" t="s"><v>{ss_label}</v></c>'
+            f'<c r="N{r}" s="18"><v>{date_val}</v></c>',
+        )
+        # F3/F4: replace row number cell (State A) with PRN button
+        xml = re.sub(
+            rf'<c r="F{r}" s="\d+"><v>{r - 2}</v></c>',
+            f'<c r="F{r}" s="81" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+            xml,
+        )
 
-    # ── 5. Row 4: F4→PRN, L4 "End ►"→PRN and move to N4, M4 date→O4 ────────
-    xml = xml.replace(
-        '<c r="L4" s="17" t="s"><v>27</v></c>'
-        '<c r="M4" s="18"><v>46058</v></c>',
-        '<c r="L4" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
-        '<c r="N4" s="17" t="s"><v>27</v></c>'
-        '<c r="O4" s="18"><v>46058</v></c>',
-    )
-    xml = re.sub(
-        r'<c r="F4" s="\d+"><v>2</v></c>',
-        '<c r="F4" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
-        xml,
-    )
-
-    # ── 6. Row 5: F5→PRN, L5 "* s.row:"→PRN+N5, M5 formula→O5 ──────────────
-    o5_formula = (
-        "IF($O$3=\"\",2,IFERROR(MATCH($O$3,"
+    # ── 5. Row 5: * s.row: label and start-row formula ────────────────────────
+    n5_formula = (
+        "IF($N$3=\"\",2,IFERROR(MATCH($N$3,"
         "'Raw Flow Data'!$A$2:$A$50001,1)+1,2))"
     )
+    # State A: J5=blank/formula, K5=💾, L5=label, M5=formula
     xml = re.sub(
-        r'<c r="J5" s="15"/>'
+        r'<c r="J5" s="15">(?:<f>[^<]*</f>)?</c>'
         r'<c r="K5" s="16" t="s"><v>22</v></c>'
         r'<c r="L5" s="23" t="s"><v>28</v></c>'
         r'<c r="M5" s="24">.*?</c>',
         (
-            '<c r="J5" s="15"/>'
+            '<c r="J5" s="15"><f>' + _z_elev_formula(5) + '</f></c>'
             '<c r="K5" s="16" t="s"><v>22</v></c>'
             '<c r="L5" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
-            '<c r="N5" s="23" t="s"><v>28</v></c>'
-            f'<c r="O5" s="24"><f>{o5_formula}</f><v>2</v></c>'
+            '<c r="M5" s="23" t="s"><v>28</v></c>'
+            f'<c r="N5" s="24"><f>{n5_formula}</f><v>2</v></c>'
+        ),
+        xml,
+        flags=re.DOTALL,
+    )
+    # State B: N5=label, O5=formula → M5=label, N5=formula
+    xml = re.sub(
+        r'<c r="N5" s="23" t="s"><v>28</v></c>'
+        r'<c r="O5" s="24">.*?</c>',
+        (
+            '<c r="M5" s="23" t="s"><v>28</v></c>'
+            f'<c r="N5" s="24"><f>{n5_formula}</f><v>2</v></c>'
         ),
         xml,
         flags=re.DOTALL,
     )
     xml = re.sub(
         r'<c r="F5" s="\d+"><v>3</v></c>',
-        '<c r="F5" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+        '<c r="F5" s="81" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
         xml,
     )
 
-    # ── 7. Row 6: F6→PRN, L6 "* e.row:"→PRN+N6, M6 formula→O6 ──────────────
-    o6_formula = (
-        "IF($O$4=\"\",9999999,IFERROR(MATCH($O$4,"
+    # ── 6. Row 6: * e.row: label and end-row formula ──────────────────────────
+    n6_formula = (
+        "IF($N$4=\"\",9999999,IFERROR(MATCH($N$4,"
         "'Raw Flow Data'!$A$2:$A$50001,1)+1,9999999))"
     )
+    # State A
     xml = re.sub(
-        r'<c r="J6" s="15"/>'
+        r'<c r="J6" s="15">(?:<f>[^<]*</f>)?</c>'
         r'<c r="K6" s="16" t="s"><v>22</v></c>'
         r'<c r="L6" s="23" t="s"><v>29</v></c>'
         r'<c r="M6" s="24">.*?</c>',
         (
-            '<c r="J6" s="15"/>'
+            '<c r="J6" s="15"><f>' + _z_elev_formula(6) + '</f></c>'
             '<c r="K6" s="16" t="s"><v>22</v></c>'
             '<c r="L6" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
-            '<c r="N6" s="23" t="s"><v>29</v></c>'
-            f'<c r="O6" s="24"><f>{o6_formula}</f><v>9999999</v></c>'
+            '<c r="M6" s="23" t="s"><v>29</v></c>'
+            f'<c r="N6" s="24"><f>{n6_formula}</f><v>9999999</v></c>'
+        ),
+        xml,
+        flags=re.DOTALL,
+    )
+    # State B
+    xml = re.sub(
+        r'<c r="N6" s="23" t="s"><v>29</v></c>'
+        r'<c r="O6" s="24">.*?</c>',
+        (
+            '<c r="M6" s="23" t="s"><v>29</v></c>'
+            f'<c r="N6" s="24"><f>{n6_formula}</f><v>9999999</v></c>'
         ),
         xml,
         flags=re.DOTALL,
     )
     xml = re.sub(
         r'<c r="F6" s="\d+"><v>4</v></c>',
-        '<c r="F6" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+        '<c r="F6" s="81" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
         xml,
     )
 
-    # Update spans for rows 3-6 (now have cells up to O = col 15)
+    # Update spans for rows 3-6 → 1:14
     for r in (3, 4, 5, 6):
-        xml = xml.replace(f'<row r="{r}" spans="1:13"', f'<row r="{r}" spans="1:15"')
+        xml = xml.replace(f'<row r="{r}" spans="1:13"', f'<row r="{r}" spans="1:14"')
+        xml = xml.replace(f'<row r="{r}" spans="1:15"', f'<row r="{r}" spans="1:14"')
 
-    # ── 8. Row 7: F7→PRN, L7 toggle→N7, L7→PRN ──────────────────────────────
-    xml = xml.replace(
-        '<c r="J7" s="15"/>'
-        '<c r="K7" s="16" t="s"><v>22</v></c>'
-        '<c r="L7" s="74" t="inlineStr"><is><t>+Z OFF</t></is></c>',
-        '<c r="J7" s="15"/>'
-        '<c r="K7" s="16" t="s"><v>22</v></c>'
-        '<c r="L7" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
-        '<c r="N7" s="74" t="inlineStr"><is><t>+Z OFF</t></is></c>',
+    # ── 7. Row 7: toggle button → M7 (merged M7:N7), L7 → PRN ────────────────
+    # State A: L7="+Z OFF/ON" toggle (from _add_elevation_column)
+    for toggle_val in ('+Z OFF', '+Z ON'):
+        xml = xml.replace(
+            '<c r="J7" s="15"><f>' + _z_elev_formula(7) + '</f></c>'
+            '<c r="K7" s="16" t="s"><v>22</v></c>'
+            f'<c r="L7" s="74" t="inlineStr"><is><t>{toggle_val}</t></is></c>',
+            '<c r="J7" s="15"><f>' + _z_elev_formula(7) + '</f></c>'
+            '<c r="K7" s="16" t="s"><v>22</v></c>'
+            '<c r="L7" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+            f'<c r="M7" s="74" t="inlineStr"><is><t>{toggle_val}</t></is></c>',
+        )
+    # State B: N7 has toggle → rename to M7, ensure L7=PRN exists
+    for toggle_val in ('+Z OFF', '+Z ON'):
+        # With L7 already PRN (either style)
+        xml = re.sub(
+            r'<c r="L7" s="\d+" t="inlineStr"><is><t>' + '\U0001f4c4' + r'</t></is></c>'
+            + re.escape(f'<c r="N7" s="74" t="inlineStr"><is><t>{toggle_val}</t></is></c>'),
+            '<c r="L7" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+            f'<c r="M7" s="74" t="inlineStr"><is><t>{toggle_val}</t></is></c>',
+            xml,
+        )
+        # Without L7 (rare, bare N7)
+        xml = xml.replace(
+            f'<c r="N7" s="74" t="inlineStr"><is><t>{toggle_val}</t></is></c>',
+            '<c r="L7" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+            f'<c r="M7" s="74" t="inlineStr"><is><t>{toggle_val}</t></is></c>',
+        )
+    # Normalize L7 to standard PRN style in case a previous partial run set it wrong
+    xml = re.sub(
+        r'<c r="L7" s="\d+" t="inlineStr"><is><t>' + '\U0001f4c4' + r'</t></is></c>',
+        '<c r="L7" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+        xml,
     )
     xml = re.sub(
         r'<c r="F7" s="\d+"><v>5</v></c>',
-        '<c r="F7" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+        '<c r="F7" s="81" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
         xml,
     )
     xml = xml.replace('<row r="7" spans="1:12"', '<row r="7" spans="1:14"')
+    xml = xml.replace('<row r="7" spans="1:14"', '<row r="7" spans="1:14"')  # noop
 
-    # ── 9. Rows 8-22: F→PRN, add L→PRN (K cell already exists in each row) ──
-    for r in range(8, 23):
-        val = r - 2  # F8=6, F9=7, ..., F22=20
+    # ── 8. Rows 8-22: F→PRN, ensure L→PRN ────────────────────────────────────
+    for r in range(3, 23):
+        val = r - 2
         xml = re.sub(
             rf'<c r="F{r}" s="\d+"><v>{val}</v></c>',
-            f'<c r="F{r}" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+            f'<c r="F{r}" s="81" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
             xml,
         )
-        # Add L PRN button immediately after the K button cell
-        k_cell = f'<c r="K{r}" s="16" t="s"><v>22</v></c>'
-        l_cell = f'<c r="L{r}" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
-        xml = xml.replace(k_cell, k_cell + l_cell)
+        # Update F style 16→81 if already a PRN button (State B re-run)
+        xml = xml.replace(
+            f'<c r="F{r}" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+            f'<c r="F{r}" s="81" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
+        )
+        if r >= 8:
+            # Ensure L PRN button exists (add after K if missing)
+            k_cell = f'<c r="K{r}" s="16" t="s"><v>22</v></c>'
+            l_cell = f'<c r="L{r}" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+            if l_cell not in xml:
+                xml = xml.replace(k_cell, k_cell + l_cell)
 
-    # ── 10. Rows 8/9/10: add Client Name, Export Path, All PRNs inputs ────────
-    # Row 8: Client Name label N8, empty input O8
-    xml = xml.replace(
-        f'<c r="L8" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
-        f'<c r="L8" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
-        f'<c r="N8" s="17" t="inlineStr"><is><t>Client Name:</t></is></c>'
-        f'<c r="O8" s="18"/>',
-    )
-    # Row 9: Export Path label N9, empty input O9
-    xml = xml.replace(
-        f'<c r="L9" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
-        f'<c r="L9" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
-        f'<c r="N9" s="17" t="inlineStr"><is><t>Export Path:</t></is></c>'
-        f'<c r="O9" s="18"/>',
-    )
-    # Row 10: All PRNs button N10 (dark-blue style like toggle)
-    xml = xml.replace(
-        f'<c r="L10" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>',
-        f'<c r="L10" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
-        f'<c r="N10" s="74" t="inlineStr"><is><t>\U0001f4c4 All PRNs</t></is></c>',
-    )
+    # ── 9. Rows 8/9/10: Client Name, Export Path, All PRNs ───────────────────
+    for r, label in [(8, 'Client Name:'), (9, 'Export Path:')]:
+        # State B: N{r}=label, O{r}=input → M{r}=label, N{r}=input
+        xml = xml.replace(
+            f'<c r="N{r}" s="17" t="inlineStr"><is><t>{label}</t></is></c>'
+            f'<c r="O{r}" s="18"/>',
+            f'<c r="M{r}" s="17" t="inlineStr"><is><t>{label}</t></is></c>'
+            f'<c r="N{r}" s="18"/>',
+        )
+        # State A: add M{r}+N{r} after L{r} (no N{r}/O{r} yet)
+        l_btn = f'<c r="L{r}" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+        m_cell = f'<c r="M{r}" s="17" t="inlineStr"><is><t>{label}</t></is></c>'
+        n_cell = f'<c r="N{r}" s="18"/>'
+        if m_cell not in xml:
+            xml = xml.replace(l_btn, l_btn + m_cell + n_cell)
 
-    # ── 11. Spans for rows 8/9/10 (extend to O=15 or N=14) ───────────────────
-    xml = xml.replace('<row r="8" spans="1:12"',  '<row r="8" spans="1:15"')
-    xml = xml.replace('<row r="9" spans="1:12"',  '<row r="9" spans="1:15"')
-    xml = xml.replace('<row r="10" spans="1:12"', '<row r="10" spans="1:14"')
+    # Row 10: All PRNs
+    # State B: N10 → M10
+    xml = xml.replace(
+        '<c r="N10" s="74" t="inlineStr"><is><t>\U0001f4c4 All PRNs</t></is></c>',
+        '<c r="M10" s="74" t="inlineStr"><is><t>\U0001f4c4 All PRNs</t></is></c>',
+    )
+    # State A: add M10 after L10
+    l10 = '<c r="L10" s="16" t="inlineStr"><is><t>\U0001f4c4</t></is></c>'
+    m10 = '<c r="M10" s="74" t="inlineStr"><is><t>\U0001f4c4 All PRNs</t></is></c>'
+    if m10 not in xml:
+        xml = xml.replace(l10, l10 + m10)
 
-    # ── 12. Merge cells: L2:M2 → N2:O2 ──────────────────────────────────────
-    xml = xml.replace('<mergeCell ref="L2:M2"/>', '<mergeCell ref="N2:O2"/>')
+    # ── 10. Spans for rows 7-10 ───────────────────────────────────────────────
+    for r in (8, 9, 10):
+        for old_span in ('1:12', '1:14', '1:15'):
+            xml = xml.replace(f'<row r="{r}" spans="{old_span}"',
+                              f'<row r="{r}" spans="1:14"')
+
+    # ── 11. Merge cells ────────────────────────────────────────────────────────
+    # State A: L2:M2 → M2:N2
+    xml = xml.replace('<mergeCell ref="L2:M2"/>', '<mergeCell ref="M2:N2"/>')
+    # State B: N2:O2 → M2:N2
+    xml = xml.replace('<mergeCell ref="N2:O2"/>', '<mergeCell ref="M2:N2"/>')
+
+    # Add M7:N7 and M10:N10 if not already present
+    if '<mergeCell ref="M7:N7"/>' not in xml:
+        xml = re.sub(
+            r'<mergeCells count="(\d+)">',
+            lambda m: f'<mergeCells count="{int(m.group(1)) + 2}">',
+            xml, count=1,
+        )
+        xml = xml.replace(
+            '</mergeCells>',
+            '<mergeCell ref="M7:N7"/><mergeCell ref="M10:N10"/></mergeCells>',
+            1,
+        )
 
     return xml
 
@@ -2052,7 +2217,12 @@ def main():
                 txt = _add_elevation_column(txt)
                 txt = _add_prn_buttons(txt)
                 data = txt.encode("utf-8")
-                print(f"  patched   {name}  (elevation column, PRN buttons, chart-controls shift)")
+                print(f"  patched   {name}  (elevation formula, PRN buttons, chart-controls shift)")
+
+            elif name == "xl/styles.xml":
+                txt = _patch_styles_add_divider_border(data.decode("utf-8"))
+                data = txt.encode("utf-8")
+                print(f"  patched   {name}  (F/G divider border added)")
 
             elif name == "xl/worksheets/sheet2.xml":
                 txt = _add_point_index_logger_id(data.decode("utf-8"))
@@ -2089,14 +2259,15 @@ def main():
     print("  3. Re-save the file as .xlsm to retain the macros.")
     print()
     print("New features in this build:")
-    print("  \u2022 Col F (rows 3-22): PRN export button for each flow sensor.")
+    print("  \u2022 Col F (rows 3-22): PRN export button for each flow sensor (thick right border = divider).")
     print("  \u2022 Col L (rows 3-22): PRN export button for each pressure sensor.")
-    print("  \u2022 Chart Controls panel shifted from L-M to N-O.")
-    print("  \u2022 Cell N7 \u2014 elevation toggle button (+Z OFF / +Z ON).")
-    print("  \u2022 N8/O8 \u2014 Client Name input (used in PRN title line).")
-    print("  \u2022 N9/O9 \u2014 Export Path input (folder for PRN files).")
-    print("  \u2022 N10  \u2014 'All PRNs' button: exports every column in both Raw tabs.")
+    print("  \u2022 Chart Controls panel shifted from L-M to M-N (blank column M removed).")
+    print("  \u2022 Cell M7 \u2014 elevation toggle button (+Z OFF / +Z ON) spanning M7:N7.")
+    print("  \u2022 M8/N8 \u2014 Client Name input (used in PRN title line).")
+    print("  \u2022 M9/N9 \u2014 Export Path input (folder for PRN files).")
+    print("  \u2022 M10  \u2014 'All PRNs' button spanning M10:N10.")
     print("  \u2022 Point Index: 'Logger ID' column added at column B.")
+    print("  \u2022 Col J: elevation auto-populated via INDEX-MATCH formula (no VBA needed).")
 
 
 if __name__ == "__main__":
