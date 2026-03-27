@@ -335,9 +335,9 @@ Sub PopulateElevation(sRow As Long)
     Dim zCol As Long: zCol = 0
     Dim c As Long
     For c = 1 To lastHdrCol
-        Select Case Trim(wsIdx.Cells(1, c).Value)
-            Case "Point Ref": pointRefCol = c
-            Case "Z (m)":     zCol = c
+        Select Case LCase(Trim(wsIdx.Cells(1, c).Value))
+            Case "point ref": pointRefCol = c
+            Case "z (m)":     zCol = c
         End Select
     Next c
     If pointRefCol = 0 Or zCol = 0 Then Exit Sub
@@ -375,11 +375,13 @@ Sub PopulateAllElevations()
     Application.EnableEvents = False
     Application.ScreenUpdating = False
 
+    On Error GoTo Done
     Dim r As Long
     For r = SEL_START To SEL_END
         PopulateElevation r - SEL_START + 1
     Next r
 
+Done:
     Application.ScreenUpdating = True
     Application.EnableEvents = True
 End Sub
@@ -431,9 +433,9 @@ Sub SaveElevationToPointIndex(sRow As Long)
     Dim zCol As Long: zCol = 0
     Dim c As Long
     For c = 1 To lastHdrCol
-        Select Case Trim(wsIdx.Cells(1, c).Value)
-            Case "Point Ref": pointRefCol = c
-            Case "Z (m)":     zCol = c
+        Select Case LCase(Trim(wsIdx.Cells(1, c).Value))
+            Case "point ref": pointRefCol = c
+            Case "z (m)":     zCol = c
         End Select
     Next c
     If pointRefCol = 0 Or zCol = 0 Then
@@ -483,9 +485,9 @@ Function GetElevationFromPointIndex(sensorName As String) As Variant
     Dim zCol As Long: zCol = 0
     Dim c As Long
     For c = 1 To lastHdrCol
-        Select Case Trim(wsIdx.Cells(1, c).Value)
-            Case "Point Ref": pointRefCol = c
-            Case "Z (m)":     zCol = c
+        Select Case LCase(Trim(wsIdx.Cells(1, c).Value))
+            Case "point ref": pointRefCol = c
+            Case "z (m)":     zCol = c
         End Select
     Next c
     If pointRefCol = 0 Or zCol = 0 Then Exit Function
@@ -533,9 +535,9 @@ Sub WriteDataNoteToPointIndex(sensorName As String, noteText As String)
     Dim dataNotesCol As Long: dataNotesCol = 0
     Dim c As Long
     For c = 1 To lastHdrCol
-        Select Case Trim(wsIdx.Cells(1, c).Value)
-            Case "Point Ref":  pointRefCol  = c
-            Case "Data Notes": dataNotesCol = c
+        Select Case LCase(Trim(wsIdx.Cells(1, c).Value))
+            Case "point ref":  pointRefCol  = c
+            Case "data notes": dataNotesCol = c
         End Select
     Next c
     If pointRefCol = 0 Then
@@ -1166,21 +1168,21 @@ Private Sub Worksheet_Change(ByVal Target As Range)
                 On Error Resume Next
                 ClearSavedMark False, cell.Row - SEL_START + 1
                 PopulateElevation cell.Row - SEL_START + 1
+                Application.EnableEvents = True   ' restored while On Error Resume Next is active
                 On Error GoTo 0
-                Application.EnableEvents = True
             ElseIf cell.Column = FLOW_NAME Then
                 Application.EnableEvents = False
                 On Error Resume Next
                 ClearSavedMark True, cell.Row - SEL_START + 1
+                Application.EnableEvents = True   ' restored while On Error Resume Next is active
                 On Error GoTo 0
-                Application.EnableEvents = True
             ElseIf cell.Column = PRES_OFF Or cell.Column = PRES_DT Then
                 ' When +Z is ON live-refresh the elevated column for this sensor
                 Application.EnableEvents = False
                 On Error Resume Next
                 RefreshElevatedColumnIfOn cell.Row - SEL_START + 1, Me, cell.Row
+                Application.EnableEvents = True   ' restored while On Error Resume Next is active
                 On Error GoTo 0
-                Application.EnableEvents = True
             End If
         End If
     Next cell

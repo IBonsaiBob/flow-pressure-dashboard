@@ -15,10 +15,11 @@ Private Sub Worksheet_Activate()
 End Sub
 
 Private Sub Worksheet_Change(ByVal Target As Range)
-    ' B2 date changed → re-fill the timestamp column (A7:A102).
+    ' B2 date changed → re-fill the timestamp column (A7:A102) and auto-fill sensor data.
     If Not Intersect(Target, Me.Range("B2")) Is Nothing Then
         Application.EnableEvents = False
         Call FillTimestamps
+        Call AutoFillSensorData
         Application.EnableEvents = True
     End If
 

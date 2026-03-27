@@ -35,21 +35,21 @@ Private Sub Worksheet_Change(ByVal Target As Range)
                 On Error Resume Next
                 ClearSavedMark False, cell.Row - SEL_START + 1
                 PopulateElevation cell.Row - SEL_START + 1
+                Application.EnableEvents = True   ' restored while On Error Resume Next is active
                 On Error GoTo 0
-                Application.EnableEvents = True
             ElseIf cell.Column = FLOW_NAME Then
                 Application.EnableEvents = False
                 On Error Resume Next
                 ClearSavedMark True, cell.Row - SEL_START + 1
+                Application.EnableEvents = True   ' restored while On Error Resume Next is active
                 On Error GoTo 0
-                Application.EnableEvents = True
             ElseIf cell.Column = PRES_OFF Or cell.Column = PRES_DT Then
                 ' When +Z is ON live-refresh the elevated column for this sensor
                 Application.EnableEvents = False
                 On Error Resume Next
                 RefreshElevatedColumnIfOn cell.Row - SEL_START + 1, Me, cell.Row
+                Application.EnableEvents = True   ' restored while On Error Resume Next is active
                 On Error GoTo 0
-                Application.EnableEvents = True
             End If
         End If
     Next cell

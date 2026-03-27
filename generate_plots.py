@@ -58,10 +58,11 @@ Private Sub Worksheet_Activate()
 End Sub
 
 Private Sub Worksheet_Change(ByVal Target As Range)
-    ' B2 date changed → re-fill the timestamp column (A7:A102).
+    ' B2 date changed → re-fill the timestamp column (A7:A102) and auto-fill sensor data.
     If Not Intersect(Target, Me.Range("B2")) Is Nothing Then
         Application.EnableEvents = False
         Call FillTimestamps
+        Call AutoFillSensorData
         Application.EnableEvents = True
     End If
 
@@ -216,17 +217,22 @@ Sub CreatePlotsChart()
         .ChartArea.Border.Color     = RGB(180, 180, 180)
     End With
 
-    ' Add a guide label for the software-plot paste area below the chart.
-    Dim pasteTop As Double
-    pasteTop = T + H + 6   ' 6 pt gap below chart
+    ' Add a guide label for the software-plot paste area to the RIGHT of the chart.
+    ' Column T (col 20) is the start of the paste zone (see row 5 guide labels).
+    Dim pasteL As Double: pasteL = ws.Columns("T").Left
+
+    ' Remove any stale paste label from a previous run.
+    On Error Resume Next
+    ws.Shapes("PastePlotLabel").Delete
+    On Error GoTo 0
 
     Dim txtBox As Shape
     Set txtBox = ws.Shapes.AddTextbox(msoTextOrientationHorizontal, _
-        L, pasteTop, W, 20)
+        pasteL, T, W, 22)
     txtBox.Name = "PastePlotLabel"
     With txtBox.TextFrame2
         .TextRange.Text = _
-            "PASTE SOFTWARE PLOT IMAGE BELOW (click here, then Ctrl+V)"
+            "PASTE SOFTWARE PLOT IMAGE HERE (click here, then Ctrl+V)"
         .TextRange.Font.Size = 9
         .TextRange.Font.Bold = msoTrue
         .TextRange.Font.Fill.ForeColor.RGB = RGB(255, 255, 255)
@@ -234,7 +240,7 @@ Sub CreatePlotsChart()
     End With
     With txtBox.Fill
         .Visible = msoTrue
-        .ForeColor.RGB = RGB(0, 112, 192)   ' blue background
+        .ForeColor.RGB = RGB(255, 102, 0)   ' orange — visually distinct from chart area
     End With
     txtBox.Line.Visible = msoFalse
 End Sub
@@ -425,6 +431,151 @@ Sub SaveNotesToPointIndex(dateStr As String, _
     wsPI.Cells(piRow, 13).Value = _
         "[" & dateStr & "]  " & chartTitle & "  —  " & notes
 End Sub
+
+' ---------------------------------------------------------------------------
+' AutoFillSensorData
+' Searches "Raw Pressure Data" then "Raw Flow Data" for readings that match
+' the date in B2.  Writes sensor names to B6:K6 and values to B7:K102.
+' Existing values are cleared first; any cell can be overwritten manually.
+' Silently skips (leaves the data area empty) if no matching data is found.
+' ---------------------------------------------------------------------------
+Sub AutoFillSensorData()
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Plots")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    Dim baseDate As Date
+    On Error Resume Next
+    baseDate = CDate(Trim(CStr(ws.Range("B2").Value)))
+    On Error GoTo 0
+    If CDbl(baseDate) = 0 Then Exit Sub
+
+    ' Clear sensor headers and data ready for a fresh fill.
+    ws.Range("B6:K6").ClearContents
+    ws.Range("B7:K102").ClearContents
+
+    ' Try Raw Pressure Data first, then Raw Flow Data.
+    Dim rawSheets(1) As String
+    rawSheets(0) = "Raw Pressure Data"
+    rawSheets(1) = "Raw Flow Data"
+
+    Dim wsRaw As Worksheet
+    Dim si As Integer
+    For si = 0 To 1
+        Set wsRaw = Nothing
+        On Error Resume Next
+        Set wsRaw = ThisWorkbook.Sheets(rawSheets(si))
+        On Error GoTo 0
+        If Not wsRaw Is Nothing Then
+            If FillFromRawSheet(ws, wsRaw, baseDate) Then Exit For
+        End If
+    Next si
+End Sub
+
+' ---------------------------------------------------------------------------
+' FillFromRawSheet  (helper for AutoFillSensorData)
+' Finds rows in wsRaw whose timestamps fall on baseDate, copies up to 10
+' sensor columns to wsPlots rows 6 (headers) and 7-102 (data).
+' Matches each 15-min slot to the nearest raw timestamp within +/-7.5 minutes.
+' Returns True when at least one data value was written.
+' ---------------------------------------------------------------------------
+Function FillFromRawSheet(wsPlots As Worksheet, _
+                          wsRaw   As Worksheet, _
+                          baseDate As Date) As Boolean
+    FillFromRawSheet = False
+
+    Dim lastRow As Long: lastRow = wsRaw.Cells(wsRaw.Rows.Count, 1).End(xlUp).Row
+    If lastRow < 2 Then Exit Function
+
+    Dim lastCol As Long: lastCol = wsRaw.Cells(1, wsRaw.Columns.Count).End(xlToLeft).Column
+    If lastCol < 2 Then Exit Function
+
+    Dim baseDbl As Double: baseDbl = CDbl(baseDate)
+
+    ' ── Find the first row whose date portion equals baseDate ─────────────
+    Dim startRow As Long: startRow = 0
+    Dim r As Long
+    Dim tsDbl As Double
+    For r = 2 To lastRow
+        On Error Resume Next
+        tsDbl = CDbl(wsRaw.Cells(r, 1).Value)
+        On Error GoTo 0
+        If Int(tsDbl) = Int(baseDbl) Then
+            startRow = r
+            Exit For
+        End If
+    Next r
+    If startRow = 0 Then Exit Function
+
+    ' ── Count consecutive rows that belong to this date ───────────────────
+    Dim dayCount As Long: dayCount = 0
+    For r = startRow To lastRow
+        On Error Resume Next
+        tsDbl = CDbl(wsRaw.Cells(r, 1).Value)
+        On Error GoTo 0
+        If Int(tsDbl) = Int(baseDbl) Then
+            dayCount = dayCount + 1
+        Else
+            Exit For
+        End If
+    Next r
+    If dayCount = 0 Then Exit Function
+
+    ' ── Number of sensor columns to copy (max 10) ─────────────────────────
+    Dim sensorCols As Long
+    sensorCols = Application.WorksheetFunction.Min(lastCol - 1, 10)
+
+    ' ── Copy sensor names to Plots row 6 ──────────────────────────────────
+    Dim c As Long
+    For c = 1 To sensorCols
+        wsPlots.Cells(6, 1 + c).Value = wsRaw.Cells(1, 1 + c).Value
+    Next c
+
+    ' ── Load day rows into arrays for fast per-slot lookup ────────────────
+    Dim rawTS()   As Double
+    Dim rawVals() As Variant
+    ReDim rawTS(1 To dayCount)
+    ReDim rawVals(1 To dayCount, 1 To sensorCols)
+    Dim di As Long: di = 1
+    For r = startRow To startRow + dayCount - 1
+        On Error Resume Next
+        rawTS(di) = CDbl(wsRaw.Cells(r, 1).Value)
+        On Error GoTo 0
+        For c = 1 To sensorCols
+            rawVals(di, c) = wsRaw.Cells(r, 1 + c).Value
+        Next c
+        di = di + 1
+    Next r
+
+    ' ── For each 15-min slot find the nearest raw row (within +/-7.5 min) ─
+    Dim halfStep As Double: halfStep = 7.5 / 1440
+    Dim i As Long
+    Dim slotDbl  As Double
+    Dim bestIdx  As Long
+    Dim bestDiff As Double
+    Dim dIdx     As Long
+    Dim diff     As Double
+    For i = 0 To 95
+        slotDbl  = baseDbl + CDbl(i * 15) / 1440
+        bestIdx  = 0
+        bestDiff = halfStep + 1
+        For dIdx = 1 To dayCount
+            diff = Abs(rawTS(dIdx) - slotDbl)
+            If diff < bestDiff Then
+                bestDiff = diff
+                bestIdx  = dIdx
+            End If
+        Next dIdx
+        If bestIdx > 0 And bestDiff <= halfStep Then
+            For c = 1 To sensorCols
+                wsPlots.Cells(7 + i, 1 + c).Value = rawVals(bestIdx, c)
+            Next c
+            FillFromRawSheet = True
+        End If
+    Next i
+End Function
 """
 
 
@@ -592,15 +743,21 @@ def _build_plots_sheet_xml() -> str:
     rows.append(f'<row r="4" ht="36" customHeight="1">{"".join(r)}</row>')
     merges.append('<mergeCell ref="B4:J4"/>')
 
-    # ── Row 5 — separator + right-panel guide ────────────────────────────────
+    # ── Row 5 — separator + two right-panel guide labels ─────────────────────
     r = [_empty_cell(c, 5, S_DEFAULT) for c in range(1, 12)]
-    # Guide label in column M (col 13) spanning M5:V5
-    r.append(_str_cell(13, 5, S_PASTE_LBL,
-                        "\u2193  EXCEL CHART  |  PASTE SOFTWARE PLOT BELOW  \u2193"))
-    for c in range(14, 23):
+    # Chart area label: M5:S5 (cols 13-19) — blue header
+    r.append(_str_cell(13, 5, S_MED_HDR,
+                        "\u2193  EXCEL CHART AREA  \u2193"))
+    for c in range(14, 20):
+        r.append(_empty_cell(c, 5, S_MED_HDR))
+    # Paste area label: T5:AF5 (cols 20-32) — yellow label
+    r.append(_str_cell(20, 5, S_PASTE_LBL,
+                        "\u2193  PASTE SOFTWARE PLOT IMAGE HERE  \u2193"))
+    for c in range(21, 33):
         r.append(_empty_cell(c, 5, S_PASTE_LBL))
     rows.append(f'<row r="5" ht="18" customHeight="1">{"".join(r)}</row>')
-    merges.append('<mergeCell ref="M5:V5"/>')
+    merges.append('<mergeCell ref="M5:S5"/>')
+    merges.append('<mergeCell ref="T5:AF5"/>')
 
     # ── Row 6 — column headers ────────────────────────────────────────────────
     r = [_str_cell(1, 6, S_MED_HDR, "Time")]
@@ -624,7 +781,8 @@ def _build_plots_sheet_xml() -> str:
         '<col min="1"  max="1"  width="13"  customWidth="1"/>'  # A  timestamps
         '<col min="2"  max="11" width="12"  customWidth="1"/>'  # B-K sensor data
         '<col min="12" max="12" width="3"   customWidth="1"/>'  # L  gap
-        '<col min="13" max="22" width="14"  customWidth="1"/>'  # M-V chart/paste
+        '<col min="13" max="19" width="14"  customWidth="1"/>'  # M-S chart zone
+        '<col min="20" max="32" width="10"  customWidth="1"/>'  # T-AF paste zone
         "</cols>"
     )
     return (
@@ -634,7 +792,7 @@ def _build_plots_sheet_xml() -> str:
         ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
         ' mc:Ignorable="x14ac xr xr2 xr3"'
         ' xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac">'
-        '<dimension ref="A1:V102"/>'
+        '<dimension ref="A1:AF102"/>'
         '<sheetViews>'
         '<sheetView tabSelected="1" workbookViewId="0">'
         '<selection activeCell="B2" sqref="B2"/>'
