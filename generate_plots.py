@@ -702,6 +702,9 @@ _WB_MARKER = "<!--PLOT_ARCHIVE_ADDED-->"
 
 
 def _patch_workbook_xml(wb_xml: str) -> str:
+    # Remove stale external-references block (broken network-drive link).
+    wb_xml = re.sub(r'<externalReferences>.*?</externalReferences>', '',
+                    wb_xml, flags=re.DOTALL)
     if _WB_MARKER in wb_xml:
         return wb_xml
     return wb_xml.replace(
@@ -711,6 +714,11 @@ def _patch_workbook_xml(wb_xml: str) -> str:
 
 
 def _patch_workbook_rels(rels_xml: str) -> str:
+    # Remove the externalLink relationship (broken network-drive link).
+    rels_xml = re.sub(
+        r'<Relationship[^>]*Type="[^"]*externalLink[^"]*"[^>]*/>\s*',
+        '', rels_xml,
+    )
     if _ARCHIVE_RID in rels_xml:
         return rels_xml
     new_rel = (
@@ -722,6 +730,11 @@ def _patch_workbook_rels(rels_xml: str) -> str:
 
 
 def _patch_content_types(ct_xml: str) -> str:
+    # Remove stale externalLink content-type entry.
+    ct_xml = re.sub(
+        r'<Override[^>]*externalLink[^>]*/>\s*',
+        '', ct_xml,
+    )
     archive_path = f'/xl/{_ARCHIVE_FILE}'
     if archive_path in ct_xml:
         return ct_xml
@@ -799,6 +812,11 @@ def main() -> None:
             # ── drop stale calc chain (Excel rebuilds it on open) ─────────
             elif name == "xl/calcChain.xml":
                 print(f"  removed   {name}  (Excel will rebuild)")
+                continue
+
+            # ── drop broken external-link files ───────────────────────────
+            elif name.startswith("xl/externalLinks/"):
+                print(f"  removed   {name}  (stale network-drive link)")
                 continue
 
             zout.writestr(item, data)
