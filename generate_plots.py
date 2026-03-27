@@ -58,12 +58,25 @@ Private Sub Worksheet_Activate()
 End Sub
 
 Private Sub Worksheet_Change(ByVal Target As Range)
-    ' B2 date changed → re-fill the timestamp column (A7:A102) and auto-fill sensor data.
+    ' B2 date changed → re-fill timestamps, auto-fill sensor data, refresh chart.
     If Not Intersect(Target, Me.Range("B2")) Is Nothing Then
         Application.EnableEvents = False
+        On Error Resume Next
         Call FillTimestamps
         Call AutoFillSensorData
-        Application.EnableEvents = True
+        Call RefreshPlotsChart
+        Application.EnableEvents = True   ' restored while On Error Resume Next is active
+        On Error GoTo 0
+    End If
+
+    ' B6:K6 sensor header row changed → rebuild chart series dynamically.
+    ' Clearing a header removes that series; typing a new one adds it.
+    If Not Intersect(Target, Me.Range("B6:K6")) Is Nothing Then
+        Application.EnableEvents = False
+        On Error Resume Next
+        Call RefreshPlotsChart
+        Application.EnableEvents = True   ' restored while On Error Resume Next is active
+        On Error GoTo 0
     End If
 
     ' E2 chart title changed → update the live chart title.
@@ -154,9 +167,11 @@ End Sub
 ' ---------------------------------------------------------------------------
 ' CreatePlotsChart
 ' Creates a line chart to the right of the data table, sized for an A4
-' portrait Word document (12 cm wide x 9 cm tall).
-' The chart uses the date/time column (A6:A102) as the category axis and
-' all 10 sensor columns (B6:K102) as data series.
+' landscape document (18 cm wide x 11 cm tall — report-ready proportions).
+'
+' Builds ONE series per non-empty sensor header in B6:K6.
+' Column A (timestamps) is used ONLY as the X-axis; it never appears as a
+' series or in the legend.
 ' ---------------------------------------------------------------------------
 Sub CreatePlotsChart()
     Dim ws As Worksheet
@@ -175,26 +190,45 @@ Sub CreatePlotsChart()
     Dim L As Double: L = ws.Columns("M").Left
     Dim T As Double: T = ws.Rows(6).Top
 
-    ' 12 cm x 9 cm.  1 pt = 1/72 in = 0.03528 cm  →  1 cm = 28.3465 pt.
-    Dim W As Double: W = 12 * 28.3465
-    Dim H As Double: H = 9  * 28.3465
+    ' 18 cm x 11 cm — report-quality landscape proportions.
+    ' 1 cm = 28.3465 pt.
+    Dim W As Double: W = 18 * 28.3465
+    Dim H As Double: H = 11 * 28.3465
 
     Set chtObj = ws.ChartObjects.Add(L, T, W, H)
     chtObj.Name = "PlotsChart"
 
     With chtObj.Chart
-        ' Source data: row 6 is the header row, rows 7-102 are data.
-        .SetSourceData Source:=ws.Range("A6:K102"), PlotBy:=xlColumns
         .ChartType = xlLine
+
+        ' Build series manually — one per non-empty sensor header (B6:K6).
+        ' Column A is the X-axis only; it must NOT appear as a series.
+        Do While .SeriesCollection.Count > 0
+            .SeriesCollection(1).Delete
+        Loop
+
+        Dim c As Long
+        For c = 2 To 11   ' columns B(2) to K(11)
+            Dim hdr As String
+            hdr = Trim(CStr(ws.Cells(6, c).Value))
+            If hdr <> "" Then
+                Dim sr As Series
+                Set sr = .SeriesCollection.NewSeries
+                sr.Name    = hdr
+                sr.XValues = ws.Range("A7:A102")
+                sr.Values  = ws.Range(ws.Cells(7, c), ws.Cells(102, c))
+            End If
+        Next c
 
         ' Title from the input cell.
         .HasTitle = True
         .ChartTitle.Text = Trim(CStr(ws.Range("E2").Value))
 
-        ' Category (time) axis: show HH:MM label every hour (4 x 15-min steps).
+        ' Category (time) axis: HH:MM label every hour (every 4th of 96 fifteen-min steps).
         With .Axes(xlCategory)
             .TickLabels.NumberFormat = "HH:MM"
             .TickLabelSpacing = 4
+            .TickLabelPosition = xlTickLabelPositionLow
         End With
 
         ' Value (Y) axis: title from I2 if provided.
@@ -243,6 +277,63 @@ Sub CreatePlotsChart()
         .ForeColor.RGB = RGB(255, 102, 0)   ' orange — visually distinct from chart area
     End With
     txtBox.Line.Visible = msoFalse
+End Sub
+
+' ---------------------------------------------------------------------------
+' RefreshPlotsChart
+' Rebuilds the series collection of the existing PlotsChart without
+' recreating the whole chart object.  Called when sensor headers (B6:K6)
+' change or after an auto-fill.  If no chart exists yet, delegates to
+' CreatePlotsChart.
+' ---------------------------------------------------------------------------
+Sub RefreshPlotsChart()
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Plots")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    ' If no chart exists yet, do a full create.
+    If ws.ChartObjects.Count = 0 Then
+        Call CreatePlotsChart
+        Exit Sub
+    End If
+
+    Dim cht As Chart
+    Set cht = ws.ChartObjects(1).Chart
+
+    With cht
+        ' --- Rebuild series from current headers (B6:K6) ---
+        Do While .SeriesCollection.Count > 0
+            .SeriesCollection(1).Delete
+        Loop
+
+        Dim c As Long
+        For c = 2 To 11   ' columns B(2) to K(11)
+            Dim hdr As String
+            hdr = Trim(CStr(ws.Cells(6, c).Value))
+            If hdr <> "" Then
+                Dim sr As Series
+                Set sr = .SeriesCollection.NewSeries
+                sr.Name    = hdr
+                sr.XValues = ws.Range("A7:A102")
+                sr.Values  = ws.Range(ws.Cells(7, c), ws.Cells(102, c))
+            End If
+        Next c
+
+        ' --- Sync title and Y-axis label from control panel ---
+        Dim chartTitle As String
+        chartTitle = Trim(CStr(ws.Range("E2").Value))
+        .HasTitle = True
+        .ChartTitle.Text = chartTitle
+
+        Dim yLabel As String
+        yLabel = Trim(CStr(ws.Range("I2").Value))
+        With .Axes(xlValue)
+            .HasTitle = (yLabel <> "")
+            If yLabel <> "" Then .AxisTitle.Text = yLabel
+        End With
+    End With
 End Sub
 
 ' ---------------------------------------------------------------------------
