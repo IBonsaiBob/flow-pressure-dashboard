@@ -814,7 +814,7 @@ Sub ExportOnePRN(isFlow As Boolean, sRow As Long)
                vbExclamation, "Export Path Missing"
         Exit Sub
     End If
-    If Right(exportPath, 1) <> "\\" Then exportPath = exportPath & "\\"
+    If Right(exportPath, 1) <> "\" Then exportPath = exportPath & "\"
     If clientName = "" Then clientName = "Wessex Logger"
 
     Dim chanType As String
@@ -870,7 +870,7 @@ Sub ExportAllPRNs()
                vbExclamation, "Export Path Missing"
         Exit Sub
     End If
-    If Right(exportPath, 1) <> "\\" Then exportPath = exportPath & "\\"
+    If Right(exportPath, 1) <> "\" Then exportPath = exportPath & "\"
     If clientName = "" Then clientName = "Wessex Logger"
 
     Dim wsFlow As Worksheet
