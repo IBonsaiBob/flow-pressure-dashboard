@@ -31,6 +31,18 @@ Private Sub Worksheet_Change(ByVal Target As Range)
             End With
         End If
     End If
+
+    ' I2 Y-axis label changed → update the live chart Y-axis title.
+    If Not Intersect(Target, Me.Range("I2")) Is Nothing Then
+        If Me.ChartObjects.Count > 0 Then
+            Dim yLabel As String
+            yLabel = Trim(CStr(Me.Range("I2").Value))
+            With Me.ChartObjects(1).Chart.Axes(xlValue)
+                .HasTitle = (yLabel <> "")
+                If yLabel <> "" Then .AxisTitle.Text = yLabel
+            End With
+        End If
+    End If
 End Sub
 
 Private Sub Worksheet_SelectionChange(ByVal Target As Range)

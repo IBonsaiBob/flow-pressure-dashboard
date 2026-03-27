@@ -74,6 +74,18 @@ Private Sub Worksheet_Change(ByVal Target As Range)
             End With
         End If
     End If
+
+    ' I2 Y-axis label changed → update the live chart Y-axis title.
+    If Not Intersect(Target, Me.Range("I2")) Is Nothing Then
+        If Me.ChartObjects.Count > 0 Then
+            Dim yLabel As String
+            yLabel = Trim(CStr(Me.Range("I2").Value))
+            With Me.ChartObjects(1).Chart.Axes(xlValue)
+                .HasTitle = (yLabel <> "")
+                If yLabel <> "" Then .AxisTitle.Text = yLabel
+            End With
+        End If
+    End If
 End Sub
 
 Private Sub Worksheet_SelectionChange(ByVal Target As Range)
@@ -182,6 +194,14 @@ Sub CreatePlotsChart()
         With .Axes(xlCategory)
             .TickLabels.NumberFormat = "HH:MM"
             .TickLabelSpacing = 4
+        End With
+
+        ' Value (Y) axis: title from I2 if provided.
+        Dim yLabel As String
+        yLabel = Trim(CStr(ws.Range("I2").Value))
+        With .Axes(xlValue)
+            .HasTitle = (yLabel <> "")
+            If yLabel <> "" Then .AxisTitle.Text = yLabel
         End With
 
         ' Legend at the bottom.
@@ -503,7 +523,7 @@ def _build_plots_sheet_xml() -> str:
     Layout
     ──────
     Row 1  : Title bar  (A1:K1 merged)
-    Row 2  : Date (B2) | Chart Title (E2:G2 merged) | SAVE PLOTS button (K2)
+    Row 2  : Date (B2) | Chart Title (E2:G2 merged) | Y-Axis Label (I2:J2 merged) | SAVE PLOTS button (K2)
     Row 3  : Export Path (B3:J3 merged)
     Row 4  : Session Notes (B4:J4 merged, taller row)
     Row 5  : Separator / right-panel guide label
@@ -520,22 +540,23 @@ def _build_plots_sheet_xml() -> str:
     rows.append(f'<row r="1" ht="24" customHeight="1">{"".join(r)}</row>')
     merges.append('<mergeCell ref="A1:K1"/>')
 
-    # ── Row 2 — Date | Chart Title | Save button ─────────────────────────────
+    # ── Row 2 — Date | Chart Title | Y-Axis Label | Save button ────────────────
     r = [
         _str_cell(1, 2, S_DEFAULT, "Date (DD/MM/YY):"),   # A2 label
         _str_cell(2, 2, S_YELLOW_IN, ""),                  # B2 date input ← date
         _str_cell(3, 2, S_DEFAULT, ""),                    # C2 gap
         _str_cell(4, 2, S_DEFAULT, "Chart Title:"),        # D2 label
-        _str_cell(5, 2, S_YELLOW_IN, ""),                  # E2 title input ← chart title
+        _str_cell(5, 2, S_YELLOW_IN, ""),                  # E2 title input ← chart title (E2:G2 merged)
         _empty_cell(6, 2, S_YELLOW_IN),                    # F2
         _empty_cell(7, 2, S_YELLOW_IN),                    # G2
-        _empty_cell(8, 2, S_DEFAULT),                      # H2 gap
-        _empty_cell(9, 2, S_DEFAULT),                      # I2 gap
-        _empty_cell(10, 2, S_DEFAULT),                     # J2 gap
+        _str_cell(8, 2, S_DEFAULT, "Y-Axis Label:"),       # H2 label
+        _str_cell(9, 2, S_YELLOW_IN, ""),                  # I2 y-axis input ← y label (I2:J2 merged)
+        _empty_cell(10, 2, S_YELLOW_IN),                   # J2
         _str_cell(11, 2, S_GREEN_BTN, "\U0001f4be  SAVE PLOTS"),  # K2 button
     ]
     rows.append(f'<row r="2" ht="22" customHeight="1">{"".join(r)}</row>')
     merges.append('<mergeCell ref="E2:G2"/>')
+    merges.append('<mergeCell ref="I2:J2"/>')
 
     # ── Row 3 — Export path ───────────────────────────────────────────────────
     r = [
@@ -820,6 +841,7 @@ def main() -> None:
     print("Plots sheet usage:")
     print("  • B2  — Enter the date (DD/MM/YY); timestamps fill A7:A102 automatically.")
     print("  • E2  — Enter the chart title; the chart updates live.")
+    print("  • I2  — Enter the Y-axis label (e.g. 'Flow (L/s)' or 'Pressure (bar)'); updates live.")
     print("  • B3  — Enter the export folder path (e.g. C:\\Reports\\).")
     print("  • B4  — Enter session notes (saved to Point Index col M on Save).")
     print("  • B7:K102 — Paste your sensor data here (one sensor per column).")

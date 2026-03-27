@@ -86,6 +86,14 @@ Sub CreatePlotsChart()
             .TickLabelSpacing = 4
         End With
 
+        ' Value (Y) axis: title from I2 if provided.
+        Dim yLabel As String
+        yLabel = Trim(CStr(ws.Range("I2").Value))
+        With .Axes(xlValue)
+            .HasTitle = (yLabel <> "")
+            If yLabel <> "" Then .AxisTitle.Text = yLabel
+        End With
+
         ' Legend at the bottom.
         .HasLegend = True
         .Legend.Position = xlLegendPositionBottom
