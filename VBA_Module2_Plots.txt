@@ -221,9 +221,11 @@ End Sub
 ' ---------------------------------------------------------------------------
 ' SavePlots
 ' 1. Exports the Excel chart as  {date}_{title}_Chart.png
-' 2. Exports any pasted software-plot image as  {date}_{title}_SoftwarePlot.png
-' 3. Archives data + metadata to the "Plot Archive" sheet.
-' 4. Saves the session note to Point Index column M.
+' 2. Archives data + metadata to the "Plot Archive" sheet.
+' 3. Saves the session note to Point Index column M.
+' Note: any software-plot image pasted in the PASTE AREA stays embedded in
+'       the workbook. Right-click the image → "Save as Picture" if you need
+'       a standalone PNG.
 ' ---------------------------------------------------------------------------
 Sub SavePlots()
     Dim ws As Worksheet
@@ -284,24 +286,12 @@ Sub SavePlots()
         saved = saved & "  (No chart found — open the Plots sheet first to auto-create it)" & vbNewLine
     End If
 
-    ' ── 2. Export pasted software-plot image as PNG ───────────────────────
-    ' Find the first picture shape that is NOT the chart or label textbox.
-    Dim shp As Shape
-    Dim imgFile As String
-    imgFile = exportPath & fileDate & "_" & safeTitle & "_SoftwarePlot.png"
-    For Each shp In ws.Shapes
-        If shp.Type = msoPicture Or shp.Type = msoLinkedPicture Then
-            ' Export via a temporary off-screen chart object (standard VBA trick).
-            Dim tmpC As ChartObject
-            Set tmpC = ws.ChartObjects.Add(0, 0, shp.Width, shp.Height)
-            shp.CopyPicture xlScreen, xlPicture
-            tmpC.Chart.Paste
-            tmpC.Chart.Export Filename:=imgFile, FilterName:="PNG"
-            tmpC.Delete
-            saved = saved & "  Image:  " & imgFile & vbNewLine
-            Exit For
-        End If
-    Next shp
+    ' ── 2. Note about the software-plot image ─────────────────────────────
+    ' Any software-plot image pasted in the PASTE AREA stays embedded in
+    ' the workbook as a visual reference.  It is not exported as a separate
+    ' PNG — right-click the image and use "Save as Picture" if you need a
+    ' standalone file.
+    saved = saved & "  Software plot: stays on sheet (right-click → Save as Picture to export)." & vbNewLine
 
     ' ── 3. Archive data and note ──────────────────────────────────────────
     Call ArchivePlotData(ws, chartTitle, dateStr)
