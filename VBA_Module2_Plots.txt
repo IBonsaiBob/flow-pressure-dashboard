@@ -1,0 +1,309 @@
+' ============================================================
+' Module2 — Plots Tab Procedures
+' How to install:
+'   1. Alt+F11 to open the VBA editor.
+'   2. Insert → Module.
+'   3. Paste this entire block into the new module.
+' ============================================================
+
+' ---------------------------------------------------------------------------
+' FillTimestamps
+' Fills A7:A102 with 15-minute interval times for the day entered in B2.
+' The column is formatted as HH:MM so only the time portion is shown.
+' ---------------------------------------------------------------------------
+Sub FillTimestamps()
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Plots")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    Dim dateStr As String
+    dateStr = Trim(CStr(ws.Range("B2").Value))
+    If dateStr = "" Then Exit Sub
+
+    Dim baseDate As Date
+    On Error Resume Next
+    baseDate = CDate(dateStr)
+    On Error GoTo 0
+    If baseDate = 0 Then
+        MsgBox "Invalid date in B2. Please use DD/MM/YY format.", _
+               vbExclamation, "Date Error"
+        Exit Sub
+    End If
+
+    ' Write 96 timestamps: 00:00, 00:15, ... 23:45
+    Dim i As Long
+    For i = 0 To 95
+        ws.Cells(7 + i, 1).Value = baseDate + CDbl(i * 15) / 1440
+        ws.Cells(7 + i, 1).NumberFormat = "HH:MM"
+    Next i
+End Sub
+
+' ---------------------------------------------------------------------------
+' CreatePlotsChart
+' Creates a line chart to the right of the data table, sized for an A4
+' portrait Word document (12 cm wide x 9 cm tall).
+' The chart uses the date/time column (A6:A102) as the category axis and
+' all 10 sensor columns (B6:K102) as data series.
+' ---------------------------------------------------------------------------
+Sub CreatePlotsChart()
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Plots")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    ' Remove any existing chart named PlotsChart.
+    Dim chtObj As ChartObject
+    For Each chtObj In ws.ChartObjects
+        If chtObj.Name = "PlotsChart" Then chtObj.Delete: Exit For
+    Next chtObj
+
+    ' Position: left edge at column M (column 13), top at the header row (row 6).
+    Dim L As Double: L = ws.Columns("M").Left
+    Dim T As Double: T = ws.Rows(6).Top
+
+    ' 12 cm x 9 cm.  1 pt = 1/72 in = 0.03528 cm  →  1 cm = 28.3465 pt.
+    Dim W As Double: W = 12 * 28.3465
+    Dim H As Double: H = 9  * 28.3465
+
+    Set chtObj = ws.ChartObjects.Add(L, T, W, H)
+    chtObj.Name = "PlotsChart"
+
+    With chtObj.Chart
+        ' Source data: row 6 is the header row, rows 7-102 are data.
+        .SetSourceData Source:=ws.Range("A6:K102"), PlotBy:=xlColumns
+        .ChartType = xlLine
+
+        ' Title from the input cell.
+        .HasTitle = True
+        .ChartTitle.Text = Trim(CStr(ws.Range("E2").Value))
+
+        ' Category (time) axis: show HH:MM label every hour (4 x 15-min steps).
+        With .Axes(xlCategory)
+            .TickLabels.NumberFormat = "HH:MM"
+            .TickLabelSpacing = 4
+        End With
+
+        ' Legend at the bottom.
+        .HasLegend = True
+        .Legend.Position = xlLegendPositionBottom
+
+        ' Clean white chart area.
+        .PlotArea.Interior.Color    = RGB(255, 255, 255)
+        .ChartArea.Interior.Color   = RGB(255, 255, 255)
+        .ChartArea.Border.LineStyle = xlContinuous
+        .ChartArea.Border.Weight    = xlThin
+        .ChartArea.Border.Color     = RGB(180, 180, 180)
+    End With
+
+    ' Add a guide label for the software-plot paste area below the chart.
+    Dim pasteTop As Double
+    pasteTop = T + H + 6   ' 6 pt gap below chart
+
+    Dim txtBox As Shape
+    Set txtBox = ws.Shapes.AddTextbox(msoTextOrientationHorizontal, _
+        L, pasteTop, W, 20)
+    txtBox.Name = "PastePlotLabel"
+    With txtBox.TextFrame2
+        .TextRange.Text = _
+            "PASTE SOFTWARE PLOT IMAGE BELOW (click here, then Ctrl+V)"
+        .TextRange.Font.Size = 9
+        .TextRange.Font.Bold = msoTrue
+        .TextRange.Font.Fill.ForeColor.RGB = RGB(255, 255, 255)
+        .TextRange.ParagraphFormat.Alignment = msoAlignCenter
+    End With
+    With txtBox.Fill
+        .Visible = msoTrue
+        .ForeColor.RGB = RGB(0, 112, 192)   ' blue background
+    End With
+    txtBox.Line.Visible = msoFalse
+End Sub
+
+' ---------------------------------------------------------------------------
+' SavePlots
+' 1. Exports the Excel chart as  {date}_{title}_Chart.png
+' 2. Exports any pasted software-plot image as  {date}_{title}_SoftwarePlot.png
+' 3. Archives data + metadata to the "Plot Archive" sheet.
+' 4. Saves the session note to Point Index column M.
+' ---------------------------------------------------------------------------
+Sub SavePlots()
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Plots")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    ' ── Read control-panel values ─────────────────────────────────────────
+    Dim exportPath As String
+    exportPath = Trim(CStr(ws.Range("B3").Value))
+    If exportPath = "" Then
+        MsgBox "Please enter an export folder path in cell B3.", _
+               vbExclamation, "Missing Export Path"
+        Exit Sub
+    End If
+    If Right(exportPath, 1) <> "\" Then exportPath = exportPath & "\"
+
+    Dim chartTitle As String
+    chartTitle = Trim(CStr(ws.Range("E2").Value))
+    If chartTitle = "" Then chartTitle = "Plot"
+
+    Dim dateStr As String
+    dateStr = Trim(CStr(ws.Range("B2").Value))
+
+    ' Convert DD/MM/YY (or DD/MM/YYYY) → YYYYMMDD for filenames.
+    Dim fileDate As String
+    Dim dp() As String
+    dp = Split(Replace(dateStr, "-", "/"), "/")
+    If UBound(dp) = 2 Then
+        Dim yr As String: yr = Trim(dp(2))
+        If Len(yr) = 2 Then yr = "20" & yr
+        fileDate = yr & Format(CInt(Trim(dp(1))), "00") & _
+                        Format(CInt(Trim(dp(0))), "00")
+    Else
+        fileDate = Format(Now, "YYYYMMDD")
+    End If
+
+    ' Remove characters that are illegal in Windows filenames.
+    Dim safeTitle As String
+    safeTitle = chartTitle
+    Dim badChar As Variant
+    For Each badChar In Array("/", "\", ":", "*", "?", Chr(34), "<", ">", "|")
+        safeTitle = Replace(safeTitle, CStr(badChar), "-")
+    Next badChar
+    safeTitle = Replace(safeTitle, " ", "_")
+
+    Dim saved As String: saved = ""
+
+    ' ── 1. Export the Excel chart as PNG ──────────────────────────────────
+    Dim chartFile As String
+    chartFile = exportPath & fileDate & "_" & safeTitle & "_Chart.png"
+    If ws.ChartObjects.Count > 0 Then
+        ws.ChartObjects(1).Chart.Export Filename:=chartFile, FilterName:="PNG"
+        saved = saved & "  Chart:  " & chartFile & vbNewLine
+    Else
+        saved = saved & "  (No chart found — open the Plots sheet first to auto-create it)" & vbNewLine
+    End If
+
+    ' ── 2. Export pasted software-plot image as PNG ───────────────────────
+    ' Find the first picture shape that is NOT the chart or label textbox.
+    Dim shp As Shape
+    Dim imgFile As String
+    imgFile = exportPath & fileDate & "_" & safeTitle & "_SoftwarePlot.png"
+    For Each shp In ws.Shapes
+        If shp.Type = msoPicture Or shp.Type = msoLinkedPicture Then
+            ' Export via a temporary off-screen chart object (standard VBA trick).
+            Dim tmpC As ChartObject
+            Set tmpC = ws.ChartObjects.Add(0, 0, shp.Width, shp.Height)
+            shp.CopyPicture xlScreen, xlPicture
+            tmpC.Chart.Paste
+            tmpC.Chart.Export Filename:=imgFile, FilterName:="PNG"
+            tmpC.Delete
+            saved = saved & "  Image:  " & imgFile & vbNewLine
+            Exit For
+        End If
+    Next shp
+
+    ' ── 3. Archive data and note ──────────────────────────────────────────
+    Call ArchivePlotData(ws, chartTitle, dateStr)
+    saved = saved & "  Data archived to 'Plot Archive' sheet." & vbNewLine
+
+    MsgBox "Save complete:" & vbNewLine & vbNewLine & saved, _
+           vbInformation, "Plots Saved"
+End Sub
+
+' ---------------------------------------------------------------------------
+' ArchivePlotData
+' Appends the current day's timestamps, sensor readings, chart title,
+' date and session notes to the "Plot Archive" sheet.
+' Also writes the session note to Point Index column M.
+' ---------------------------------------------------------------------------
+Sub ArchivePlotData(ws As Worksheet, chartTitle As String, dateStr As String)
+    Const ARCH_SHEET As String = "Plot Archive"
+    Const FIRST_ROW  As Long   = 7    ' first data row on the Plots sheet
+    Const DATA_ROWS  As Long   = 96   ' one day at 15-min intervals
+    Const SEN_COLS   As Long   = 10   ' sensor columns B(2) through K(11)
+
+    ' ── Get or create the Plot Archive sheet ──────────────────────────────
+    Dim wsA As Worksheet
+    On Error Resume Next
+    Set wsA = ThisWorkbook.Sheets(ARCH_SHEET)
+    On Error GoTo 0
+
+    If wsA Is Nothing Then
+        Set wsA = ThisWorkbook.Sheets.Add( _
+            After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+        wsA.Name = ARCH_SHEET
+        ' Header row
+        wsA.Cells(1, 1).Value = "Archived"
+        wsA.Cells(1, 2).Value = "Date"
+        wsA.Cells(1, 3).Value = "Chart Title"
+        wsA.Cells(1, 4).Value = "Notes"
+        wsA.Cells(1, 5).Value = "Time"
+        Dim h As Long
+        For h = 1 To SEN_COLS
+            wsA.Cells(1, 5 + h).Value = ws.Cells(6, 1 + h).Value
+        Next h
+        wsA.Rows(1).Font.Bold = True
+    End If
+
+    ' Get session notes from B4.
+    Dim notes As String
+    notes = Trim(CStr(ws.Range("B4").Value))
+
+    ' Find the first empty row in the archive.
+    Dim nxtRow As Long
+    nxtRow = wsA.Cells(wsA.Rows.Count, 1).End(xlUp).Row + 1
+    If nxtRow < 2 Then nxtRow = 2
+
+    Dim archDate As String
+    archDate = Format(Now, "DD/MM/YYYY HH:MM")
+
+    ' Copy 96 rows of data.
+    Dim i As Long, j As Long
+    For i = 0 To DATA_ROWS - 1
+        wsA.Cells(nxtRow + i, 1).Value = archDate
+        wsA.Cells(nxtRow + i, 2).Value = dateStr
+        wsA.Cells(nxtRow + i, 3).Value = chartTitle
+        wsA.Cells(nxtRow + i, 4).Value = notes
+        wsA.Cells(nxtRow + i, 5).Value = ws.Cells(FIRST_ROW + i, 1).Value
+        wsA.Cells(nxtRow + i, 5).NumberFormat = "HH:MM"
+        For j = 1 To SEN_COLS
+            wsA.Cells(nxtRow + i, 5 + j).Value = _
+                ws.Cells(FIRST_ROW + i, 1 + j).Value
+        Next j
+    Next i
+
+    ' ── Save note to Point Index column M ─────────────────────────────────
+    Call SaveNotesToPointIndex(dateStr, chartTitle, notes)
+End Sub
+
+' ---------------------------------------------------------------------------
+' SaveNotesToPointIndex
+' Appends a session note (date + chart title + notes text) to column M
+' of the "Point Index" sheet.  Column L is used by the Save button on the
+' Dashboard; column M is the new Plots-session notes column.
+' ---------------------------------------------------------------------------
+Sub SaveNotesToPointIndex(dateStr As String, _
+                          chartTitle As String, _
+                          notes As String)
+    Dim wsPI As Worksheet
+    On Error Resume Next
+    Set wsPI = ThisWorkbook.Sheets("Point Index")
+    On Error GoTo 0
+    If wsPI Is Nothing Then Exit Sub
+
+    ' Add header in M1 if the column is still empty.
+    If Trim(CStr(wsPI.Cells(1, 13).Value)) = "" Then
+        wsPI.Cells(1, 13).Value = "Plot Notes"
+        wsPI.Cells(1, 13).Font.Bold = True
+    End If
+
+    ' Append to the next empty row in column M.
+    Dim piRow As Long
+    piRow = wsPI.Cells(wsPI.Rows.Count, 13).End(xlUp).Row + 1
+    If piRow < 2 Then piRow = 2
+    wsPI.Cells(piRow, 13).Value = _
+        "[" & dateStr & "]  " & chartTitle & "  —  " & notes
+End Sub
