@@ -35,9 +35,11 @@ S_DEFAULT   = 0
 #   xf[86] yellow fill (#FFFFF2CC), medium border, left, wrap
 #   xf[87] no fill, HH:MM numFmt, medium border, center
 #   xf[88] light-yellow fill (#FFFFEB9C), thin border, center, wrap
-S_YELLOW_IN = 86
-S_TIME_CELL = 87
-S_PASTE_LBL = 88
+#   xf[89] no fill, medium border, center — anchor of L21:U41 paste-area merge
+S_YELLOW_IN  = 86
+S_TIME_CELL  = 87
+S_PASTE_LBL  = 88
+S_PASTE_AREA = 89   # no fill, medium border, center — anchor cell of L21:U41 merge
 
 # ── VBA: Plots worksheet event handlers ─────────────────────────────────────
 VBA_PLOTS_SHEET = """\
@@ -813,6 +815,11 @@ def _add_new_styles(styles_xml: str) -> str:
         '<xf numFmtId="0" fontId="9" fillId="48" borderId="1" xfId="0"'
         ' applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">'
         '<alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
+
+        # S_PASTE_AREA = 89: no fill, medium border, center — anchor of L21:U41 paste merge
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0"'
+        ' applyBorder="1" applyAlignment="1">'
+        '<alignment horizontal="center" vertical="center"/></xf>',
     )
 
     styles_xml = styles_xml.replace(
@@ -908,6 +915,17 @@ def _build_plots_sheet_xml() -> str:
     rows.append(f'<row r="4" ht="36" customHeight="1">{"".join(r)}</row>')
     merges.append('<mergeCell ref="B4:J4"/>')
 
+    # ── Paste area — L21:U41 merged with medium border, pre-merged in template ──
+    # Rows 21-41, cols L(12)-U(21).  The anchor cell L21 carries the border style;
+    # the merge declaration makes Excel treat the block as a single cell.
+    # The user pastes their software-plot image over this range; SavePlots
+    # captures it with Range("L21:U41").CopyPicture xlScreen, xlBitmap.
+    PASTE_ROW_FIRST = 21
+    PASTE_ROW_LAST  = 41
+    PASTE_COL_FIRST = 12   # L
+    PASTE_COL_LAST  = 21   # U
+    merges.append(f'<mergeCell ref="L{PASTE_ROW_FIRST}:U{PASTE_ROW_LAST}"/>')
+
     # ── Row 5 — thin separator ────────────────────────────────────────────────
     r = [_empty_cell(c, 5, S_DEFAULT) for c in range(1, 12)]
     rows.append(f'<row r="5" ht="6" customHeight="1">{"".join(r)}</row>')
@@ -921,11 +939,15 @@ def _build_plots_sheet_xml() -> str:
     # ── Rows 7-102 — data rows with pre-populated timestamps ─────────────────
     # Timestamps are always 00:00–23:45 at 15-min intervals.
     # Stored as a fraction-of-day numeric value with HH:MM number format (S_TIME_CELL).
+    # Row 21 (i=14) also carries the anchor cell L21 (col 12) for the L21:U41 merge.
     for i in range(96):
         ts_val = i * 15 / 1440   # e.g. 00:00=0, 00:15=0.01042, ..., 23:45=0.98958
         r = [_num_cell(1, 7 + i, S_TIME_CELL, ts_val)]  # A: timestamp
         for c in range(2, 12):
             r.append(_empty_cell(c, 7 + i, S_DEFAULT))  # B-K: sensor data
+        if 7 + i == PASTE_ROW_FIRST:
+            # Anchor cell of the L21:U41 paste-area merge — carries the border style.
+            r.append(_empty_cell(PASTE_COL_FIRST, 7 + i, S_PASTE_AREA))
         rows.append(f'<row r="{7 + i}">{"".join(r)}</row>')
 
     # ── Assemble worksheet ────────────────────────────────────────────────────

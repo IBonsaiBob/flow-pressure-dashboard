@@ -221,9 +221,10 @@ End Sub
 ' ---------------------------------------------------------------------------
 ' SavePlots
 ' 1. Exports the Excel chart as  {date}_{title}_Chart.png
-' 2. Exports any pasted software-plot image as  {date}_{title}_SoftwarePlot.png
-'    Uses xlBitmap (screen-pixel capture) instead of xlPicture (metafile) so
-'    that images copied from GIS / external apps are captured correctly.
+' 2. Exports the paste area L21:U41 as  {date}_{title}_SoftwarePlot.png
+'    Uses Range.CopyPicture xlScreen, xlBitmap — captures screen pixels of
+'    the pre-merged L21:U41 range, which is reliable for any image type
+'    (GIS exports, screenshots, browser pastes).
 ' 3. Archives data + metadata to the "Plot Archive" sheet.
 ' 4. Saves the session note to Point Index column M.
 ' ---------------------------------------------------------------------------
@@ -287,36 +288,23 @@ Sub SavePlots()
     End If
 
     ' ── 2. Export pasted software-plot image as PNG ───────────────────────
-    ' Searches for the first picture shape on the sheet (the GIS / software
-    ' plot the user pastes into the PASTE AREA).
-    ' Key fix: use xlBitmap (screen-pixel capture) NOT xlPicture (metafile).
-    ' xlPicture re-renders EMF/WMF images and produces a blank result for
-    ' images copied from external applications such as GIS software.
-    ' xlBitmap does a pixel-level screen capture which is always reliable.
-    ' DoEvents is called before the paste so Excel finishes rendering the
-    ' floating shape before it is captured.
-    Dim shp As Shape
+    ' Captures the pre-merged paste area L21:U41 as a screen bitmap.
+    ' Range.CopyPicture xlScreen, xlBitmap is reliable for all image types
+    ' (GIS exports, screenshots, browser pastes) regardless of how the image
+    ' was originally pasted — no need to hunt for a floating shape.
     Dim imgFile As String
     imgFile = exportPath & fileDate & "_" & safeTitle & "_SoftwarePlot.png"
-    Dim foundImg As Boolean: foundImg = False
-    For Each shp In ws.Shapes
-        If shp.Type = msoPicture Or shp.Type = msoLinkedPicture Then
-            DoEvents
-            shp.CopyPicture xlScreen, xlBitmap
-            Dim tmpC As ChartObject
-            Set tmpC = ws.ChartObjects.Add(0, 0, shp.Width, shp.Height)
-            tmpC.Chart.Paste
-            DoEvents
-            tmpC.Chart.Export Filename:=imgFile, FilterName:="PNG"
-            tmpC.Delete
-            saved = saved & "  Image:  " & imgFile & vbNewLine
-            foundImg = True
-            Exit For
-        End If
-    Next shp
-    If Not foundImg Then
-        saved = saved & "  (No software-plot image found in PASTE AREA — paste one first)" & vbNewLine
-    End If
+    Dim pasteRng As Range
+    Set pasteRng = ws.Range("L21:U41")
+    DoEvents
+    pasteRng.CopyPicture xlScreen, xlBitmap
+    Dim tmpC As ChartObject
+    Set tmpC = ws.ChartObjects.Add(0, 0, pasteRng.Width, pasteRng.Height)
+    tmpC.Chart.Paste
+    DoEvents
+    tmpC.Chart.Export Filename:=imgFile, FilterName:="PNG"
+    tmpC.Delete
+    saved = saved & "  Image:  " & imgFile & vbNewLine
 
     ' ── 3. Archive data and note ──────────────────────────────────────────
     Call ArchivePlotData(ws, chartTitle, dateStr)
