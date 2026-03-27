@@ -62,8 +62,8 @@ Sub CreatePlotsChart()
         If chtObj.Name = "PlotsChart" Then chtObj.Delete: Exit For
     Next chtObj
 
-    ' Position: left edge at column M (column 13), top at row 2 (no blank space above).
-    Dim L As Double: L = ws.Columns("M").Left
+    ' Position: left edge at column L (column 12), top at row 2 (no blank space above).
+    Dim L As Double: L = ws.Columns("L").Left
     Dim T As Double: T = ws.Rows(2).Top
 
     ' 18 cm x 11 cm — report-quality landscape proportions.
@@ -395,97 +395,36 @@ Sub SaveNotesToPointIndex(dateStr As String, _
 End Sub
 
 ' ---------------------------------------------------------------------------
-' CopySelectionToPlotsHeaders
-' Opens Excel's built-in range-picker dialog so the user can navigate to the
-' Point Index sheet (or any sheet), select sensor name cells, and click OK.
-' The chosen values are written to B6:K6 on the Plots sheet and the chart is
-' refreshed immediately.  No keyboard shortcuts are used.
-'
-' Invoked by the "LOAD SENSORS" button (L2) on the Plots sheet.
+' LookupAndFillSensorColumn
+' Called when the user types a sensor code into a cell in B6:K6, or when
+' the date in B2 changes.  Searches the header row (row 1) of
+' "Raw Pressure Data" then "Raw Flow Data" for a column whose name matches
+' the typed code (case-insensitive).  If found and B2 contains a valid date,
+' fills the corresponding data column (rows 7-102) with the matched values.
+' Clears the data column first; leaves it blank if no match or no date.
 ' ---------------------------------------------------------------------------
-Sub CopySelectionToPlotsHeaders()
-    Dim wsPlots As Worksheet
-    On Error Resume Next
-    Set wsPlots = ThisWorkbook.Sheets("Plots")
-    On Error GoTo 0
-    If wsPlots Is Nothing Then
-        MsgBox "Plots sheet not found.", vbExclamation, "Load Sensors"
-        Exit Sub
-    End If
-
-    ' Open the built-in range-picker (Type:=8).
-    ' The user can navigate to ANY sheet while the picker is open.
-    Dim rng As Range
-    On Error Resume Next
-    Set rng = Application.InputBox( _
-        "Select the sensor name cells (e.g. from the Point Index sheet)." & vbNewLine & _
-        "You can navigate to any sheet while this box is open, then click OK.", _
-        "Select Sensor Names", Type:=8)
-    On Error GoTo 0
-    If rng Is Nothing Then Exit Sub   ' user clicked Cancel
-
-    ' Collect up to 10 non-empty values from the picked range.
-    Dim vals(9) As String
-    Dim nVals As Long: nVals = 0
-    Dim cell As Range
-    For Each cell In rng
-        Dim v As String
-        v = Trim(CStr(cell.Value))
-        If v <> "" Then
-            If nVals < 10 Then
-                vals(nVals) = v
-                nVals = nVals + 1
-            End If
-        End If
-    Next cell
-
-    If nVals = 0 Then
-        MsgBox "No sensor names found in the selected cells.", _
-               vbInformation, "Load Sensors"
-        Exit Sub
-    End If
-
-    ' Write to B6:K6, then refresh the chart.
-    Application.EnableEvents = False
-    On Error Resume Next
-    wsPlots.Range("B6:K6").ClearContents
-    Dim i As Long
-    For i = 0 To nVals - 1
-        wsPlots.Cells(6, 2 + i).Value = vals(i)
-    Next i
-    Application.EnableEvents = True
-    On Error GoTo 0
-
-    wsPlots.Activate
-    Call RefreshPlotsChart
-
-    MsgBox nVals & " sensor name(s) loaded into Plots B6:K6.", _
-           vbInformation, "Sensors Loaded"
-End Sub
-
-' ---------------------------------------------------------------------------
-' AutoFillSensorData
-' Searches "Raw Pressure Data" then "Raw Flow Data" for readings that match
-' the date in B2.  Writes sensor names to B6:K6 and values to B7:K102.
-' Existing values are cleared first; any cell can be overwritten manually.
-' Silently skips (leaves the data area empty) if no matching data is found.
-' ---------------------------------------------------------------------------
-Sub AutoFillSensorData()
+Sub LookupAndFillSensorColumn(colNum As Long)
     Dim ws As Worksheet
     On Error Resume Next
     Set ws = ThisWorkbook.Sheets("Plots")
     On Error GoTo 0
     If ws Is Nothing Then Exit Sub
 
+    Dim sensorCode As String
+    sensorCode = Trim(CStr(ws.Cells(6, colNum).Value))
+
+    ' Clear the data column first.
+    ws.Range(ws.Cells(7, colNum), ws.Cells(102, colNum)).ClearContents
+
+    ' If the header was cleared, nothing more to do.
+    If sensorCode = "" Then Exit Sub
+
+    ' If no date is set, leave data empty.
     Dim baseDate As Date
     On Error Resume Next
     baseDate = CDate(Trim(CStr(ws.Range("B2").Value)))
     On Error GoTo 0
     If CDbl(baseDate) = 0 Then Exit Sub
-
-    ' Clear sensor headers and data ready for a fresh fill.
-    ws.Range("B6:K6").ClearContents
-    ws.Range("B7:K102").ClearContents
 
     ' Try Raw Pressure Data first, then Raw Flow Data.
     Dim rawSheets(1) As String
@@ -500,32 +439,47 @@ Sub AutoFillSensorData()
         Set wsRaw = ThisWorkbook.Sheets(rawSheets(si))
         On Error GoTo 0
         If Not wsRaw Is Nothing Then
-            If FillFromRawSheet(ws, wsRaw, baseDate) Then Exit For
+            If FillColumnFromRawSheet(ws, wsRaw, sensorCode, colNum, baseDate) Then Exit For
         End If
     Next si
 End Sub
 
 ' ---------------------------------------------------------------------------
-' FillFromRawSheet  (helper for AutoFillSensorData)
-' Finds rows in wsRaw whose timestamps fall on baseDate, copies up to 10
-' sensor columns to wsPlots rows 6 (headers) and 7-102 (data).
-' Matches each 15-min slot to the nearest raw timestamp within +/-7.5 minutes.
-' Returns True when at least one data value was written.
+' FillColumnFromRawSheet  (helper for LookupAndFillSensorColumn)
+' Finds the column in wsRaw whose row-1 header matches sensorCode
+' (case-insensitive), then fills wsPlots data column colNum (rows 7-102)
+' for baseDate using nearest-timestamp matching within +/-7.5 minutes.
+' Returns True if at least one value was written.
 ' ---------------------------------------------------------------------------
-Function FillFromRawSheet(wsPlots As Worksheet, _
-                          wsRaw   As Worksheet, _
-                          baseDate As Date) As Boolean
-    FillFromRawSheet = False
+Function FillColumnFromRawSheet(wsPlots As Worksheet, _
+                                wsRaw As Worksheet, _
+                                sensorCode As String, _
+                                colNum As Long, _
+                                baseDate As Date) As Boolean
+    FillColumnFromRawSheet = False
 
-    Dim lastRow As Long: lastRow = wsRaw.Cells(wsRaw.Rows.Count, 1).End(xlUp).Row
-    If lastRow < 2 Then Exit Function
-
-    Dim lastCol As Long: lastCol = wsRaw.Cells(1, wsRaw.Columns.Count).End(xlToLeft).Column
+    Dim lastCol As Long
+    lastCol = wsRaw.Cells(1, wsRaw.Columns.Count).End(xlToLeft).Column
     If lastCol < 2 Then Exit Function
+
+    ' Find the matching column header (case-insensitive).
+    Dim rawCol As Long: rawCol = 0
+    Dim c As Long
+    For c = 2 To lastCol
+        If LCase(Trim(CStr(wsRaw.Cells(1, c).Value))) = LCase(sensorCode) Then
+            rawCol = c
+            Exit For
+        End If
+    Next c
+    If rawCol = 0 Then Exit Function
+
+    Dim lastRow As Long
+    lastRow = wsRaw.Cells(wsRaw.Rows.Count, 1).End(xlUp).Row
+    If lastRow < 2 Then Exit Function
 
     Dim baseDbl As Double: baseDbl = CDbl(baseDate)
 
-    ' ── Find the first row whose date portion equals baseDate ─────────────
+    ' Find the first row whose date portion equals baseDate.
     Dim startRow As Long: startRow = 0
     Dim r As Long
     Dim tsDbl As Double
@@ -540,7 +494,7 @@ Function FillFromRawSheet(wsPlots As Worksheet, _
     Next r
     If startRow = 0 Then Exit Function
 
-    ' ── Count consecutive rows that belong to this date ───────────────────
+    ' Count consecutive rows for this date.
     Dim dayCount As Long: dayCount = 0
     For r = startRow To lastRow
         On Error Resume Next
@@ -554,33 +508,21 @@ Function FillFromRawSheet(wsPlots As Worksheet, _
     Next r
     If dayCount = 0 Then Exit Function
 
-    ' ── Number of sensor columns to copy (max 10) ─────────────────────────
-    Dim sensorCols As Long
-    sensorCols = Application.WorksheetFunction.Min(lastCol - 1, 10)
-
-    ' ── Copy sensor names to Plots row 6 ──────────────────────────────────
-    Dim c As Long
-    For c = 1 To sensorCols
-        wsPlots.Cells(6, 1 + c).Value = wsRaw.Cells(1, 1 + c).Value
-    Next c
-
-    ' ── Load day rows into arrays for fast per-slot lookup ────────────────
+    ' Load timestamps and values into arrays for fast per-slot lookup.
     Dim rawTS()   As Double
     Dim rawVals() As Variant
     ReDim rawTS(1 To dayCount)
-    ReDim rawVals(1 To dayCount, 1 To sensorCols)
+    ReDim rawVals(1 To dayCount)
     Dim di As Long: di = 1
     For r = startRow To startRow + dayCount - 1
         On Error Resume Next
         rawTS(di) = CDbl(wsRaw.Cells(r, 1).Value)
         On Error GoTo 0
-        For c = 1 To sensorCols
-            rawVals(di, c) = wsRaw.Cells(r, 1 + c).Value
-        Next c
+        rawVals(di) = wsRaw.Cells(r, rawCol).Value
         di = di + 1
     Next r
 
-    ' ── For each 15-min slot find the nearest raw row (within +/-7.5 min) ─
+    ' For each 15-min slot find the nearest raw row (within +/-7.5 min).
     Dim halfStep As Double: halfStep = 7.5 / 1440
     Dim i As Long
     Dim slotDbl  As Double
@@ -600,10 +542,8 @@ Function FillFromRawSheet(wsPlots As Worksheet, _
             End If
         Next dIdx
         If bestIdx > 0 And bestDiff <= halfStep Then
-            For c = 1 To sensorCols
-                wsPlots.Cells(7 + i, 1 + c).Value = rawVals(bestIdx, c)
-            Next c
-            FillFromRawSheet = True
+            wsPlots.Cells(7 + i, colNum).Value = rawVals(bestIdx)
+            FillColumnFromRawSheet = True
         End If
     Next i
 End Function

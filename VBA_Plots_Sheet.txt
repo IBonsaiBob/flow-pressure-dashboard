@@ -15,11 +15,30 @@ Private Sub Worksheet_Activate()
 End Sub
 
 Private Sub Worksheet_Change(ByVal Target As Range)
-    ' B6:K6 sensor header row changed → rebuild chart series dynamically.
-    ' Clearing a header removes that series; typing a new one adds it.
+    ' B2 date changed → re-fill data for every sensor code already in B6:K6.
+    If Not Intersect(Target, Me.Range("B2")) Is Nothing Then
+        Application.EnableEvents = False
+        On Error Resume Next
+        Dim sensCol As Long
+        For sensCol = 2 To 11
+            If Trim(CStr(Me.Cells(6, sensCol).Value)) <> "" Then
+                Call LookupAndFillSensorColumn(sensCol)
+            End If
+        Next sensCol
+        Call RefreshPlotsChart
+        Application.EnableEvents = True
+        On Error GoTo 0
+    End If
+
+    ' B6:K6 sensor header row changed → look up data for each edited cell,
+    ' then rebuild chart series dynamically.
     If Not Intersect(Target, Me.Range("B6:K6")) Is Nothing Then
         Application.EnableEvents = False
         On Error Resume Next
+        Dim chCell As Range
+        For Each chCell In Intersect(Target, Me.Range("B6:K6"))
+            Call LookupAndFillSensorColumn(chCell.Column)
+        Next chCell
         Call RefreshPlotsChart
         Application.EnableEvents = True   ' restored while On Error Resume Next is active
         On Error GoTo 0
@@ -64,19 +83,9 @@ Private Sub Worksheet_SelectionChange(ByVal Target As Range)
         Call SavePlots
     End If
 
-    ' L2 = "LOAD SENSORS" button.
-    ' Opens a range-picker so you can navigate to Point Index (or any sheet),
-    ' select sensor name cells, and click OK — no keyboard shortcut needed.
-    If cell.Row = 2 And cell.Column = 12 Then
-        Application.EnableEvents = False
-        cell.Offset(0, -1).Select
-        Application.EnableEvents = True
-        Call CopySelectionToPlotsHeaders
-    End If
-
-    ' M2 = "REFRESH CHART" button.
+    ' K3 = "REFRESH CHART" button.
     ' Rebuilds the chart series from the current B6:K6 headers.
-    If cell.Row = 2 And cell.Column = 13 Then
+    If cell.Row = 3 And cell.Column = 11 Then
         Application.EnableEvents = False
         cell.Offset(0, -1).Select
         Application.EnableEvents = True

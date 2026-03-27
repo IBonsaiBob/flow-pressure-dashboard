@@ -58,11 +58,30 @@ Private Sub Worksheet_Activate()
 End Sub
 
 Private Sub Worksheet_Change(ByVal Target As Range)
-    ' B6:K6 sensor header row changed → rebuild chart series dynamically.
-    ' Clearing a header removes that series; typing a new one adds it.
+    ' B2 date changed → re-fill data for every sensor code already in B6:K6.
+    If Not Intersect(Target, Me.Range("B2")) Is Nothing Then
+        Application.EnableEvents = False
+        On Error Resume Next
+        Dim sensCol As Long
+        For sensCol = 2 To 11
+            If Trim(CStr(Me.Cells(6, sensCol).Value)) <> "" Then
+                Call LookupAndFillSensorColumn(sensCol)
+            End If
+        Next sensCol
+        Call RefreshPlotsChart
+        Application.EnableEvents = True
+        On Error GoTo 0
+    End If
+
+    ' B6:K6 sensor header row changed → look up data for each edited cell,
+    ' then rebuild chart series dynamically.
     If Not Intersect(Target, Me.Range("B6:K6")) Is Nothing Then
         Application.EnableEvents = False
         On Error Resume Next
+        Dim chCell As Range
+        For Each chCell In Intersect(Target, Me.Range("B6:K6"))
+            Call LookupAndFillSensorColumn(chCell.Column)
+        Next chCell
         Call RefreshPlotsChart
         Application.EnableEvents = True   ' restored while On Error Resume Next is active
         On Error GoTo 0
@@ -107,19 +126,9 @@ Private Sub Worksheet_SelectionChange(ByVal Target As Range)
         Call SavePlots
     End If
 
-    ' L2 = "LOAD SENSORS" button.
-    ' Opens a range-picker so you can navigate to Point Index (or any sheet),
-    ' select sensor name cells, and click OK — no keyboard shortcut needed.
-    If cell.Row = 2 And cell.Column = 12 Then
-        Application.EnableEvents = False
-        cell.Offset(0, -1).Select
-        Application.EnableEvents = True
-        Call CopySelectionToPlotsHeaders
-    End If
-
-    ' M2 = "REFRESH CHART" button.
+    ' K3 = "REFRESH CHART" button.
     ' Rebuilds the chart series from the current B6:K6 headers.
-    If cell.Row = 2 And cell.Column = 13 Then
+    If cell.Row = 3 And cell.Column = 11 Then
         Application.EnableEvents = False
         cell.Offset(0, -1).Select
         Application.EnableEvents = True
@@ -194,8 +203,8 @@ Sub CreatePlotsChart()
         If chtObj.Name = "PlotsChart" Then chtObj.Delete: Exit For
     Next chtObj
 
-    ' Position: left edge at column M (column 13), top at row 2 (no blank space above).
-    Dim L As Double: L = ws.Columns("M").Left
+    ' Position: left edge at column L (column 12), top at row 2 (no blank space above).
+    Dim L As Double: L = ws.Columns("L").Left
     Dim T As Double: T = ws.Rows(2).Top
 
     ' 18 cm x 11 cm — report-quality landscape proportions.
@@ -527,97 +536,36 @@ Sub SaveNotesToPointIndex(dateStr As String, _
 End Sub
 
 ' ---------------------------------------------------------------------------
-' CopySelectionToPlotsHeaders
-' Opens Excel's built-in range-picker dialog so the user can navigate to the
-' Point Index sheet (or any sheet), select sensor name cells, and click OK.
-' The chosen values are written to B6:K6 on the Plots sheet and the chart is
-' refreshed immediately.  No keyboard shortcuts are used.
-'
-' Invoked by the "LOAD SENSORS" button (L2) on the Plots sheet.
+' LookupAndFillSensorColumn
+' Called when the user types a sensor code into a cell in B6:K6, or when
+' the date in B2 changes.  Searches the header row (row 1) of
+' "Raw Pressure Data" then "Raw Flow Data" for a column whose name matches
+' the typed code (case-insensitive).  If found and B2 contains a valid date,
+' fills the corresponding data column (rows 7-102) with the matched values.
+' Clears the data column first; leaves it blank if no match or no date.
 ' ---------------------------------------------------------------------------
-Sub CopySelectionToPlotsHeaders()
-    Dim wsPlots As Worksheet
-    On Error Resume Next
-    Set wsPlots = ThisWorkbook.Sheets("Plots")
-    On Error GoTo 0
-    If wsPlots Is Nothing Then
-        MsgBox "Plots sheet not found.", vbExclamation, "Load Sensors"
-        Exit Sub
-    End If
-
-    ' Open the built-in range-picker (Type:=8).
-    ' The user can navigate to ANY sheet while the picker is open.
-    Dim rng As Range
-    On Error Resume Next
-    Set rng = Application.InputBox( _
-        "Select the sensor name cells (e.g. from the Point Index sheet)." & vbNewLine & _
-        "You can navigate to any sheet while this box is open, then click OK.", _
-        "Select Sensor Names", Type:=8)
-    On Error GoTo 0
-    If rng Is Nothing Then Exit Sub   ' user clicked Cancel
-
-    ' Collect up to 10 non-empty values from the picked range.
-    Dim vals(9) As String
-    Dim nVals As Long: nVals = 0
-    Dim cell As Range
-    For Each cell In rng
-        Dim v As String
-        v = Trim(CStr(cell.Value))
-        If v <> "" Then
-            If nVals < 10 Then
-                vals(nVals) = v
-                nVals = nVals + 1
-            End If
-        End If
-    Next cell
-
-    If nVals = 0 Then
-        MsgBox "No sensor names found in the selected cells.", _
-               vbInformation, "Load Sensors"
-        Exit Sub
-    End If
-
-    ' Write to B6:K6, then refresh the chart.
-    Application.EnableEvents = False
-    On Error Resume Next
-    wsPlots.Range("B6:K6").ClearContents
-    Dim i As Long
-    For i = 0 To nVals - 1
-        wsPlots.Cells(6, 2 + i).Value = vals(i)
-    Next i
-    Application.EnableEvents = True
-    On Error GoTo 0
-
-    wsPlots.Activate
-    Call RefreshPlotsChart
-
-    MsgBox nVals & " sensor name(s) loaded into Plots B6:K6.", _
-           vbInformation, "Sensors Loaded"
-End Sub
-
-' ---------------------------------------------------------------------------
-' AutoFillSensorData
-' Searches "Raw Pressure Data" then "Raw Flow Data" for readings that match
-' the date in B2.  Writes sensor names to B6:K6 and values to B7:K102.
-' Existing values are cleared first; any cell can be overwritten manually.
-' Silently skips (leaves the data area empty) if no matching data is found.
-' ---------------------------------------------------------------------------
-Sub AutoFillSensorData()
+Sub LookupAndFillSensorColumn(colNum As Long)
     Dim ws As Worksheet
     On Error Resume Next
     Set ws = ThisWorkbook.Sheets("Plots")
     On Error GoTo 0
     If ws Is Nothing Then Exit Sub
 
+    Dim sensorCode As String
+    sensorCode = Trim(CStr(ws.Cells(6, colNum).Value))
+
+    ' Clear the data column first.
+    ws.Range(ws.Cells(7, colNum), ws.Cells(102, colNum)).ClearContents
+
+    ' If the header was cleared, nothing more to do.
+    If sensorCode = "" Then Exit Sub
+
+    ' If no date is set, leave data empty.
     Dim baseDate As Date
     On Error Resume Next
     baseDate = CDate(Trim(CStr(ws.Range("B2").Value)))
     On Error GoTo 0
     If CDbl(baseDate) = 0 Then Exit Sub
-
-    ' Clear sensor headers and data ready for a fresh fill.
-    ws.Range("B6:K6").ClearContents
-    ws.Range("B7:K102").ClearContents
 
     ' Try Raw Pressure Data first, then Raw Flow Data.
     Dim rawSheets(1) As String
@@ -632,32 +580,47 @@ Sub AutoFillSensorData()
         Set wsRaw = ThisWorkbook.Sheets(rawSheets(si))
         On Error GoTo 0
         If Not wsRaw Is Nothing Then
-            If FillFromRawSheet(ws, wsRaw, baseDate) Then Exit For
+            If FillColumnFromRawSheet(ws, wsRaw, sensorCode, colNum, baseDate) Then Exit For
         End If
     Next si
 End Sub
 
 ' ---------------------------------------------------------------------------
-' FillFromRawSheet  (helper for AutoFillSensorData)
-' Finds rows in wsRaw whose timestamps fall on baseDate, copies up to 10
-' sensor columns to wsPlots rows 6 (headers) and 7-102 (data).
-' Matches each 15-min slot to the nearest raw timestamp within +/-7.5 minutes.
-' Returns True when at least one data value was written.
+' FillColumnFromRawSheet  (helper for LookupAndFillSensorColumn)
+' Finds the column in wsRaw whose row-1 header matches sensorCode
+' (case-insensitive), then fills wsPlots data column colNum (rows 7-102)
+' for baseDate using nearest-timestamp matching within +/-7.5 minutes.
+' Returns True if at least one value was written.
 ' ---------------------------------------------------------------------------
-Function FillFromRawSheet(wsPlots As Worksheet, _
-                          wsRaw   As Worksheet, _
-                          baseDate As Date) As Boolean
-    FillFromRawSheet = False
+Function FillColumnFromRawSheet(wsPlots As Worksheet, _
+                                wsRaw As Worksheet, _
+                                sensorCode As String, _
+                                colNum As Long, _
+                                baseDate As Date) As Boolean
+    FillColumnFromRawSheet = False
 
-    Dim lastRow As Long: lastRow = wsRaw.Cells(wsRaw.Rows.Count, 1).End(xlUp).Row
-    If lastRow < 2 Then Exit Function
-
-    Dim lastCol As Long: lastCol = wsRaw.Cells(1, wsRaw.Columns.Count).End(xlToLeft).Column
+    Dim lastCol As Long
+    lastCol = wsRaw.Cells(1, wsRaw.Columns.Count).End(xlToLeft).Column
     If lastCol < 2 Then Exit Function
+
+    ' Find the matching column header (case-insensitive).
+    Dim rawCol As Long: rawCol = 0
+    Dim c As Long
+    For c = 2 To lastCol
+        If LCase(Trim(CStr(wsRaw.Cells(1, c).Value))) = LCase(sensorCode) Then
+            rawCol = c
+            Exit For
+        End If
+    Next c
+    If rawCol = 0 Then Exit Function
+
+    Dim lastRow As Long
+    lastRow = wsRaw.Cells(wsRaw.Rows.Count, 1).End(xlUp).Row
+    If lastRow < 2 Then Exit Function
 
     Dim baseDbl As Double: baseDbl = CDbl(baseDate)
 
-    ' ── Find the first row whose date portion equals baseDate ─────────────
+    ' Find the first row whose date portion equals baseDate.
     Dim startRow As Long: startRow = 0
     Dim r As Long
     Dim tsDbl As Double
@@ -672,7 +635,7 @@ Function FillFromRawSheet(wsPlots As Worksheet, _
     Next r
     If startRow = 0 Then Exit Function
 
-    ' ── Count consecutive rows that belong to this date ───────────────────
+    ' Count consecutive rows for this date.
     Dim dayCount As Long: dayCount = 0
     For r = startRow To lastRow
         On Error Resume Next
@@ -686,33 +649,21 @@ Function FillFromRawSheet(wsPlots As Worksheet, _
     Next r
     If dayCount = 0 Then Exit Function
 
-    ' ── Number of sensor columns to copy (max 10) ─────────────────────────
-    Dim sensorCols As Long
-    sensorCols = Application.WorksheetFunction.Min(lastCol - 1, 10)
-
-    ' ── Copy sensor names to Plots row 6 ──────────────────────────────────
-    Dim c As Long
-    For c = 1 To sensorCols
-        wsPlots.Cells(6, 1 + c).Value = wsRaw.Cells(1, 1 + c).Value
-    Next c
-
-    ' ── Load day rows into arrays for fast per-slot lookup ────────────────
+    ' Load timestamps and values into arrays for fast per-slot lookup.
     Dim rawTS()   As Double
     Dim rawVals() As Variant
     ReDim rawTS(1 To dayCount)
-    ReDim rawVals(1 To dayCount, 1 To sensorCols)
+    ReDim rawVals(1 To dayCount)
     Dim di As Long: di = 1
     For r = startRow To startRow + dayCount - 1
         On Error Resume Next
         rawTS(di) = CDbl(wsRaw.Cells(r, 1).Value)
         On Error GoTo 0
-        For c = 1 To sensorCols
-            rawVals(di, c) = wsRaw.Cells(r, 1 + c).Value
-        Next c
+        rawVals(di) = wsRaw.Cells(r, rawCol).Value
         di = di + 1
     Next r
 
-    ' ── For each 15-min slot find the nearest raw row (within +/-7.5 min) ─
+    ' For each 15-min slot find the nearest raw row (within +/-7.5 min).
     Dim halfStep As Double: halfStep = 7.5 / 1440
     Dim i As Long
     Dim slotDbl  As Double
@@ -732,10 +683,8 @@ Function FillFromRawSheet(wsPlots As Worksheet, _
             End If
         Next dIdx
         If bestIdx > 0 And bestDiff <= halfStep Then
-            For c = 1 To sensorCols
-                wsPlots.Cells(7 + i, 1 + c).Value = rawVals(bestIdx, c)
-            Next c
-            FillFromRawSheet = True
+            wsPlots.Cells(7 + i, colNum).Value = rawVals(bestIdx)
+            FillColumnFromRawSheet = True
         End If
     Next i
 End Function
@@ -871,15 +820,15 @@ def _build_plots_sheet_xml() -> str:
     Layout
     ──────
     Row 1  : Title bar  (A1:K1 merged)
-    Row 2  : Date (B2) | Chart Title (E2:G2 merged) | Y-Axis Label (I2:J2 merged) | SAVE PLOTS button (K2) | LOAD SENSORS (L2) | REFRESH CHART (M2)
-    Row 3  : Export Path (B3:J3 merged)
+    Row 2  : Date (B2) | Chart Title (E2:G2 merged) | Y-Axis Label (I2:J2 merged) | SAVE PLOTS button (K2)
+    Row 3  : Export Path (B3:J3 merged) | REFRESH CHART button (K3)
     Row 4  : Session Notes (B4:J4 merged, taller row)
     Row 5  : Thin separator row
     Row 6  : Column headers  Time | Sensor 1 … Sensor 10
     Rows 7-102 : 96 data rows — A column pre-populated with 00:00–23:45 (15-min intervals)
 
-    Chart and paste box are created by VBA at runtime, both anchored to col M row 2.
-    Chart: M2, 18cm×11cm.  Paste box: same size, 6pt below chart.
+    Chart and paste box are created by VBA at runtime, both anchored to col L row 2.
+    Chart: L2, 18cm×11cm.  Paste box: same size, 6pt below chart.
     """
     rows = []
     merges = []
@@ -904,8 +853,6 @@ def _build_plots_sheet_xml() -> str:
         _str_cell(9, 2, S_YELLOW_IN, ""),                  # I2 y-axis input ← y label (I2:J2 merged)
         _empty_cell(10, 2, S_YELLOW_IN),                   # J2
         _str_cell(11, 2, S_GREEN_BTN, "\U0001f4be  SAVE PLOTS"),   # K2 button
-        _str_cell(12, 2, S_MED_HDR,   "\U0001f4cb  LOAD SENSORS"), # L2 button
-        _str_cell(13, 2, S_MED_HDR,   "\u21ba  REFRESH CHART"),    # M2 button
     ]
     rows.append(f'<row r="2" ht="22" customHeight="1">{"".join(r)}</row>')
     merges.append('<mergeCell ref="E2:G2"/>')
@@ -923,7 +870,7 @@ def _build_plots_sheet_xml() -> str:
         _empty_cell(8, 3, S_YELLOW_IN),
         _empty_cell(9, 3, S_YELLOW_IN),
         _empty_cell(10, 3, S_YELLOW_IN),
-        _empty_cell(11, 3, S_DEFAULT),                     # K3 gap
+        _str_cell(11, 3, S_MED_HDR, "\u21ba  REFRESH CHART"),     # K3 button
     ]
     rows.append(f'<row r="3" ht="22" customHeight="1">{"".join(r)}</row>')
     merges.append('<mergeCell ref="B3:J3"/>')
@@ -972,10 +919,8 @@ def _build_plots_sheet_xml() -> str:
     cols = (
         "<cols>"
         '<col min="1"  max="1"  width="13"  customWidth="1"/>'  # A  timestamps
-        '<col min="2"  max="11" width="12"  customWidth="1"/>'  # B-K sensor data
-        '<col min="12" max="12" width="16"  customWidth="1"/>'  # L  LOAD SENSORS button
-        '<col min="13" max="13" width="16"  customWidth="1"/>'  # M  REFRESH CHART button / chart zone
-        '<col min="14" max="32" width="10"  customWidth="1"/>'  # N+ chart / paste zone
+        '<col min="2"  max="11" width="12"  customWidth="1"/>'  # B-K sensor data / buttons
+        '<col min="12" max="32" width="10"  customWidth="1"/>'  # L+ chart / paste zone
         "</cols>"
     )
     return (
@@ -985,7 +930,7 @@ def _build_plots_sheet_xml() -> str:
         ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
         ' mc:Ignorable="x14ac xr xr2 xr3"'
         ' xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac">'
-        '<dimension ref="A1:M102"/>'
+        '<dimension ref="A1:K102"/>'
         '<sheetViews>'
         '<sheetView tabSelected="1" workbookViewId="0">'
         '<selection activeCell="B2" sqref="B2"/>'
@@ -1215,18 +1160,18 @@ def main() -> None:
     print("  • I2  — Enter the Y-axis label (e.g. 'Flow (L/s)' or 'Pressure (bar)'); updates live.")
     print("  • B3  — Enter the export folder path (e.g. C:\\Reports\\).")
     print("  • B4  — Enter session notes (saved to Point Index col M on Save).")
-    print("  • B6:K6 — Sensor column headers (type names here; chart updates on each edit).")
-    print("  • B7:K102 — Sensor data (paste or type values; 96 rows = 00:00–23:45).")
+    print("  • B6:K6 — Sensor column headers (type the sensor code here; data auto-fills from")
+    print("             Raw Pressure/Flow Data for the date in B2; chart updates on each edit).")
+    print("  • B7:K102 — Sensor data (auto-filled by lookup; can be overwritten manually).")
     print("  • K2  — Click SAVE PLOTS to export PNGs and archive data.")
-    print("  • L2  — Click LOAD SENSORS: opens a range-picker so you can navigate")
-    print("           to Point Index (or any sheet), select sensor name cells, click OK.")
-    print("  • M2  — Click REFRESH CHART to rebuild chart series from current B6:K6 headers.")
+    print("  • K3  — Click REFRESH CHART to rebuild chart series from current B6:K6 headers.")
     print()
-    print("Loading sensor names from Point Index:")
-    print("  1. Click the 'LOAD SENSORS' button (L2) on the Plots sheet.")
-    print("  2. A range-picker dialog opens — navigate to the Point Index sheet.")
-    print("  3. Select the sensor name cells and click OK.")
-    print("  4. The names are written to B6:K6 and the chart refreshes automatically.")
+    print("Sensor lookup:")
+    print("  1. Enter a date in B2 (DD/MM/YY).")
+    print("  2. Type the sensor header name (exactly as it appears in row 1 of the raw data")
+    print("     tab) into any cell in B6:K6.")
+    print("  3. Data for that sensor and date fills automatically; the chart updates.")
+    print("  4. Changing the date in B2 re-runs the lookup for all sensors already in B6:K6.")
 
 
 if __name__ == "__main__":
