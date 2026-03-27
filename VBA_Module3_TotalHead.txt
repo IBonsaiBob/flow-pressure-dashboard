@@ -1,0 +1,865 @@
+' ============================================================
+' Module3 — Total Head (New) Sheet Procedures  (v1.45)
+' How to install:
+'   1. Alt+F11 to open the VBA editor.
+'   2. Insert → Module.
+'   3. Paste this entire block into the new module.
+' ============================================================
+'
+' Depends on Module1 (WriteDataNoteToPointIndex) being installed.
+'
+' ── Sheet layout assumed ─────────────────────────────────────────────────────
+'   C3  = Zone Name / chart title       K3  = Driving Head sensor
+'   C4  = Export Path                   (A4 label set by InitTotalHeadSheet)
+'   C5  = Start Date                    E5  = SAVE   G5 = LOAD
+'   C6  = End Date
+'   C7  = Zone Notes
+'   Rows 9-43: sensor config
+'              col A=Point Ref | B=Offset | C=Δt | D=Z(m) | F=PRN | G=Point Notes
+'   Row 45: data table headers  (A=Timestamp, B..=sensor Point Refs)
+'   Row 46+: data rows          (A=timestamp serial, B..=pressure readings)
+'
+' ── Point Index assumed ───────────────────────────────────────────────────────
+'   Header row 3, data row 4+
+'   Col A = "Point Ref"   Col O = "FINAL Z / BWL"   Col R = "Logger ID"
+'
+' ── Pressure Data assumed ─────────────────────────────────────────────────────
+'   Header row 5: A="Date", B+= sensor / logger codes
+'   Data row 6+:  A=timestamp serial, B+= pressure readings (-999 = no data)
+' ──────────────────────────────────────────────────────────────────────────────
+
+' ── Layout constants ─────────────────────────────────────────────────────────
+Private Const TH_CONF_START As Long = 9     ' first sensor config row
+Private Const TH_CONF_END   As Long = 43    ' last sensor config row
+Private Const TH_SENSOR_CNT As Long = 35    ' sensor config rows (43-9+1)
+Private Const TH_HDR_ROW    As Long = 45    ' data table header row
+Private Const TH_DATA_ROW   As Long = 46    ' first data row
+Private Const TH_MAX_ROWS   As Long = 2976  ' 1 month of 15-min data (31 × 96)
+
+' ── Column indices on the Total Head sheet ───────────────────────────────────
+Private Const TH_REF   As Long = 1   ' col A: Point Ref
+Private Const TH_OFF   As Long = 2   ' col B: Offset
+Private Const TH_DT    As Long = 3   ' col C: Δt (timesteps)
+Private Const TH_ELEV  As Long = 4   ' col D: Z (m)
+Private Const TH_NOTES As Long = 7   ' col G: Point Notes
+
+' ---------------------------------------------------------------------------
+' TH_DataCol
+' Maps a sensor config row (9-43) to the corresponding data table column
+' (2=B through 36=AJ).  Row 9 → col 2, row 43 → col 36.
+' ---------------------------------------------------------------------------
+Function TH_DataCol(cfgRow As Long) As Long
+    TH_DataCol = cfgRow - 7
+End Function
+
+' ---------------------------------------------------------------------------
+' InitTotalHeadSheet
+' Writes the "Export Path:" label in A4 if the cell is empty, and ensures
+' the data-table anchor label "Timestamp" is in A45.
+' Called on Worksheet_Activate.
+' ---------------------------------------------------------------------------
+Sub InitTotalHeadSheet(ws As Worksheet)
+    If Trim(CStr(ws.Range("A4").Value)) = "" Then
+        ws.Range("A4").Value = "Export Path:"
+    End If
+    If Trim(CStr(ws.Range("A45").Value)) = "" Then
+        ws.Range("A45").Value = "Timestamp"
+    End If
+End Sub
+
+' ---------------------------------------------------------------------------
+' FindLoggerID
+' Looks up a Point Ref in Point Index (col A, header row 3) and returns the
+' Logger ID from col R.  Returns "" if not found or Point Index is missing.
+' ---------------------------------------------------------------------------
+Private Function FindLoggerID(pointRef As String) As String
+    FindLoggerID = ""
+    If pointRef = "" Then Exit Function
+
+    Dim wsIdx As Worksheet
+    Dim wsT As Worksheet
+    For Each wsT In ThisWorkbook.Worksheets
+        If LCase(Trim(wsT.Name)) = "point index" Then
+            Set wsIdx = wsT: Exit For
+        End If
+    Next wsT
+    If wsIdx Is Nothing Then Exit Function
+
+    Dim lastCol As Long
+    lastCol = wsIdx.Cells(3, wsIdx.Columns.Count).End(xlToLeft).Column
+    Dim ptCol As Long: ptCol = 0
+    Dim lgCol As Long: lgCol = 0
+    Dim c As Long
+    For c = 1 To lastCol
+        Select Case LCase(Trim(CStr(wsIdx.Cells(3, c).Value)))
+            Case "point ref": ptCol = c
+            Case "logger id": lgCol = c
+        End Select
+    Next c
+    If ptCol = 0 Or lgCol = 0 Then Exit Function
+
+    Dim lastRow As Long
+    lastRow = wsIdx.Cells(wsIdx.Rows.Count, ptCol).End(xlUp).Row
+    Dim r As Long
+    For r = 4 To lastRow
+        If LCase(Trim(CStr(wsIdx.Cells(r, ptCol).Value))) = LCase(pointRef) Then
+            FindLoggerID = Trim(CStr(wsIdx.Cells(r, lgCol).Value))
+            Exit Function
+        End If
+    Next r
+End Function
+
+' ---------------------------------------------------------------------------
+' FindElevationTH
+' Looks up a Point Ref in Point Index and returns the FINAL Z / BWL value.
+' Returns Empty if not found.
+' ---------------------------------------------------------------------------
+Private Function FindElevationTH(pointRef As String) As Variant
+    FindElevationTH = Empty
+    If pointRef = "" Then Exit Function
+
+    Dim wsIdx As Worksheet
+    Dim wsT As Worksheet
+    For Each wsT In ThisWorkbook.Worksheets
+        If LCase(Trim(wsT.Name)) = "point index" Then
+            Set wsIdx = wsT: Exit For
+        End If
+    Next wsT
+    If wsIdx Is Nothing Then Exit Function
+
+    Dim lastCol As Long
+    lastCol = wsIdx.Cells(3, wsIdx.Columns.Count).End(xlToLeft).Column
+    Dim ptCol As Long: ptCol = 0
+    Dim zCol  As Long: zCol  = 0
+    Dim c As Long
+    For c = 1 To lastCol
+        Select Case LCase(Trim(CStr(wsIdx.Cells(3, c).Value)))
+            Case "point ref":     ptCol = c
+            Case "final z / bwl": zCol  = c
+        End Select
+    Next c
+    If ptCol = 0 Or zCol = 0 Then Exit Function
+
+    Dim lastRow As Long
+    lastRow = wsIdx.Cells(wsIdx.Rows.Count, ptCol).End(xlUp).Row
+    Dim r As Long
+    For r = 4 To lastRow
+        If LCase(Trim(CStr(wsIdx.Cells(r, ptCol).Value))) = LCase(pointRef) Then
+            FindElevationTH = wsIdx.Cells(r, zCol).Value
+            Exit Function
+        End If
+    Next r
+End Function
+
+' ---------------------------------------------------------------------------
+' FindPressureDataCol
+' Returns the column in Pressure Data (header row 5) whose header matches
+' the Point Ref (case-insensitive).  Falls back to Logger ID lookup if the
+' direct match fails.  Returns 0 if not found.
+' ---------------------------------------------------------------------------
+Private Function FindPressureDataCol(wsPres As Worksheet, _
+                                     pointRef As String) As Long
+    FindPressureDataCol = 0
+    If pointRef = "" Then Exit Function
+
+    Dim lastCol As Long
+    lastCol = wsPres.Cells(5, wsPres.Columns.Count).End(xlToLeft).Column
+    If lastCol < 2 Then Exit Function
+
+    Dim c As Long
+
+    ' First: search for Point Ref directly in row 5
+    For c = 2 To lastCol
+        If LCase(Trim(CStr(wsPres.Cells(5, c).Value))) = LCase(pointRef) Then
+            FindPressureDataCol = c
+            Exit Function
+        End If
+    Next c
+
+    ' Fallback: look up Logger ID from Point Index and search with that
+    Dim loggerID As String
+    loggerID = FindLoggerID(pointRef)
+    If loggerID <> "" And LCase(loggerID) <> LCase(pointRef) Then
+        For c = 2 To lastCol
+            If LCase(Trim(CStr(wsPres.Cells(5, c).Value))) = LCase(loggerID) Then
+                FindPressureDataCol = c
+                Exit Function
+            End If
+        Next c
+    End If
+End Function
+
+' ---------------------------------------------------------------------------
+' PopulateElevationTH
+' Writes the FINAL Z / BWL elevation from Point Index into col D (Z (m))
+' for the given sensor config row.  Clears the cell if no match is found.
+' ---------------------------------------------------------------------------
+Sub PopulateElevationTH(ws As Worksheet, cfgRow As Long)
+    Dim pointRef As String
+    pointRef = Trim(CStr(ws.Cells(cfgRow, TH_REF).Value))
+    If pointRef = "" Then
+        ws.Cells(cfgRow, TH_ELEV).ClearContents
+        Exit Sub
+    End If
+
+    Dim z As Variant
+    z = FindElevationTH(pointRef)
+    If IsNumeric(z) Then
+        ws.Cells(cfgRow, TH_ELEV).Value = CDbl(z)
+    Else
+        ws.Cells(cfgRow, TH_ELEV).ClearContents
+    End If
+End Sub
+
+' ---------------------------------------------------------------------------
+' RebuildDataTable
+' Clears the data table (rows 45+) and rebuilds it from scratch:
+'   1. Finds all Pressure Data timestamps between Start Date and End Date.
+'   2. Writes them to col A (formatted as "DD/MM/YYYY HH:MM").
+'   3. Populates every active sensor column.
+'   4. Does NOT rebuild the chart — caller must call RefreshTotalHeadChart.
+' ---------------------------------------------------------------------------
+Sub RebuildDataTable(ws As Worksheet)
+    Application.ScreenUpdating = False
+    Application.Calculation   = xlCalculationManual
+
+    ' ── Clear existing data table ──────────────────────────────────────────
+    Dim lastUsed As Long
+    lastUsed = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    If lastUsed >= TH_HDR_ROW Then
+        ws.Rows(TH_HDR_ROW & ":" & lastUsed).ClearContents
+    End If
+    ws.Range("A45").Value = "Timestamp"
+
+    ' ── Read and validate Start / End dates ───────────────────────────────
+    Dim startV As Variant: startV = ws.Cells(5, 3).Value   ' C5
+    Dim endV   As Variant: endV   = ws.Cells(6, 3).Value   ' C6
+    If Not IsDate(startV) Or Not IsDate(endV) Then GoTo Done
+
+    Dim startDbl As Double: startDbl = Int(CDbl(CDate(startV)))
+    Dim endDbl   As Double: endDbl   = Int(CDbl(CDate(endV)))
+    If endDbl < startDbl Then GoTo Done
+
+    ' ── Find Pressure Data sheet ──────────────────────────────────────────
+    Dim wsPres As Worksheet
+    Dim wsT    As Worksheet
+    For Each wsT In ThisWorkbook.Worksheets
+        If LCase(Trim(wsT.Name)) = "pressure data" Then
+            Set wsPres = wsT: Exit For
+        End If
+    Next wsT
+    If wsPres Is Nothing Then GoTo Done
+
+    ' ── Load ALL timestamps from Pressure Data (col A, rows 6+) ──────────
+    Dim pLastRow As Long
+    pLastRow = wsPres.Cells(wsPres.Rows.Count, 1).End(xlUp).Row
+    If pLastRow < 6 Then GoTo Done
+
+    Dim allTS As Variant
+    allTS = wsPres.Range(wsPres.Cells(6, 1), wsPres.Cells(pLastRow, 1)).Value
+
+    ' ── Find the rows that fall within [startDbl, endDbl + 1 day) ────────
+    Dim pStart As Long: pStart = 0
+    Dim pEnd   As Long: pEnd   = 0
+    Dim tsDbl  As Double
+    Dim i      As Long
+    For i = 1 To UBound(allTS, 1)
+        On Error Resume Next
+        tsDbl = CDbl(allTS(i, 1))
+        On Error GoTo 0
+        If Int(tsDbl) >= startDbl And pStart = 0 Then pStart = i
+        If Int(tsDbl) <= endDbl Then pEnd = i
+    Next i
+    If pStart = 0 Or pEnd < pStart Then GoTo Done
+
+    ' Clamp to TH_MAX_ROWS
+    If pEnd - pStart + 1 > TH_MAX_ROWS Then pEnd = pStart + TH_MAX_ROWS - 1
+
+    Dim nRows As Long: nRows = pEnd - pStart + 1
+
+    ' ── Write timestamps to data table col A ──────────────────────────────
+    Dim outTS() As Variant
+    ReDim outTS(1 To nRows, 1 To 1)
+    For i = 1 To nRows
+        outTS(i, 1) = allTS(pStart + i - 1, 1)
+    Next i
+    With ws.Range(ws.Cells(TH_DATA_ROW, 1), _
+                  ws.Cells(TH_DATA_ROW + nRows - 1, 1))
+        .Value        = outTS
+        .NumberFormat = "DD/MM/YYYY HH:MM"
+    End With
+
+    ' ── Populate each active sensor ───────────────────────────────────────
+    Dim r As Long
+    For r = TH_CONF_START To TH_CONF_END
+        Dim pointRef As String
+        pointRef = Trim(CStr(ws.Cells(r, TH_REF).Value))
+        If pointRef <> "" Then
+            ws.Cells(TH_HDR_ROW, TH_DataCol(r)).Value = pointRef
+            PopulateOneSensor ws, r
+        End If
+    Next r
+
+Done:
+    Application.Calculation   = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+End Sub
+
+' ---------------------------------------------------------------------------
+' PopulateOneSensor
+' For one config row: finds the Logger ID / Point Ref in Pressure Data,
+' applies Δt shift and Offset, then writes values to the data table column.
+' Assumes the data table timestamps are already in col A (rows 46+).
+' Clears the column first; leaves it blank if no match is found.
+' ---------------------------------------------------------------------------
+Sub PopulateOneSensor(ws As Worksheet, cfgRow As Long)
+    Dim dataCol  As Long: dataCol  = TH_DataCol(cfgRow)
+    Dim pointRef As String
+    pointRef = Trim(CStr(ws.Cells(cfgRow, TH_REF).Value))
+
+    ' Clear existing data for this column
+    Dim lastData As Long
+    lastData = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    If lastData >= TH_DATA_ROW Then
+        ws.Range(ws.Cells(TH_DATA_ROW, dataCol), _
+                 ws.Cells(lastData, dataCol)).ClearContents
+    End If
+
+    If pointRef = "" Then Exit Sub
+
+    ' Find Pressure Data sheet
+    Dim wsPres As Worksheet
+    Dim wsT    As Worksheet
+    For Each wsT In ThisWorkbook.Worksheets
+        If LCase(Trim(wsT.Name)) = "pressure data" Then
+            Set wsPres = wsT: Exit For
+        End If
+    Next wsT
+    If wsPres Is Nothing Then Exit Sub
+
+    ' Find the column in Pressure Data
+    Dim rawCol As Long
+    rawCol = FindPressureDataCol(wsPres, pointRef)
+    If rawCol = 0 Then Exit Sub    ' sensor not in Pressure Data — leave blank
+
+    ' Read Offset and Δt
+    Dim offset As Double: offset = 0
+    Dim dt     As Long:   dt     = 0
+    Dim v As Variant
+    v = ws.Cells(cfgRow, TH_OFF).Value
+    If IsNumeric(v) Then offset = CDbl(v)
+    v = ws.Cells(cfgRow, TH_DT).Value
+    If IsNumeric(v) Then dt = CLng(v)
+
+    ' How many rows are in the data table?
+    lastData = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    If lastData < TH_DATA_ROW Then Exit Sub
+    Dim nRows As Long: nRows = lastData - TH_DATA_ROW + 1
+
+    ' Load data table timestamps into an array
+    Dim dtTS As Variant
+    dtTS = ws.Range(ws.Cells(TH_DATA_ROW, 1), _
+                    ws.Cells(TH_DATA_ROW + nRows - 1, 1)).Value
+
+    ' Load raw pressure timestamps + values from Pressure Data into arrays
+    Dim pLastRow As Long
+    pLastRow = wsPres.Cells(wsPres.Rows.Count, 1).End(xlUp).Row
+    If pLastRow < 6 Then Exit Sub
+
+    Dim rawN As Long: rawN = pLastRow - 5   ' rows 6..pLastRow
+    Dim rawTSArr  As Variant
+    Dim rawValArr As Variant
+    rawTSArr  = wsPres.Range(wsPres.Cells(6, 1),      wsPres.Cells(pLastRow, 1)).Value
+    rawValArr = wsPres.Range(wsPres.Cells(6, rawCol),  wsPres.Cells(pLastRow, rawCol)).Value
+
+    Dim rawTS()   As Double
+    Dim rawVals() As Variant
+    ReDim rawTS  (1 To rawN)
+    ReDim rawVals(1 To rawN)
+    Dim ii As Long
+    For ii = 1 To rawN
+        On Error Resume Next
+        rawTS(ii)   = CDbl(rawTSArr(ii, 1))
+        On Error GoTo 0
+        rawVals(ii) = rawValArr(ii, 1)
+    Next ii
+
+    ' Build output array applying Δt shift and Offset.
+    ' Δt is in 15-min timesteps: for output row i, read from raw row i - dt
+    ' (same convention as SaveOneSensor: srcIdx = j - dt).
+    ' If the raw timestamps are not perfectly regular, use nearest-match
+    ' within 7.5 minutes for safety.
+    Dim halfStep As Double: halfStep = (1# / 96) / 2   ' 7.5 min as day fraction
+    Dim dtFrac   As Double: dtFrac   = CDbl(dt) / 96#   ' Δt in day fraction
+
+    Dim outArr() As Variant
+    ReDim outArr(1 To nRows, 1 To 1)
+
+    Dim tgt   As Double
+    Dim best  As Long
+    Dim bDiff As Double
+    Dim diff  As Double
+    Dim jj    As Long
+
+    For i = 1 To nRows
+        On Error Resume Next
+        tgt = CDbl(dtTS(i, 1)) + dtFrac   ' target timestamp with Δt applied
+        On Error GoTo 0
+
+        best  = 0
+        bDiff = halfStep + 1#
+        ' Raw timestamps are ordered → break early when walking past target
+        For jj = 1 To rawN
+            diff = Abs(rawTS(jj) - tgt)
+            If diff < bDiff Then
+                bDiff = diff
+                best  = jj
+            End If
+            If rawTS(jj) > tgt + halfStep + 0.0001 Then Exit For
+        Next jj
+
+        If best > 0 And bDiff <= halfStep Then
+            If IsNumeric(rawVals(best)) And CDbl(rawVals(best)) <> -999 Then
+                outArr(i, 1) = CDbl(rawVals(best)) + offset
+            End If
+        End If
+    Next i
+
+    ' Write to data table
+    ws.Range(ws.Cells(TH_DATA_ROW, dataCol), _
+             ws.Cells(TH_DATA_ROW + nRows - 1, dataCol)).Value = outArr
+End Sub
+
+' ---------------------------------------------------------------------------
+' RecordSensorNote
+' Appends a compact note to the "Data Notes" column in Point Index for the
+' sensor in the given config row.  Records Offset, Δt and Point Notes.
+' Called automatically whenever Offset, Δt or Point Notes changes.
+' ---------------------------------------------------------------------------
+Sub RecordSensorNote(ws As Worksheet, cfgRow As Long)
+    Dim pointRef As String
+    pointRef = Trim(CStr(ws.Cells(cfgRow, TH_REF).Value))
+    If pointRef = "" Then Exit Sub
+
+    Dim offVal As Variant: offVal = ws.Cells(cfgRow, TH_OFF).Value
+    Dim dtVal  As Variant: dtVal  = ws.Cells(cfgRow, TH_DT).Value
+    Dim notes  As String:  notes  = Trim(CStr(ws.Cells(cfgRow, TH_NOTES).Value))
+
+    Dim note As String
+    note = Format(Now, "dd/mm/yyyy HH:nn")
+    If IsNumeric(offVal) Then note = note & " | Offset: " & Format(CDbl(offVal), "0.###")
+    If IsNumeric(dtVal)  Then note = note & " | Dt: "     & CLng(dtVal)
+    If notes <> ""       Then note = note & " | Notes: "  & notes
+
+    WriteDataNoteToPointIndex pointRef, note
+End Sub
+
+' ---------------------------------------------------------------------------
+' CreateTotalHeadChart
+' Creates a line chart to the right of the sensor config table (at col I,
+' row 3) sized 30 cm wide × 16 cm tall.  One series per active sensor.
+' X-axis: full date+time timestamp.   Y-axis: "Pressure (m)".
+' ---------------------------------------------------------------------------
+Sub CreateTotalHeadChart(ws As Worksheet)
+    ' Remove existing TotalHeadChart if present
+    Dim co As ChartObject
+    For Each co In ws.ChartObjects
+        If co.Name = "TotalHeadChart" Then co.Delete: Exit For
+    Next co
+
+    ' Anchor at I3
+    Dim anchorCell As Range
+    Set anchorCell = ws.Cells(3, 9)
+    Dim chtObj As ChartObject
+    Set chtObj = ws.ChartObjects.Add( _
+        anchorCell.Left, anchorCell.Top, _
+        Application.CentimetersToPoints(30), _
+        Application.CentimetersToPoints(16))
+    chtObj.Name = "TotalHeadChart"
+
+    With chtObj.Chart
+        .ChartType = xlLine
+
+        ' Remove the default series Excel adds automatically
+        Do While .SeriesCollection.Count > 0
+            .SeriesCollection(1).Delete
+        Loop
+
+        .HasTitle = True
+        .ChartTitle.Text = Trim(CStr(ws.Cells(3, 3).Value))
+
+        ' Y-axis
+        With .Axes(xlValue)
+            .HasTitle = True
+            .AxisTitle.Text = "Pressure (m)"
+        End With
+
+        ' X-axis — will be set properly in RefreshTotalHeadChart
+        With .Axes(xlCategory)
+            .TickLabels.NumberFormat = "DD/MM/YY HH:MM"
+            .TickLabels.Orientation  = xlTickLabelOrientationUpward
+        End With
+
+        .Legend.Position = xlLegendPositionBottom
+    End With
+
+    ' Populate series if data already exists
+    RefreshTotalHeadChart ws
+End Sub
+
+' ---------------------------------------------------------------------------
+' RefreshTotalHeadChart
+' Rebuilds all series in TotalHeadChart without recreating the chart object.
+' Safe to call even when no data is present.
+' ---------------------------------------------------------------------------
+Sub RefreshTotalHeadChart(ws As Worksheet)
+    Dim chtObj As ChartObject
+    For Each chtObj In ws.ChartObjects
+        If chtObj.Name = "TotalHeadChart" Then
+
+            With chtObj.Chart
+                ' Remove all existing series
+                Do While .SeriesCollection.Count > 0
+                    .SeriesCollection(1).Delete
+                Loop
+
+                Dim lastDataRow As Long
+                lastDataRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+                If lastDataRow < TH_DATA_ROW Then Exit For
+
+                Dim xRng As Range
+                Set xRng = ws.Range(ws.Cells(TH_DATA_ROW, 1), _
+                                    ws.Cells(lastDataRow, 1))
+
+                Dim r As Long
+                For r = TH_CONF_START To TH_CONF_END
+                    Dim pRef As String
+                    pRef = Trim(CStr(ws.Cells(r, TH_REF).Value))
+                    If pRef <> "" Then
+                        Dim dc As Long: dc = TH_DataCol(r)
+                        Dim sr As Series
+                        Set sr = .SeriesCollection.NewSeries
+                        sr.Name    = pRef
+                        sr.XValues = xRng
+                        sr.Values  = ws.Range(ws.Cells(TH_DATA_ROW, dc), _
+                                              ws.Cells(lastDataRow, dc))
+                    End If
+                Next r
+
+                ' Update chart title
+                .HasTitle = True
+                .ChartTitle.Text = Trim(CStr(ws.Cells(3, 3).Value))
+
+            End With
+            Exit For
+        End If
+    Next chtObj
+End Sub
+
+' ---------------------------------------------------------------------------
+' SaveTotalHead
+' 1. Archives the full session to "Total Head Archive".
+' 2. Exports the chart as a PNG to the folder in C4.
+' ---------------------------------------------------------------------------
+Sub SaveTotalHead()
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Total Head")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    ' ── Validate export path (C4) ─────────────────────────────────────────
+    Dim exportPath As String
+    exportPath = Trim(CStr(ws.Cells(4, 3).Value))
+    If exportPath = "" Then
+        MsgBox "Please enter an export folder path in cell C4.", _
+               vbExclamation, "Missing Export Path"
+        Exit Sub
+    End If
+    If Right(exportPath, 1) <> "\" Then exportPath = exportPath & "\"
+
+    ' ── Build a safe filename ─────────────────────────────────────────────
+    Dim zoneName As String
+    zoneName = Trim(CStr(ws.Cells(3, 3).Value))
+    If zoneName = "" Then zoneName = "TotalHead"
+    Dim safeTitle As String: safeTitle = zoneName
+    Dim badChar As Variant
+    For Each badChar In Array("/", "\", ":", "*", "?", Chr(34), "<", ">", "|")
+        safeTitle = Replace(safeTitle, CStr(badChar), "-")
+    Next badChar
+    safeTitle = Replace(safeTitle, " ", "_")
+    Dim chartFile As String
+    chartFile = exportPath & Format(Now, "YYYYMMDD") & "_" & safeTitle & _
+                "_TotalHead.png"
+
+    ' ── Archive session data ──────────────────────────────────────────────
+    ArchiveTotalHeadData ws
+
+    ' ── Export chart PNG ──────────────────────────────────────────────────
+    Dim saved As String: saved = ""
+    Dim co As ChartObject
+    For Each co In ws.ChartObjects
+        If co.Name = "TotalHeadChart" Then
+            co.Chart.Export Filename:=chartFile, FilterName:="PNG"
+            saved = "  Chart saved to: " & chartFile
+            Exit For
+        End If
+    Next co
+    If saved = "" Then
+        saved = "  (No chart found — activate the Total Head sheet first to auto-create it)"
+    End If
+
+    MsgBox "Save complete:" & vbNewLine & vbNewLine & _
+           "  Data archived to 'Total Head Archive'." & vbNewLine & saved, _
+           vbInformation, "Total Head Saved"
+End Sub
+
+' ---------------------------------------------------------------------------
+' ArchiveTotalHeadData
+' Appends one row to "Total Head Archive" recording the complete session:
+'   Archived | Zone Name | Chart Title | Driving Head | Start Date | End Date |
+'   Zone Notes | Export Path |
+'   [per sensor × 35: Point Ref | Offset | Δt | Z(m) | Point Notes]
+' Creates the sheet and writes headers if they are missing or outdated.
+' ---------------------------------------------------------------------------
+Sub ArchiveTotalHeadData(ws As Worksheet)
+    Const ARCH_SHEET As String = "Total Head Archive"
+    Const HDR_CHECK  As String = "S1_Ref"   ' sentinel for new-format header
+
+    ' ── Get or create archive sheet ───────────────────────────────────────
+    Dim wsA As Worksheet
+    On Error Resume Next
+    Set wsA = ThisWorkbook.Sheets(ARCH_SHEET)
+    On Error GoTo 0
+    If wsA Is Nothing Then
+        Set wsA = ThisWorkbook.Sheets.Add( _
+            After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+        wsA.Name = ARCH_SHEET
+    End If
+
+    ' ── Write headers if missing or in old format ─────────────────────────
+    Dim needHdr As Boolean
+    needHdr = (Trim(CStr(wsA.Cells(1, 1).Value)) = "") Or _
+              (Trim(CStr(wsA.Cells(1, 9).Value)) <> HDR_CHECK)
+    If needHdr Then
+        wsA.Rows(1).ClearContents
+        Dim hc As Long: hc = 1
+        wsA.Cells(1, hc).Value = "Archived":     hc = hc + 1
+        wsA.Cells(1, hc).Value = "Zone Name":    hc = hc + 1
+        wsA.Cells(1, hc).Value = "Chart Title":  hc = hc + 1
+        wsA.Cells(1, hc).Value = "Driving Head": hc = hc + 1
+        wsA.Cells(1, hc).Value = "Start Date":   hc = hc + 1
+        wsA.Cells(1, hc).Value = "End Date":     hc = hc + 1
+        wsA.Cells(1, hc).Value = "Zone Notes":   hc = hc + 1
+        wsA.Cells(1, hc).Value = "Export Path":  hc = hc + 1
+        Dim sn As Long
+        For sn = 1 To TH_SENSOR_CNT
+            wsA.Cells(1, hc).Value = "S" & sn & "_Ref":    hc = hc + 1
+            wsA.Cells(1, hc).Value = "S" & sn & "_Offset": hc = hc + 1
+            wsA.Cells(1, hc).Value = "S" & sn & "_Dt":     hc = hc + 1
+            wsA.Cells(1, hc).Value = "S" & sn & "_Z(m)":   hc = hc + 1
+            wsA.Cells(1, hc).Value = "S" & sn & "_Notes":  hc = hc + 1
+        Next sn
+        wsA.Rows(1).Font.Bold = True
+    End If
+
+    ' ── Find first empty data row ─────────────────────────────────────────
+    Dim nxtRow As Long
+    nxtRow = wsA.Cells(wsA.Rows.Count, 1).End(xlUp).Row + 1
+    If nxtRow < 2 Then nxtRow = 2
+
+    ' ── Write metadata ────────────────────────────────────────────────────
+    Dim col As Long: col = 1
+    wsA.Cells(nxtRow, col).Value = Format(Now, "DD/MM/YYYY HH:nn"): col = col + 1
+    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 3).Value)): col = col + 1   ' Zone Name C3
+    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 3).Value)): col = col + 1   ' Chart Title (same as Zone Name)
+    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 11).Value)): col = col + 1  ' Driving Head K3
+    wsA.Cells(nxtRow, col).Value = ws.Cells(5, 3).Value: col = col + 1               ' Start Date C5
+    wsA.Cells(nxtRow, col).Value = ws.Cells(6, 3).Value: col = col + 1               ' End Date C6
+    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(7, 3).Value)): col = col + 1   ' Zone Notes C7
+    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(4, 3).Value)): col = col + 1   ' Export Path C4
+
+    ' ── Write per-sensor config (35 rows × 5 values) ─────────────────────
+    Dim r As Long
+    For r = TH_CONF_START To TH_CONF_END
+        wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(r, TH_REF).Value)):   col = col + 1
+        wsA.Cells(nxtRow, col).Value = ws.Cells(r, TH_OFF).Value:               col = col + 1
+        wsA.Cells(nxtRow, col).Value = ws.Cells(r, TH_DT).Value:                col = col + 1
+        wsA.Cells(nxtRow, col).Value = ws.Cells(r, TH_ELEV).Value:              col = col + 1
+        wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(r, TH_NOTES).Value)): col = col + 1
+    Next r
+
+    ' Format date columns
+    wsA.Cells(nxtRow, 5).NumberFormat = "DD/MM/YYYY"
+    wsA.Cells(nxtRow, 6).NumberFormat = "DD/MM/YYYY"
+End Sub
+
+' ---------------------------------------------------------------------------
+' LoadTotalHead
+' Displays a list of archived sessions and restores the selected one,
+' including: Zone Name, Export Path, Start/End Date, Zone Notes, Driving Head
+' and all 35 sensor rows (Point Ref, Offset, Δt, Z(m), Point Notes).
+' Triggers a full data-table rebuild after restoring.
+' ---------------------------------------------------------------------------
+Sub LoadTotalHead()
+    Const ARCH_SHEET As String = "Total Head Archive"
+    Const HDR_CHECK  As String = "S1_Ref"
+
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Total Head")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    Dim wsA As Worksheet
+    On Error Resume Next
+    Set wsA = ThisWorkbook.Sheets(ARCH_SHEET)
+    On Error GoTo 0
+    If wsA Is Nothing Then
+        MsgBox "No saved sessions found — 'Total Head Archive' does not exist.", _
+               vbInformation, "Nothing to Load"
+        Exit Sub
+    End If
+
+    Dim lastRow As Long
+    lastRow = wsA.Cells(wsA.Rows.Count, 1).End(xlUp).Row
+    If lastRow < 2 Then
+        MsgBox "No saved sessions found.", vbInformation, "Nothing to Load"
+        Exit Sub
+    End If
+
+    ' Verify archive is in the new format
+    If Trim(CStr(wsA.Cells(1, 9).Value)) <> HDR_CHECK Then
+        MsgBox "The 'Total Head Archive' is in an old format and cannot be loaded. " & _
+               "Please save a new session first to initialise the updated archive.", _
+               vbExclamation, "Incompatible Archive Format"
+        Exit Sub
+    End If
+
+    ' ── Build pick-list ───────────────────────────────────────────────────
+    Dim pickList As String
+    Dim i        As Long
+    For i = 2 To lastRow
+        pickList = pickList & (i - 1) & ":  " & _
+                   CStr(wsA.Cells(i, 1).Value) & "  |  " & _
+                   CStr(wsA.Cells(i, 2).Value) & vbNewLine
+    Next i
+
+    Dim choice As String
+    choice = Application.InputBox( _
+        "Choose a session to restore (enter the number):" & _
+        vbNewLine & vbNewLine & pickList, _
+        "Load Total Head Session", Type:=2)
+    If choice = "False" Or Trim(choice) = "" Then Exit Sub
+
+    Dim pick As Long
+    On Error Resume Next
+    pick = CLng(Trim(choice))
+    On Error GoTo 0
+    If pick < 1 Or pick > lastRow - 1 Then
+        MsgBox "Invalid selection.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim archRow As Long: archRow = pick + 1
+
+    ' ── Restore ───────────────────────────────────────────────────────────
+    Application.EnableEvents  = False
+    Application.ScreenUpdating = False
+
+    Dim col As Long: col = 2   ' skip col 1 (Archived timestamp)
+    ws.Cells(3, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Name
+    col = col + 1                                                            ' skip Chart Title (duplicate)
+    ws.Cells(3, 11).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Driving Head
+    ws.Cells(5, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Start Date
+    ws.Cells(6, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' End Date
+    ws.Cells(7, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Notes
+    ws.Cells(4, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Export Path
+
+    Dim r As Long
+    For r = TH_CONF_START To TH_CONF_END
+        ws.Cells(r, TH_REF).Value   = wsA.Cells(archRow, col).Value: col = col + 1
+        ws.Cells(r, TH_OFF).Value   = wsA.Cells(archRow, col).Value: col = col + 1
+        ws.Cells(r, TH_DT).Value    = wsA.Cells(archRow, col).Value: col = col + 1
+        ws.Cells(r, TH_ELEV).Value  = wsA.Cells(archRow, col).Value: col = col + 1
+        ws.Cells(r, TH_NOTES).Value = wsA.Cells(archRow, col).Value: col = col + 1
+    Next r
+
+    Application.EnableEvents = True
+    ' Rebuild data table with the restored configuration (fires Worksheet_Change)
+    RebuildDataTable ws
+    RefreshTotalHeadChart ws
+    Application.ScreenUpdating = True
+
+    MsgBox "Session restored: " & CStr(wsA.Cells(archRow, 2).Value), _
+           vbInformation, "Session Loaded"
+End Sub
+
+' ---------------------------------------------------------------------------
+' ExportTotalHeadPRN
+' Exports data for one sensor as a tab-delimited PRN file.
+' Only called from Worksheet_SelectionChange when col A is non-empty.
+' Uses the export path from C4.
+' ---------------------------------------------------------------------------
+Sub ExportTotalHeadPRN(cfgRow As Long)
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Total Head")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    Dim pointRef As String
+    pointRef = Trim(CStr(ws.Cells(cfgRow, TH_REF).Value))
+    If pointRef = "" Then Exit Sub
+
+    Dim exportPath As String
+    exportPath = Trim(CStr(ws.Cells(4, 3).Value))
+    If exportPath = "" Then
+        MsgBox "Please enter an export folder path in cell C4.", _
+               vbExclamation, "Missing Export Path"
+        Exit Sub
+    End If
+    If Right(exportPath, 1) <> "\" Then exportPath = exportPath & "\"
+
+    Dim lastDataRow As Long
+    lastDataRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    If lastDataRow < TH_DATA_ROW Then
+        MsgBox "No data loaded for '" & pointRef & "'. " & _
+               "Please set Start / End dates and ensure the sensor has data.", _
+               vbExclamation, "No Data"
+        Exit Sub
+    End If
+
+    Dim nRows   As Long: nRows   = lastDataRow - TH_DATA_ROW + 1
+    Dim dataCol As Long: dataCol = TH_DataCol(cfgRow)
+
+    Dim tsVals  As Variant
+    Dim dataVals As Variant
+    tsVals   = ws.Range(ws.Cells(TH_DATA_ROW, 1),       ws.Cells(lastDataRow, 1)).Value
+    dataVals = ws.Range(ws.Cells(TH_DATA_ROW, dataCol), ws.Cells(lastDataRow, dataCol)).Value
+
+    Dim safeName As String: safeName = Replace(pointRef, " ", "_")
+    Dim fileName As String
+    fileName = exportPath & safeName & "_TotalHead.prn"
+
+    Dim ff As Integer: ff = FreeFile
+    Open fileName For Output As #ff
+    Print #ff, "Timestamp" & Chr(9) & pointRef
+    Dim j As Long
+    For j = 1 To nRows
+        Dim tsCell  As Variant: tsCell  = tsVals(j, 1)
+        Dim valCell As Variant: valCell = dataVals(j, 1)
+        Dim tsStr As String
+        If IsNumeric(tsCell) And CDbl(tsCell) > 0 Then
+            tsStr = Format(CDate(tsCell), "DD/MM/YYYY HH:nn")
+        Else
+            tsStr = CStr(tsCell)
+        End If
+        Dim valStr As String
+        valStr = IIf(IsNumeric(valCell), Format(CDbl(valCell), "0.000"), "")
+        Print #ff, tsStr & Chr(9) & valStr
+    Next j
+    Close #ff
+
+    MsgBox "PRN exported: " & fileName, vbInformation, "Export Complete"
+End Sub

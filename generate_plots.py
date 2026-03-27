@@ -696,6 +696,19 @@ End Sub
 """
 
 
+# ── Total Head VBA companion files ───────────────────────────────────────────
+# These are read from the .txt files in the same directory at script runtime
+# so the Python source does not need to duplicate the full VBA text.
+
+def _load_companion_vba(filename: str) -> str:
+    """Return the content of a VBA companion .txt file, or '' if not found."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    return ""
+
+
 # ── XML helpers ──────────────────────────────────────────────────────────────
 
 def _col_letter(n: int) -> str:
@@ -1046,6 +1059,37 @@ _EMPTY_RELS = (
 )
 
 
+# ── Total Head sheet patch: add Export Path row 4 ────────────────────────────
+# The Total Head sheet (sheet2.xml in v1.42) has row 3 (Zone Name / Chart Title)
+# and row 5 (Start Date / SAVE / LOAD) but no row 4.  We insert a row 4 with
+# an "Export Path:" label in col A so the user has a visible cell to type the
+# chart export folder path.  The VBA InitTotalHeadSheet also writes this label
+# on first activation — this patch just pre-populates it in the template.
+
+_TH_ROW4_MARKER = "<!--TH_EXPORT_PATH_ROW_ADDED-->"
+
+# Shared-string index for "Export Path:" will be appended to sharedStrings.xml.
+# We use an inline string (t="inlineStr") to avoid touching the shared-strings
+# table, keeping the patch self-contained.
+_TH_ROW4_XML = (
+    _TH_ROW4_MARKER
+    + '<row r="4" spans="1:1" x14ac:dyDescent="0.25">'
+    + '<c r="A4" t="inlineStr">'
+    + '<is><t>Export Path:</t></is>'
+    + '</c>'
+    + '</row>'
+)
+
+
+def _patch_total_head_sheet(sheet_xml: str) -> str:
+    """Insert an 'Export Path:' label in cell A4 of the Total Head sheet."""
+    # Idempotent — skip if already patched
+    if _TH_ROW4_MARKER in sheet_xml:
+        return sheet_xml
+    # Insert the new row immediately before row 5
+    return sheet_xml.replace('<row r="5"', _TH_ROW4_XML + '<row r="5"', 1)
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -1079,6 +1123,13 @@ def main() -> None:
             elif name == "xl/worksheets/_rels/sheet3.xml.rels":
                 data = _EMPTY_RELS.encode("utf-8")
                 print(f"  replaced  {name}  (removed stale drawing reference)")
+
+            # ── Total Head sheet (sheet2.xml) — add Export Path row 4 ─────
+            elif name == "xl/worksheets/sheet2.xml":
+                patched = _patch_total_head_sheet(data.decode("utf-8"))
+                if patched != data.decode("utf-8"):
+                    print(f"  patched   {name}  (added Export Path row 4)")
+                data = patched.encode("utf-8")
 
             # ── styles.xml — add new xf entries ──────────────────────────
             elif name == "xl/styles.xml":
@@ -1127,9 +1178,11 @@ def main() -> None:
     # ── Write VBA companion text files ────────────────────────────────────────
     out_dir = os.path.dirname(os.path.abspath(SOURCE))
     for filename, content in [
-        ("VBA_Plots_Sheet.txt",    VBA_PLOTS_SHEET),
-        ("VBA_Module2_Plots.txt",  VBA_MODULE2_PLOTS),
-        ("VBA_ThisWorkbook.txt",   VBA_THIS_WORKBOOK),
+        ("VBA_Plots_Sheet.txt",       VBA_PLOTS_SHEET),
+        ("VBA_Module2_Plots.txt",     VBA_MODULE2_PLOTS),
+        ("VBA_ThisWorkbook.txt",      VBA_THIS_WORKBOOK),
+        ("VBA_TotalHead_Sheet.txt",   _load_companion_vba("VBA_TotalHead_Sheet.txt")),
+        ("VBA_Module3_TotalHead.txt", _load_companion_vba("VBA_Module3_TotalHead.txt")),
     ]:
         path = os.path.join(out_dir, filename)
         with open(path, "w", encoding="utf-8") as fh:
@@ -1148,7 +1201,11 @@ def main() -> None:
     print("     VBA_Module2_Plots.txt into it.")
     print("  5. Paste VBA_ThisWorkbook.txt into the ThisWorkbook module")
     print("     (double-click 'ThisWorkbook' under Microsoft Excel Objects).")
-    print("  6. Save the file as .xlsm to retain the macros.")
+    print("  6. Paste VBA_TotalHead_Sheet.txt into the 'Total Head' sheet module")
+    print("     (double-click 'Total Head' under Microsoft Excel Objects).")
+    print("  7. Insert another new Module (Insert → Module) and paste")
+    print("     VBA_Module3_TotalHead.txt into it.")
+    print("  8. Save the file as .xlsm to retain the macros.")
     print()
     print("Plots sheet usage:")
     print("  • B2  — Enter the date (DD/MM/YY) for reference / save filename.")
