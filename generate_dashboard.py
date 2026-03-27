@@ -1203,47 +1203,57 @@ Private Sub Worksheet_SelectionChange(ByVal Target As Range)
     Const SEL_START       As Long = 3    ' first selector row
     Const SEL_END         As Long = 22   ' last selector row
 
-    If Target.Count > 1 Then Exit Sub
+    ' Merged-cell ranges have Count > 1; allow them through if they are a
+    ' single merged area (e.g. M7:N7 for the +Z toggle, M10:N10 for All PRNs).
+    ' For everything else a multi-cell selection is ignored.
+    If Target.Count > 1 Then
+        If Not Target.MergeCells Then Exit Sub
+    End If
 
-    If Target.Column = FLOW_SAVE_COL And _
-       Target.Row >= SEL_START And Target.Row <= SEL_END Then
+    ' Use the top-left cell of the selection/merge so that column/row checks
+    ' work correctly regardless of which cell inside the merged area was clicked.
+    Dim cell As Range
+    Set cell = Target.Cells(1, 1)
+
+    If cell.Column = FLOW_SAVE_COL And _
+       cell.Row >= SEL_START And cell.Row <= SEL_END Then
         Application.EnableEvents = False
-        Target.Offset(0, -1).Select
+        cell.Offset(0, -1).Select
         Application.EnableEvents = True
-        SaveOneSensor True, Target.Row - SEL_START + 1
+        SaveOneSensor True, cell.Row - SEL_START + 1
 
-    ElseIf Target.Column = FLOW_PRN_COL And _
-           Target.Row >= SEL_START And Target.Row <= SEL_END Then
+    ElseIf cell.Column = FLOW_PRN_COL And _
+           cell.Row >= SEL_START And cell.Row <= SEL_END Then
         Application.EnableEvents = False
-        Target.Offset(0, -1).Select
+        cell.Offset(0, -1).Select
         Application.EnableEvents = True
-        ExportOnePRN True, Target.Row - SEL_START + 1
+        ExportOnePRN True, cell.Row - SEL_START + 1
 
-    ElseIf Target.Column = PRES_SAVE_COL And _
-           Target.Row >= SEL_START And Target.Row <= SEL_END Then
+    ElseIf cell.Column = PRES_SAVE_COL And _
+           cell.Row >= SEL_START And cell.Row <= SEL_END Then
         Application.EnableEvents = False
-        Target.Offset(0, -1).Select
+        cell.Offset(0, -1).Select
         Application.EnableEvents = True
-        SaveOneSensor False, Target.Row - SEL_START + 1
+        SaveOneSensor False, cell.Row - SEL_START + 1
 
-    ElseIf Target.Column = PRES_PRN_COL And _
-           Target.Row >= SEL_START And Target.Row <= SEL_END Then
+    ElseIf cell.Column = PRES_PRN_COL And _
+           cell.Row >= SEL_START And cell.Row <= SEL_END Then
         Application.EnableEvents = False
-        Target.Offset(0, -1).Select
+        cell.Offset(0, -1).Select
         Application.EnableEvents = True
-        ExportOnePRN False, Target.Row - SEL_START + 1
+        ExportOnePRN False, cell.Row - SEL_START + 1
 
-    ElseIf Target.Column = ELEV_TOGGLE_COL And _
-           Target.Row = ELEV_TOGGLE_ROW Then
+    ElseIf cell.Column = ELEV_TOGGLE_COL And _
+           cell.Row = ELEV_TOGGLE_ROW Then
         Application.EnableEvents = False
-        Target.Offset(0, -1).Select
+        cell.Offset(0, -1).Select
         Application.EnableEvents = True
         ToggleElevationAdjust
 
-    ElseIf Target.Column = EXPORT_ALL_COL And _
-           Target.Row = EXPORT_ALL_ROW Then
+    ElseIf cell.Column = EXPORT_ALL_COL And _
+           cell.Row = EXPORT_ALL_ROW Then
         Application.EnableEvents = False
-        Target.Offset(0, -1).Select
+        cell.Offset(0, -1).Select
         Application.EnableEvents = True
         ExportAllPRNs
     End If
