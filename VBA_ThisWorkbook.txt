@@ -4,23 +4,22 @@
 '   1. Alt+F11 to open the VBA editor.
 '   2. In the Project pane, expand "Microsoft Excel Objects".
 '   3. Double-click "ThisWorkbook".
-'   4. Paste this entire block, replacing any existing code.
+'   4. Replace any existing code with this block.
 ' ============================================================
 
 Private Sub Workbook_Open()
-    ' Register Ctrl+Shift+V as a shortcut to push the currently selected
-    ' sensor names (from any sheet, e.g. Point Index) into the Plots sheet
-    ' header row (B6:K6), then refresh the chart automatically.
-    '
-    ' Usage:
-    '   1. On the Point Index sheet, select one or more cells containing
-    '      sensor / point-reference names.
-    '   2. Press Ctrl+Shift+V.
-    '   3. Switch to the Plots sheet — the chart will reflect the new headers.
-    Application.OnKey "^+V", "CopySelectionToPlotsHeaders"
+    ' Clear any keyboard shortcuts registered by older versions of this file
+    ' (Ctrl+Shift+V and Ctrl+Shift+H were previously used but caused conflicts).
+    ' All Plots functionality is now driven by the sheet buttons in row 2.
+    On Error Resume Next
+    Application.OnKey "^+V"   ' restore Excel's own Paste Special
+    Application.OnKey "^+H"   ' clear our previous custom shortcut
+    On Error GoTo 0
 End Sub
 
 Private Sub Workbook_BeforeClose(Cancel As Boolean)
-    ' Deregister the custom shortcut so it does not persist in other workbooks.
+    On Error Resume Next
     Application.OnKey "^+V"
+    Application.OnKey "^+H"
+    On Error GoTo 0
 End Sub

@@ -75,10 +75,19 @@ Private Sub Worksheet_SelectionChange(ByVal Target As Range)
         Call SavePlots
     End If
 
-    ' L2 = "REFRESH CHART" button.
-    ' Also called automatically when headers (B6:K6) change or a date is entered.
-    ' Click this after manually pasting sensor names or editing column headers.
+    ' L2 = "LOAD SENSORS" button.
+    ' Opens a range-picker so you can navigate to Point Index (or any sheet),
+    ' select sensor name cells, and click OK — no keyboard shortcut needed.
     If cell.Row = 2 And cell.Column = 12 Then
+        Application.EnableEvents = False
+        cell.Offset(0, -1).Select
+        Application.EnableEvents = True
+        Call CopySelectionToPlotsHeaders
+    End If
+
+    ' M2 = "REFRESH CHART" button.
+    ' Rebuilds the chart series from the current B6:K6 headers.
+    If cell.Row = 2 And cell.Column = 13 Then
         Application.EnableEvents = False
         cell.Offset(0, -1).Select
         Application.EnableEvents = True
