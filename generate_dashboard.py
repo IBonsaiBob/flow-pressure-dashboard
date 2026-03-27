@@ -4,13 +4,13 @@ generate_dashboard.py
 
 Updates 'Model Build Dashboard v1.42.xlsx' by applying:
   - Removal of MOD Flow and MOD Pressure sheets
-  - Removal of the "💾 Save Rest" button cell (Dashboard K7)
+  - Removal of the "💾 Save Rest" button cell (Total Head K7)
   - Updated Instructions sheet with the new SaveOneSensor VBA
     (saves adjusted values back into Raw tabs; no longer writes to MOD sheets)
 
 Also writes companion VBA text files:
   VBA_Module1_SaveSensor.txt  — standard module (SaveOneSensor subroutine)
-  VBA_Dashboard_Sheet.txt     — Dashboard sheet event handler
+  VBA_TotalHead_Sheet.txt     — Total Head sheet event handler
 
 Usage:
     pip install openpyxl   # only needed the first time
@@ -1132,8 +1132,8 @@ End Function
 
 VBA_SHEET = """\
 ' ===========================================================================
-' DASHBOARD SHEET MODULE CODE
-' Paste into the Dashboard sheet module (double-click Sheet1 in Project tree)
+' TOTAL HEAD SHEET MODULE CODE
+' Paste into the Total Head sheet module (double-click 'Sheet1 (Total Head)' in Project tree)
 ' ===========================================================================
 
 ' Worksheet_Activate: re-populates col J elevation for every sensor that is
@@ -1335,7 +1335,7 @@ def _build_instructions_xml():
         rows.append((r, h, []))
 
     r = 1
-    sec(r, "Flow & Pressure Dashboard — Instructions", S_TITLE, h=32); r += 1
+    sec(r, "Flow & Pressure — Total Head Sheet Instructions", S_TITLE, h=32); r += 1
     blank(r); r += 1
 
     # ── 1. Quick Start ────────────────────────────────────────────────────────
@@ -1351,9 +1351,9 @@ def _build_instructions_xml():
         "         each pressure row independently.  Default Scale = 1.000, Offset = 0.000.",
         "Step 7:  The input cell for each series is coloured to match its chart line.",
         "         Flow lines and pressure lines are both solid.",
-        "Step 8:  Use the Chart Controls panel (cols M-N, top right of the Dashboard):",
+        "Step 8:  Use the Chart Controls panel (cols M-N, top right of the Total Head sheet):",
         "         \u2022 Start Date / End Date \u2014 enter dates to filter the formula table and chart.",
-        "           Leave blank to show all available data.  Dates must exist in 'Raw Flow Data'.",
+        "           Leave blank to show all available data.  Dates must exist in 'Flow Data'.",
         "Step 9:  Each flow row (col D) and each pressure row (col I) has its own \u0394t cell.",
         "         Enter an integer to shift that series in time:",
         "         +2 = read from 2 timesteps later;  -3 = read from 3 timesteps earlier.",
@@ -1423,13 +1423,13 @@ def _build_instructions_xml():
     for line in [
         "Two plain-text files are generated alongside this workbook:",
         "  VBA_Module1_SaveSensor.txt  \u2014 standard module code",
-        "  VBA_Dashboard_Sheet.txt     \u2014 Dashboard sheet module code",
+        "  VBA_TotalHead_Sheet.txt     \u2014 Total Head sheet module code",
         "",
         "Step A:  Press Alt+F11 to open the VBA editor.",
         "Step B:  Click Insert \u2192 Module.  Open VBA_Module1_SaveSensor.txt in",
         "         Notepad, press Ctrl+A then Ctrl+C, and paste into the new module.",
         "Step C:  In the Project tree double-click 'Sheet1 (Total Head)'.",
-        "         Open VBA_Dashboard_Sheet.txt in Notepad, press Ctrl+A then",
+        "         Open VBA_TotalHead_Sheet.txt in Notepad, press Ctrl+A then",
         "         Ctrl+C, and paste into that sheet module.",
         "Step D:  Close the VBA editor and save the file as .xlsm.",
         "",
@@ -1452,19 +1452,19 @@ def _build_instructions_xml():
         "",
         "\u2022 Column A must contain a proper Date/Time value (not text).",
         "\u2022 Flow and pressure column names can be any mix of letters and numbers.",
-        "\u2022 The names in Raw Flow Data and Raw Pressure Data do NOT need to match",
-        "  \u2014 you select each independently on the Dashboard.",
+        "\u2022 The names in Flow Data and Pressure Data do NOT need to match",
+        "  \u2014 you select each independently on the Total Head sheet.",
         "\u2022 Use -999 for missing/no-data values \u2014 they are excluded from all calculations.",
         "\u2022 Data can be any length: months of 15-minute data = thousands of rows.",
         "\u2022 To paste your own data into a raw sheet: delete the sample data rows",
         "  (keep row 1 headers), then paste starting from row 2.",
         "",
-        "Dashboard formula table (rows 26+):",
+        "Total Head formula table (rows 26+):",
         "  Col A     = Date",
         "  Cols B-U  = Flow 1-20 Adjusted  (Name in B3-B22 \u00d7 Scale in C3-C22 + \u0394t in D3-D22)",
         "  Cols V-AO = Pres 1-20 Adjusted  (Name in G3-G22 + Offset in H3-H22 + \u0394t in I3-I22)",
         "",
-        "Dashboard selector columns (rows 3-22):",
+        "Total Head selector columns (rows 3-22):",
         "  Col G = Pressure sensor name   Col H = Offset   Col I = \u0394t",
         "  Col J = Elevation Z (m)        Col K = \U0001f4be Save",
         "  Col M = Chart Controls labels  Col N = Chart Controls values",
@@ -1584,7 +1584,7 @@ def _remove_mod_content_types(xml):
 
 def _clear_save_rest_cell(xml):
     """
-    Clear the value of cell K7 (Save Rest button) in the Dashboard sheet XML.
+    Clear the value of cell K7 (Save Rest button) in the Total Head sheet XML.
     Only acts on the original Save Rest shared-string (index 30); leaves
     all other K7 content untouched to support idempotent re-runs.
     """
@@ -1600,7 +1600,7 @@ def _clear_save_rest_cell(xml):
 
 def _z_elev_formula(r):
     """Return the INDEX-MATCH Excel formula that looks up the Z (m) elevation
-    for the pressure sensor in dashboard row *r* from the Point Index sheet.
+    for the pressure sensor in Total Head row *r* from the Point Index sheet.
     Using dynamic column lookup so it is robust to Point Index column changes.
     """
     # Note: OOXML <f> elements must NOT include the leading '=' sign.
@@ -1613,7 +1613,7 @@ def _z_elev_formula(r):
 
 def _add_elevation_column(xml):
     """
-    Modify the Dashboard sheet XML to add the elevation column (col J) and
+    Modify the Total Head sheet XML to add the elevation column (col J) and
     shift the pressure save button from J to K, with chart-controls moving
     from K/L to L/M.
 
@@ -1696,7 +1696,7 @@ def _add_elevation_column(xml):
     # ── 6. Rows 5-6: label K→L, formula L→M (updated $M$3/$M$4) ─────────────
     m5_formula = (
         "IF($M$3=\"\",2,IFERROR(MATCH($M$3,"
-        "'Raw Flow Data'!$A$2:$A$50001,1)+1,2))"
+        "'Flow Data'!$A$2:$A$50001,1)+1,2))"
     )
     xml = re.sub(
         r'<c r="J5" s="16" t="s"><v>22</v></c>'
@@ -1713,7 +1713,7 @@ def _add_elevation_column(xml):
     )
     m6_formula = (
         "IF($M$4=\"\",9999999,IFERROR(MATCH($M$4,"
-        "'Raw Flow Data'!$A$2:$A$50001,1)+1,9999999))"
+        "'Flow Data'!$A$2:$A$50001,1)+1,9999999))"
     )
     xml = re.sub(
         r'<c r="J6" s="16" t="s"><v>22</v></c>'
@@ -1936,7 +1936,7 @@ def _add_prn_buttons(xml):
     # ── 5. Row 5: * s.row: label and start-row formula ────────────────────────
     n5_formula = (
         "IF($N$3=\"\",2,IFERROR(MATCH($N$3,"
-        "'Raw Flow Data'!$A$2:$A$50001,1)+1,2))"
+        "'Flow Data'!$A$2:$A$50001,1)+1,2))"
     )
     # State A: J5=blank/formula, K5=💾, L5=label, M5=formula
     xml = re.sub(
@@ -1974,7 +1974,7 @@ def _add_prn_buttons(xml):
     # ── 6. Row 6: * e.row: label and end-row formula ──────────────────────────
     n6_formula = (
         "IF($N$4=\"\",9999999,IFERROR(MATCH($N$4,"
-        "'Raw Flow Data'!$A$2:$A$50001,1)+1,9999999))"
+        "'Flow Data'!$A$2:$A$50001,1)+1,9999999))"
     )
     # State A
     xml = re.sub(
@@ -2257,7 +2257,7 @@ def main():
     out_dir = os.path.dirname(os.path.abspath(SOURCE))
     for filename, content in [
         ("VBA_Module1_SaveSensor.txt", VBA_MODULE),
-        ("VBA_Dashboard_Sheet.txt",    VBA_SHEET),
+        ("VBA_TotalHead_Sheet.txt",    VBA_SHEET),
     ]:
         path = os.path.join(out_dir, filename)
         with open(path, "w", encoding="utf-8") as fh:
@@ -2267,7 +2267,7 @@ def main():
     print("\nDone.")
     print()
     print("Next steps:")
-    print("  1. Open 'Model Build Dashboard v1.21.xlsx' in Excel.")
+    print("  1. Open 'Model Build Dashboard v1.42.xlsx' in Excel.")
     print("  2. Install the VBA macros (see Instructions sheet, section 4).")
     print("  3. Re-save the file as .xlsm to retain the macros.")
     print()

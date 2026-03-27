@@ -68,7 +68,7 @@ Private Sub Worksheet_Change(ByVal Target As Range)
 End Sub
 
 Private Sub Worksheet_SelectionChange(ByVal Target As Range)
-    ' Allow merged-cell ranges through the guard (same fix as Dashboard).
+    ' Allow merged-cell ranges through the guard (same fix as Total Head).
     If Target.Count > 1 Then
         If Not Target.MergeCells Then Exit Sub
     End If

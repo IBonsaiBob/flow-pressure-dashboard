@@ -1,6 +1,6 @@
 ' ===========================================================================
 ' TOTAL HEAD SHEET MODULE CODE
-' Paste into the Total Head sheet module (double-click Sheet1 in Project tree)
+' Paste into the Total Head sheet module (double-click 'Sheet1 (Total Head)' in Project tree)
 ' ===========================================================================
 
 ' Worksheet_Activate: re-populates col J elevation for every sensor that is
