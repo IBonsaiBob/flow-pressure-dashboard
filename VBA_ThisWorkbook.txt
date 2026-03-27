@@ -1,0 +1,25 @@
+' ============================================================
+' ThisWorkbook — Workbook Event Handlers
+' How to install:
+'   1. Alt+F11 to open the VBA editor.
+'   2. In the Project pane, expand "Microsoft Excel Objects".
+'   3. Double-click "ThisWorkbook".
+'   4. Replace any existing code with this block.
+' ============================================================
+
+Private Sub Workbook_Open()
+    ' Clear any keyboard shortcuts registered by older versions of this file
+    ' (Ctrl+Shift+V and Ctrl+Shift+H were previously used but caused conflicts).
+    ' All Plots functionality is now driven by the sheet buttons in row 2.
+    On Error Resume Next
+    Application.OnKey "^+V"   ' restore Excel's own Paste Special
+    Application.OnKey "^+H"   ' clear our previous custom shortcut
+    On Error GoTo 0
+End Sub
+
+Private Sub Workbook_BeforeClose(Cancel As Boolean)
+    On Error Resume Next
+    Application.OnKey "^+V"
+    Application.OnKey "^+H"
+    On Error GoTo 0
+End Sub

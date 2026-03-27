@@ -1,0 +1,129 @@
+' ===========================================================================
+' DASHBOARD SHEET MODULE CODE
+' Paste into the Dashboard sheet module (double-click Sheet1 in Project tree)
+' ===========================================================================
+
+' Worksheet_Activate: re-populates col J elevation for every sensor that is
+'                     already selected whenever the user switches to this sheet.
+'                     This covers sensors that were already set when the file
+'                     was opened (Worksheet_Change never fires for those).
+Private Sub Worksheet_Activate()
+    PopulateAllElevations
+End Sub
+
+' Worksheet_Change: auto-populates col J elevation when a pressure sensor
+'                   name is selected or pasted into col G (rows 3-22).
+'                   Also resets the 💾 button colour when a sensor name changes.
+'                   When +Z is ON, live-refreshes the chart column if Offset (H)
+'                   or Δt (I) is edited.
+'                   Handles both single-cell selection and multi-cell paste.
+'                   EnableEvents is always restored even if an inner call errors.
+Private Sub Worksheet_Change(ByVal Target As Range)
+
+    Const SEL_START As Long = 3
+    Const SEL_END   As Long = 22
+    Const FLOW_NAME As Long = 2   ' B
+    Const PRES_NAME As Long = 7   ' G
+    Const PRES_OFF  As Long = 8   ' H
+    Const PRES_DT   As Long = 9   ' I
+
+    Dim cell As Range
+    For Each cell In Target
+        If cell.Row >= SEL_START And cell.Row <= SEL_END Then
+            If cell.Column = PRES_NAME Then
+                Application.EnableEvents = False
+                On Error Resume Next
+                ClearSavedMark False, cell.Row - SEL_START + 1
+                PopulateElevation cell.Row - SEL_START + 1
+                Application.EnableEvents = True   ' restored while On Error Resume Next is active
+                On Error GoTo 0
+            ElseIf cell.Column = FLOW_NAME Then
+                Application.EnableEvents = False
+                On Error Resume Next
+                ClearSavedMark True, cell.Row - SEL_START + 1
+                Application.EnableEvents = True   ' restored while On Error Resume Next is active
+                On Error GoTo 0
+            ElseIf cell.Column = PRES_OFF Or cell.Column = PRES_DT Then
+                ' When +Z is ON live-refresh the elevated column for this sensor
+                Application.EnableEvents = False
+                On Error Resume Next
+                RefreshElevatedColumnIfOn cell.Row - SEL_START + 1, Me, cell.Row
+                Application.EnableEvents = True   ' restored while On Error Resume Next is active
+                On Error GoTo 0
+            End If
+        End If
+    Next cell
+End Sub
+
+' Worksheet_SelectionChange: handles the 💾 click-to-save buttons, PRN export
+'                            buttons (col F for flow, col L for pressure),
+'                            the elevation toggle button (M7), and the
+'                            Export All PRNs button (M10).
+Private Sub Worksheet_SelectionChange(ByVal Target As Range)
+
+    Const FLOW_SAVE_COL   As Long = 5    ' E — flow 💾 cells
+    Const FLOW_PRN_COL    As Long = 6    ' F — flow PRN export cells
+    Const PRES_SAVE_COL   As Long = 11   ' K — pres 💾 cells
+    Const PRES_PRN_COL    As Long = 12   ' L — pres PRN export cells
+    Const ELEV_TOGGLE_COL As Long = 13   ' M
+    Const ELEV_TOGGLE_ROW As Long = 7    ' M7 — elevation toggle button
+    Const EXPORT_ALL_COL  As Long = 13   ' M
+    Const EXPORT_ALL_ROW  As Long = 10   ' M10 — Export All PRNs button
+    Const SEL_START       As Long = 3    ' first selector row
+    Const SEL_END         As Long = 22   ' last selector row
+
+    ' Merged-cell ranges have Count > 1; allow them through if they are a
+    ' single merged area (e.g. M7:N7 for the +Z toggle, M10:N10 for All PRNs).
+    ' For everything else a multi-cell selection is ignored.
+    If Target.Count > 1 Then
+        If Not Target.MergeCells Then Exit Sub
+    End If
+
+    ' Use the top-left cell of the selection/merge so that column/row checks
+    ' work correctly regardless of which cell inside the merged area was clicked.
+    Dim cell As Range
+    Set cell = Target.Cells(1, 1)
+
+    If cell.Column = FLOW_SAVE_COL And _
+       cell.Row >= SEL_START And cell.Row <= SEL_END Then
+        Application.EnableEvents = False
+        cell.Offset(0, -1).Select
+        Application.EnableEvents = True
+        SaveOneSensor True, cell.Row - SEL_START + 1
+
+    ElseIf cell.Column = FLOW_PRN_COL And _
+           cell.Row >= SEL_START And cell.Row <= SEL_END Then
+        Application.EnableEvents = False
+        cell.Offset(0, -1).Select
+        Application.EnableEvents = True
+        ExportOnePRN True, cell.Row - SEL_START + 1
+
+    ElseIf cell.Column = PRES_SAVE_COL And _
+           cell.Row >= SEL_START And cell.Row <= SEL_END Then
+        Application.EnableEvents = False
+        cell.Offset(0, -1).Select
+        Application.EnableEvents = True
+        SaveOneSensor False, cell.Row - SEL_START + 1
+
+    ElseIf cell.Column = PRES_PRN_COL And _
+           cell.Row >= SEL_START And cell.Row <= SEL_END Then
+        Application.EnableEvents = False
+        cell.Offset(0, -1).Select
+        Application.EnableEvents = True
+        ExportOnePRN False, cell.Row - SEL_START + 1
+
+    ElseIf cell.Column = ELEV_TOGGLE_COL And _
+           cell.Row = ELEV_TOGGLE_ROW Then
+        Application.EnableEvents = False
+        cell.Offset(0, -1).Select
+        Application.EnableEvents = True
+        ToggleElevationAdjust
+
+    ElseIf cell.Column = EXPORT_ALL_COL And _
+           cell.Row = EXPORT_ALL_ROW Then
+        Application.EnableEvents = False
+        cell.Offset(0, -1).Select
+        Application.EnableEvents = True
+        ExportAllPRNs
+    End If
+End Sub
