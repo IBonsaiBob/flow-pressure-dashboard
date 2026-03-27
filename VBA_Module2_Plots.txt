@@ -62,9 +62,9 @@ Sub CreatePlotsChart()
         If chtObj.Name = "PlotsChart" Then chtObj.Delete: Exit For
     Next chtObj
 
-    ' Position: left edge at column M (column 13), top at the header row (row 6).
+    ' Position: left edge at column M (column 13), top at row 2 (no blank space above).
     Dim L As Double: L = ws.Columns("M").Left
-    Dim T As Double: T = ws.Rows(6).Top
+    Dim T As Double: T = ws.Rows(2).Top
 
     ' 18 cm x 11 cm — report-quality landscape proportions.
     ' 1 cm = 28.3465 pt.
@@ -127,32 +127,38 @@ Sub CreatePlotsChart()
         .ChartArea.Border.Color     = RGB(180, 180, 180)
     End With
 
-    ' Add a guide label for the software-plot paste area to the RIGHT of the chart.
-    ' Column T (col 20) is the start of the paste zone (see row 5 guide labels).
-    Dim pasteL As Double: pasteL = ws.Columns("T").Left
+    ' Paste area: a dashed-border box BELOW the chart, same width × height.
+    ' The user pastes their software plot into this zone — matching sizes makes
+    ' it easy to align both images for the report.
+    Dim pasteTop As Double: pasteTop = T + H + 6   ' 6pt gap below chart
 
-    ' Remove any stale paste label from a previous run.
+    ' Remove any stale paste shape from a previous run.
     On Error Resume Next
     ws.Shapes("PastePlotLabel").Delete
     On Error GoTo 0
 
     Dim txtBox As Shape
     Set txtBox = ws.Shapes.AddTextbox(msoTextOrientationHorizontal, _
-        pasteL, T, W, 22)
+        L, pasteTop, W, H)
     txtBox.Name = "PastePlotLabel"
     With txtBox.TextFrame2
-        .TextRange.Text = _
-            "PASTE SOFTWARE PLOT IMAGE HERE (click here, then Ctrl+V)"
-        .TextRange.Font.Size = 9
+        .TextRange.Text = "PASTE SOFTWARE PLOT IMAGE HERE" & Chr(13) & "(Ctrl+V)"
+        .TextRange.Font.Size = 10
         .TextRange.Font.Bold = msoTrue
-        .TextRange.Font.Fill.ForeColor.RGB = RGB(255, 255, 255)
+        .TextRange.Font.Fill.ForeColor.RGB = RGB(160, 160, 160)
         .TextRange.ParagraphFormat.Alignment = msoAlignCenter
+        .VerticalAnchor = msoAnchorMiddle
     End With
     With txtBox.Fill
         .Visible = msoTrue
-        .ForeColor.RGB = RGB(255, 102, 0)   ' orange — visually distinct from chart area
+        .ForeColor.RGB = RGB(252, 252, 240)   ' very light cream — visually distinct
     End With
-    txtBox.Line.Visible = msoFalse
+    With txtBox.Line
+        .Visible = msoTrue
+        .DashStyle = msoLineDash
+        .ForeColor.RGB = RGB(180, 180, 180)
+        .Weight = 1.5
+    End With
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -234,7 +240,7 @@ Sub SavePlots()
                vbExclamation, "Missing Export Path"
         Exit Sub
     End If
-    If Right(exportPath, 1) <> "\" Then exportPath = exportPath & "\"
+    If Right(exportPath, 1) <> "" Then exportPath = exportPath & ""
 
     Dim chartTitle As String
     chartTitle = Trim(CStr(ws.Range("E2").Value))
@@ -574,7 +580,7 @@ Function FillFromRawSheet(wsPlots As Worksheet, _
         di = di + 1
     Next r
 
-    ' ── For each 15-min slot find the nearest raw row (within +/-7.5 min) ──
+    ' ── For each 15-min slot find the nearest raw row (within +/-7.5 min) ─
     Dim halfStep As Double: halfStep = 7.5 / 1440
     Dim i As Long
     Dim slotDbl  As Double

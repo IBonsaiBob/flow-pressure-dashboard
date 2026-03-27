@@ -58,17 +58,6 @@ Private Sub Worksheet_Activate()
 End Sub
 
 Private Sub Worksheet_Change(ByVal Target As Range)
-    ' B2 date changed → re-fill timestamps, auto-fill sensor data, refresh chart.
-    If Not Intersect(Target, Me.Range("B2")) Is Nothing Then
-        Application.EnableEvents = False
-        On Error Resume Next
-        Call FillTimestamps
-        Call AutoFillSensorData
-        Call RefreshPlotsChart
-        Application.EnableEvents = True   ' restored while On Error Resume Next is active
-        On Error GoTo 0
-    End If
-
     ' B6:K6 sensor header row changed → rebuild chart series dynamically.
     ' Clearing a header removes that series; typing a new one adds it.
     If Not Intersect(Target, Me.Range("B6:K6")) Is Nothing Then
@@ -205,9 +194,9 @@ Sub CreatePlotsChart()
         If chtObj.Name = "PlotsChart" Then chtObj.Delete: Exit For
     Next chtObj
 
-    ' Position: left edge at column M (column 13), top at the header row (row 6).
+    ' Position: left edge at column M (column 13), top at row 2 (no blank space above).
     Dim L As Double: L = ws.Columns("M").Left
-    Dim T As Double: T = ws.Rows(6).Top
+    Dim T As Double: T = ws.Rows(2).Top
 
     ' 18 cm x 11 cm — report-quality landscape proportions.
     ' 1 cm = 28.3465 pt.
@@ -270,32 +259,38 @@ Sub CreatePlotsChart()
         .ChartArea.Border.Color     = RGB(180, 180, 180)
     End With
 
-    ' Add a guide label for the software-plot paste area to the RIGHT of the chart.
-    ' Column T (col 20) is the start of the paste zone (see row 5 guide labels).
-    Dim pasteL As Double: pasteL = ws.Columns("T").Left
+    ' Paste area: a dashed-border box BELOW the chart, same width × height.
+    ' The user pastes their software plot into this zone — matching sizes makes
+    ' it easy to align both images for the report.
+    Dim pasteTop As Double: pasteTop = T + H + 6   ' 6pt gap below chart
 
-    ' Remove any stale paste label from a previous run.
+    ' Remove any stale paste shape from a previous run.
     On Error Resume Next
     ws.Shapes("PastePlotLabel").Delete
     On Error GoTo 0
 
     Dim txtBox As Shape
     Set txtBox = ws.Shapes.AddTextbox(msoTextOrientationHorizontal, _
-        pasteL, T, W, 22)
+        L, pasteTop, W, H)
     txtBox.Name = "PastePlotLabel"
     With txtBox.TextFrame2
-        .TextRange.Text = _
-            "PASTE SOFTWARE PLOT IMAGE HERE (click here, then Ctrl+V)"
-        .TextRange.Font.Size = 9
+        .TextRange.Text = "PASTE SOFTWARE PLOT IMAGE HERE" & Chr(13) & "(Ctrl+V)"
+        .TextRange.Font.Size = 10
         .TextRange.Font.Bold = msoTrue
-        .TextRange.Font.Fill.ForeColor.RGB = RGB(255, 255, 255)
+        .TextRange.Font.Fill.ForeColor.RGB = RGB(160, 160, 160)
         .TextRange.ParagraphFormat.Alignment = msoAlignCenter
+        .VerticalAnchor = msoAnchorMiddle
     End With
     With txtBox.Fill
         .Visible = msoTrue
-        .ForeColor.RGB = RGB(255, 102, 0)   ' orange — visually distinct from chart area
+        .ForeColor.RGB = RGB(252, 252, 240)   ' very light cream — visually distinct
     End With
-    txtBox.Line.Visible = msoFalse
+    With txtBox.Line
+        .Visible = msoTrue
+        .DashStyle = msoLineDash
+        .ForeColor.RGB = RGB(180, 180, 180)
+        .Weight = 1.5
+    End With
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -808,6 +803,11 @@ def _empty_cell(col: int, row: int, style: int) -> str:
     return f'<c r="{_ref(col, row)}" s="{style}"/>'
 
 
+def _num_cell(col: int, row: int, style: int, value: float) -> str:
+    """Numeric cell (no t= attribute means general/numeric type)."""
+    return f'<c r="{_ref(col, row)}" s="{style}"><v>{value}</v></c>'
+
+
 # ── Style patcher ────────────────────────────────────────────────────────────
 
 _STYLES_MARKER = "<!--PLOTS_STYLES_ADDED-->"
@@ -871,12 +871,15 @@ def _build_plots_sheet_xml() -> str:
     Layout
     ──────
     Row 1  : Title bar  (A1:K1 merged)
-    Row 2  : Date (B2) | Chart Title (E2:G2 merged) | Y-Axis Label (I2:J2 merged) | SAVE PLOTS button (K2)
+    Row 2  : Date (B2) | Chart Title (E2:G2 merged) | Y-Axis Label (I2:J2 merged) | SAVE PLOTS button (K2) | LOAD SENSORS (L2) | REFRESH CHART (M2)
     Row 3  : Export Path (B3:J3 merged)
     Row 4  : Session Notes (B4:J4 merged, taller row)
-    Row 5  : Separator / right-panel guide label
+    Row 5  : Thin separator row
     Row 6  : Column headers  Time | Sensor 1 … Sensor 10
-    Rows 7-102 : 96 data rows (one full day at 15-minute intervals)
+    Rows 7-102 : 96 data rows — A column pre-populated with 00:00–23:45 (15-min intervals)
+
+    Chart and paste box are created by VBA at runtime, both anchored to col M row 2.
+    Chart: M2, 18cm×11cm.  Paste box: same size, 6pt below chart.
     """
     rows = []
     merges = []
@@ -942,21 +945,9 @@ def _build_plots_sheet_xml() -> str:
     rows.append(f'<row r="4" ht="36" customHeight="1">{"".join(r)}</row>')
     merges.append('<mergeCell ref="B4:J4"/>')
 
-    # ── Row 5 — separator + two right-panel guide labels ─────────────────────
+    # ── Row 5 — thin separator ────────────────────────────────────────────────
     r = [_empty_cell(c, 5, S_DEFAULT) for c in range(1, 12)]
-    # Chart area label: M5:S5 (cols 13-19) — blue header
-    r.append(_str_cell(13, 5, S_MED_HDR,
-                        "\u2193  EXCEL CHART AREA  \u2193"))
-    for c in range(14, 20):
-        r.append(_empty_cell(c, 5, S_MED_HDR))
-    # Paste area label: T5:AF5 (cols 20-32) — yellow label
-    r.append(_str_cell(20, 5, S_PASTE_LBL,
-                        "\u2193  PASTE SOFTWARE PLOT IMAGE HERE  \u2193"))
-    for c in range(21, 33):
-        r.append(_empty_cell(c, 5, S_PASTE_LBL))
-    rows.append(f'<row r="5" ht="18" customHeight="1">{"".join(r)}</row>')
-    merges.append('<mergeCell ref="M5:S5"/>')
-    merges.append('<mergeCell ref="T5:AF5"/>')
+    rows.append(f'<row r="5" ht="6" customHeight="1">{"".join(r)}</row>')
 
     # ── Row 6 — column headers ────────────────────────────────────────────────
     r = [_str_cell(1, 6, S_MED_HDR, "Time")]
@@ -964,12 +955,15 @@ def _build_plots_sheet_xml() -> str:
         r.append(_str_cell(1 + s, 6, S_MED_HDR, f"Sensor {s}"))
     rows.append(f'<row r="6" ht="18" customHeight="1">{"".join(r)}</row>')
 
-    # ── Rows 7-102 — data (96 rows = one day at 15-min intervals) ────────────
-    for rn in range(7, 103):
-        r = [_empty_cell(1, rn, S_TIME_CELL)]           # A: timestamp
+    # ── Rows 7-102 — data rows with pre-populated timestamps ─────────────────
+    # Timestamps are always 00:00–23:45 at 15-min intervals.
+    # Stored as a fraction-of-day numeric value with HH:MM number format (S_TIME_CELL).
+    for i in range(96):
+        ts_val = i * 15 / 1440   # e.g. 00:00=0, 00:15=0.01042, ..., 23:45=0.98958
+        r = [_num_cell(1, 7 + i, S_TIME_CELL, ts_val)]  # A: timestamp
         for c in range(2, 12):
-            r.append(_empty_cell(c, rn, S_DEFAULT))     # B-K: sensor data
-        rows.append(f'<row r="{rn}">{"".join(r)}</row>')
+            r.append(_empty_cell(c, 7 + i, S_DEFAULT))  # B-K: sensor data
+        rows.append(f'<row r="{7 + i}">{"".join(r)}</row>')
 
     # ── Assemble worksheet ────────────────────────────────────────────────────
     merge_block = (
@@ -979,9 +973,9 @@ def _build_plots_sheet_xml() -> str:
         "<cols>"
         '<col min="1"  max="1"  width="13"  customWidth="1"/>'  # A  timestamps
         '<col min="2"  max="11" width="12"  customWidth="1"/>'  # B-K sensor data
-        '<col min="12" max="12" width="16"  customWidth="1"/>'  # L  REFRESH CHART button
-        '<col min="13" max="19" width="14"  customWidth="1"/>'  # M-S chart zone
-        '<col min="20" max="32" width="10"  customWidth="1"/>'  # T-AF paste zone
+        '<col min="12" max="12" width="16"  customWidth="1"/>'  # L  LOAD SENSORS button
+        '<col min="13" max="13" width="16"  customWidth="1"/>'  # M  REFRESH CHART button / chart zone
+        '<col min="14" max="32" width="10"  customWidth="1"/>'  # N+ chart / paste zone
         "</cols>"
     )
     return (
@@ -991,7 +985,7 @@ def _build_plots_sheet_xml() -> str:
         ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
         ' mc:Ignorable="x14ac xr xr2 xr3"'
         ' xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac">'
-        '<dimension ref="A1:AF102"/>'
+        '<dimension ref="A1:M102"/>'
         '<sheetViews>'
         '<sheetView tabSelected="1" workbookViewId="0">'
         '<selection activeCell="B2" sqref="B2"/>'
