@@ -381,7 +381,8 @@ Sub SavePlots()
                vbExclamation, "Missing Export Path"
         Exit Sub
     End If
-    If Right(exportPath, 1) <> "\" Then exportPath = exportPath & "\"
+    If Right(exportPath, 1) <> "\\" Then exportPath = exportPath & "\\"
+
 
     Dim chartTitle As String
     chartTitle = Trim(CStr(ws.Range("E2").Value))
