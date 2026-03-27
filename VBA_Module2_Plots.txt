@@ -226,7 +226,7 @@ End Sub
 '    the pre-merged L21:U41 range, which is reliable for any image type
 '    (GIS exports, screenshots, browser pastes).
 ' 3. Archives data + metadata to the "Plot Archive" sheet.
-' 4. Saves the session note to Point Index column M.
+' 4. Archives the session note to the Plot Archive sheet.
 ' ---------------------------------------------------------------------------
 Sub SavePlots()
     Dim ws As Worksheet
@@ -320,7 +320,7 @@ End Sub
 ' Columns: Archived | Chart Title | Notes | Sensor Ref 1 … Sensor Ref 10
 ' The sensor refs are the header names currently in B6:K6 on the Plots sheet
 ' (NOT raw data values).  One row per save keeps the log concise.
-' Also writes the session note to Point Index column M.
+' Also archives the session note to the Plot Archive sheet.
 ' ---------------------------------------------------------------------------
 Sub ArchivePlotData(ws As Worksheet, chartTitle As String, dateStr As String)
     Const ARCH_SHEET As String = "Plot Archive"
@@ -365,44 +365,14 @@ Sub ArchivePlotData(ws As Worksheet, chartTitle As String, dateStr As String)
         wsA.Cells(nxtRow, 3 + j).Value = ws.Cells(6, 1 + j).Value   ' name from B6:K6
     Next j
 
-    ' ── Save note to Point Index column M ─────────────────────────────────
-    Call SaveNotesToPointIndex(dateStr, chartTitle, notes)
 End Sub
 
-' ---------------------------------------------------------------------------
-' SaveNotesToPointIndex
-' Appends a session note (date + chart title + notes text) to column M
-' of the "Point Index" sheet.  Column L is used by the Save button on the
-' Dashboard; column M is the new Plots-session notes column.
-' ---------------------------------------------------------------------------
-Sub SaveNotesToPointIndex(dateStr As String, _
-                          chartTitle As String, _
-                          notes As String)
-    Dim wsPI As Worksheet
-    On Error Resume Next
-    Set wsPI = ThisWorkbook.Sheets("Point Index")
-    On Error GoTo 0
-    If wsPI Is Nothing Then Exit Sub
-
-    ' Add header in M1 if the column is still empty.
-    If Trim(CStr(wsPI.Cells(1, 13).Value)) = "" Then
-        wsPI.Cells(1, 13).Value = "Plot Notes"
-        wsPI.Cells(1, 13).Font.Bold = True
-    End If
-
-    ' Append to the next empty row in column M.
-    Dim piRow As Long
-    piRow = wsPI.Cells(wsPI.Rows.Count, 13).End(xlUp).Row + 1
-    If piRow < 2 Then piRow = 2
-    wsPI.Cells(piRow, 13).Value = _
-        "[" & dateStr & "]  " & chartTitle & "  —  " & notes
-End Sub
 
 ' ---------------------------------------------------------------------------
 ' LookupAndFillSensorColumn
 ' Called when the user types a sensor code into a cell in B6:K6, or when
 ' the date in B2 changes.  Searches the header row (row 1) of
-' "Raw Pressure Data" then "Raw Flow Data" for a column whose name matches
+' "Pressure Data" then "Flow Data" for a column whose name matches
 ' the typed code (case-insensitive).  If found and B2 contains a valid date,
 ' fills the corresponding data column (rows 7-102) with the matched values.
 ' Clears the data column first; leaves it blank if no match or no date.
@@ -430,10 +400,10 @@ Sub LookupAndFillSensorColumn(colNum As Long)
     On Error GoTo 0
     If CDbl(baseDate) = 0 Then Exit Sub
 
-    ' Try Raw Pressure Data first, then Raw Flow Data.
+    ' Try Pressure Data first, then Flow Data.
     Dim rawSheets(1) As String
-    rawSheets(0) = "Raw Pressure Data"
-    rawSheets(1) = "Raw Flow Data"
+    rawSheets(0) = "Pressure Data"
+    rawSheets(1) = "Flow Data"
 
     Dim wsRaw As Worksheet
     Dim si As Integer

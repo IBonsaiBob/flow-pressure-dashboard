@@ -2,7 +2,7 @@
 """
 generate_dashboard.py
 
-Updates 'Model Build Dashboard v1.21.xlsx' by applying:
+Updates 'Model Build Dashboard v1.42.xlsx' by applying:
   - Removal of MOD Flow and MOD Pressure sheets
   - Removal of the "💾 Save Rest" button cell (Dashboard K7)
   - Updated Instructions sheet with the new SaveOneSensor VBA
@@ -22,7 +22,7 @@ import os
 import re
 import zipfile
 
-SOURCE = "Model Build Dashboard v1.21.xlsx"
+SOURCE = "Model Build Dashboard v1.42.xlsx"
 
 # ---------------------------------------------------------------------------
 # VBA source text
@@ -39,11 +39,11 @@ VBA_MODULE = """\
 '                  For pressure sensors the elevation in col J is also written
 '                  back to the "Point Index" tab.
 '
-' isFlow : True  -> Flow sensor   (Raw Flow Data,     Scale * value,  col D Dt)
-'          False -> Pressure      (Raw Pressure Data, value + Offset, col I Dt)
+' isFlow : True  -> Flow sensor   (Flow Data,     Scale * value,  col D Dt)
+'          False -> Pressure      (Pressure Data, value + Offset, col I Dt)
 ' sRow   : selector row index 1-20
 '
-' Dashboard selector rows 3-22:
+' Total Head selector rows 3-22:
 '   Col B (2) = Flow name    Col C (3) = Scale    Col D (4) = Flow Dt
 '   Col G (7) = Pres name    Col H (8) = Offset   Col I (9) = Pres Dt
 '   Col J (10) = Elevation Z (m) — auto-populated from Point Index tab
@@ -61,7 +61,7 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
 
     Dim wsDash  As Worksheet
     Dim wsRaw   As Worksheet
-    Set wsDash = Worksheets("Dashboard")
+    Set wsDash = Worksheets("Total Head")
 
     Dim sensorName  As String
     Dim scaleFactor As Double
@@ -82,7 +82,7 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
         If scaleFactor = 0 Then scaleFactor = 1
         cellVal = wsDash.Cells(dashRow, FLOW_DT).Value
         If IsNumeric(cellVal) Then dt = CLng(cellVal)
-        Set wsRaw = Worksheets("Raw Flow Data")
+        Set wsRaw = Worksheets("Flow Data")
     Else
         sensorName = Trim(wsDash.Cells(dashRow, PRES_NAME).Value)
         If sensorName = "" Then
@@ -93,7 +93,7 @@ Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
         If IsNumeric(cellVal) Then offset = CDbl(cellVal)
         cellVal = wsDash.Cells(dashRow, PRES_DT).Value
         If IsNumeric(cellVal) Then dt = CLng(cellVal)
-        Set wsRaw = Worksheets("Raw Pressure Data")
+        Set wsRaw = Worksheets("Pressure Data")
     End If
 
     ' --- Find sensor column in raw sheet ---
@@ -215,7 +215,7 @@ Sub MarkSaved(isFlow As Boolean, sRow As Long, sensorName As String, _
     Const PRES_SAVE As Long = 11  ' K
 
     Dim wsDash As Worksheet
-    Set wsDash = Worksheets("Dashboard")
+    Set wsDash = Worksheets("Total Head")
 
     Dim saveCol As Long
     Dim adjLabel As String
@@ -268,7 +268,7 @@ Sub ClearSavedMark(isFlow As Boolean, sRow As Long)
     Const PRES_SAVE As Long = 11  ' K
 
     Dim wsDash As Worksheet
-    Set wsDash = Worksheets("Dashboard")
+    Set wsDash = Worksheets("Total Head")
 
     Dim dashRow As Long
     dashRow = SEL_START + sRow - 1
@@ -303,7 +303,7 @@ Sub PopulateElevation(sRow As Long)
     Const PRES_ELEV As Long = 10  ' J
 
     Dim wsDash As Worksheet
-    Set wsDash = Worksheets("Dashboard")
+    Set wsDash = Worksheets("Total Head")
 
     Dim dashRow As Long
     dashRow = SEL_START + sRow - 1
@@ -330,14 +330,14 @@ Sub PopulateElevation(sRow As Long)
 
     ' Find "Point Ref" and "Z (m)" column headers
     Dim lastHdrCol As Long
-    lastHdrCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    lastHdrCol = wsIdx.Cells(3, wsIdx.Columns.Count).End(xlToLeft).Column
     Dim pointRefCol As Long: pointRefCol = 0
     Dim zCol As Long: zCol = 0
     Dim c As Long
     For c = 1 To lastHdrCol
-        Select Case LCase(Trim(wsIdx.Cells(1, c).Value))
+        Select Case LCase(Trim(wsIdx.Cells(3, c).Value))
             Case "point ref": pointRefCol = c
-            Case "z (m)":     zCol = c
+            Case "final z / bwl":     zCol = c
         End Select
     Next c
     If pointRefCol = 0 Or zCol = 0 Then Exit Sub
@@ -346,7 +346,7 @@ Sub PopulateElevation(sRow As Long)
     Dim lastRow As Long
     lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
     Dim r As Long
-    For r = 2 To lastRow
+    For r = 4 To lastRow
         If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
             wsDash.Cells(dashRow, PRES_ELEV).Value = wsIdx.Cells(r, zCol).Value
             Exit Sub
@@ -370,7 +370,7 @@ Sub PopulateAllElevations()
     Const PRES_NAME As Long = 7   ' G
 
     Dim wsDash As Worksheet
-    Set wsDash = Worksheets("Dashboard")
+    Set wsDash = Worksheets("Total Head")
 
     Application.EnableEvents = False
     Application.ScreenUpdating = False
@@ -399,7 +399,7 @@ Sub SaveElevationToPointIndex(sRow As Long)
     Const PRES_ELEV As Long = 10  ' J
 
     Dim wsDash As Worksheet
-    Set wsDash = Worksheets("Dashboard")
+    Set wsDash = Worksheets("Total Head")
 
     Dim dashRow As Long
     dashRow = SEL_START + sRow - 1
@@ -428,14 +428,14 @@ Sub SaveElevationToPointIndex(sRow As Long)
 
     ' Find "Point Ref" and "Z (m)" column headers
     Dim lastHdrCol As Long
-    lastHdrCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    lastHdrCol = wsIdx.Cells(3, wsIdx.Columns.Count).End(xlToLeft).Column
     Dim pointRefCol As Long: pointRefCol = 0
     Dim zCol As Long: zCol = 0
     Dim c As Long
     For c = 1 To lastHdrCol
-        Select Case LCase(Trim(wsIdx.Cells(1, c).Value))
+        Select Case LCase(Trim(wsIdx.Cells(3, c).Value))
             Case "point ref": pointRefCol = c
-            Case "z (m)":     zCol = c
+            Case "final z / bwl":     zCol = c
         End Select
     Next c
     If pointRefCol = 0 Or zCol = 0 Then
@@ -447,7 +447,7 @@ Sub SaveElevationToPointIndex(sRow As Long)
     Dim lastRow As Long
     lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
     Dim r As Long
-    For r = 2 To lastRow
+    For r = 4 To lastRow
         If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
             wsIdx.Cells(r, zCol).Value = CDbl(elevVal)
             Exit Sub
@@ -480,14 +480,14 @@ Function GetElevationFromPointIndex(sensorName As String) As Variant
     If wsIdx Is Nothing Then Exit Function
 
     Dim lastHdrCol As Long
-    lastHdrCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    lastHdrCol = wsIdx.Cells(3, wsIdx.Columns.Count).End(xlToLeft).Column
     Dim pointRefCol As Long: pointRefCol = 0
     Dim zCol As Long: zCol = 0
     Dim c As Long
     For c = 1 To lastHdrCol
-        Select Case LCase(Trim(wsIdx.Cells(1, c).Value))
+        Select Case LCase(Trim(wsIdx.Cells(3, c).Value))
             Case "point ref": pointRefCol = c
-            Case "z (m)":     zCol = c
+            Case "final z / bwl":     zCol = c
         End Select
     Next c
     If pointRefCol = 0 Or zCol = 0 Then Exit Function
@@ -495,7 +495,7 @@ Function GetElevationFromPointIndex(sensorName As String) As Variant
     Dim lastRow As Long
     lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
     Dim r As Long
-    For r = 2 To lastRow
+    For r = 4 To lastRow
         If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
             GetElevationFromPointIndex = wsIdx.Cells(r, zCol).Value
             Exit Function
@@ -530,12 +530,12 @@ Sub WriteDataNoteToPointIndex(sensorName As String, noteText As String)
 
     ' Find "Point Ref" and "Data Notes" column headers dynamically
     Dim lastHdrCol As Long
-    lastHdrCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    lastHdrCol = wsIdx.Cells(3, wsIdx.Columns.Count).End(xlToLeft).Column
     Dim pointRefCol  As Long: pointRefCol  = 0
     Dim dataNotesCol As Long: dataNotesCol = 0
     Dim c As Long
     For c = 1 To lastHdrCol
-        Select Case LCase(Trim(wsIdx.Cells(1, c).Value))
+        Select Case LCase(Trim(wsIdx.Cells(3, c).Value))
             Case "point ref":  pointRefCol  = c
             Case "data notes": dataNotesCol = c
         End Select
@@ -548,14 +548,14 @@ Sub WriteDataNoteToPointIndex(sensorName As String, noteText As String)
     ' If "Data Notes" column doesn't exist yet, create it after last used column
     If dataNotesCol = 0 Then
         dataNotesCol = lastHdrCol + 1
-        wsIdx.Cells(1, dataNotesCol).Value = "Data Notes"
+        wsIdx.Cells(3, dataNotesCol).Value = "Data Notes"
     End If
 
     ' Find the matching sensor row and append the note
     Dim lastRow As Long
     lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
     Dim r As Long
-    For r = 2 To lastRow
+    For r = 4 To lastRow
         If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
             Dim existingText As String
             existingText = wsIdx.Cells(r, dataNotesCol).Value
@@ -587,8 +587,8 @@ End Sub
 '                               the user edits Offset / Δt while +Z is ON so
 '                               the chart updates immediately.
 ' sRow    : selector row index 1-20
-' wsDash  : Dashboard worksheet reference
-' dashRow : absolute row on Dashboard (SEL_START + sRow - 1)
+' wsDash  : Total Head worksheet reference
+' dashRow : absolute row on Total Head sheet (SEL_START + sRow - 1)
 ' ===========================================================================
 Sub RefreshElevatedColumnIfOn(sRow As Long, wsDash As Worksheet, dashRow As Long)
 
@@ -623,12 +623,12 @@ Sub RefreshElevatedColumnIfOn(sRow As Long, wsDash As Worksheet, dashRow As Long
     Dim n As String: n = CStr(dashRow)
     ftrng.Formula = "=IFERROR(IF($G$" & n & "=" & q & q & ",NA()," & _
         "IF($N$5+ROW()-26>$N$6,NA()," & _
-        "IF(INDEX('Raw Pressure Data'!$A:$ZZ," & _
+        "IF(INDEX('Pressure Data'!$A:$ZZ," & _
         "$N$5+ROW()-26-$I$" & n & "," & _
-        "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))=-999,NA()," & _
-        "INDEX('Raw Pressure Data'!$A:$ZZ," & _
+        "MATCH($G$" & n & ",'Pressure Data'!$1:$1,0))=-999,NA()," & _
+        "INDEX('Pressure Data'!$A:$ZZ," & _
         "$N$5+ROW()-26-$I$" & n & "," & _
-        "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))" & _
+        "MATCH($G$" & n & ",'Pressure Data'!$1:$1,0))" & _
         "+$H$" & n & "))),NA())"
 
     Application.Calculate
@@ -650,7 +650,7 @@ End Sub
 '                          all active pressure columns in the formula table
 '                          for chart display purposes only.
 '
-' Toggle state is stored as the value of cell M7 on the Dashboard:
+' Toggle state is stored as the value of cell M7 on the Total Head sheet:
 '   "+Z OFF"  -> elevation not applied (normal pressure display)
 '   "+Z ON"   -> elevation applied (pressure + Z shown on chart)
 '
@@ -674,7 +674,7 @@ Sub ToggleElevationAdjust()
     Const TOGGLE_ROW    As Long = 7   ' row of the toggle button (M7)
 
     Dim wsDash As Worksheet
-    Set wsDash = Worksheets("Dashboard")
+    Set wsDash = Worksheets("Total Head")
 
     ' Determine current toggle state
     Dim currentState As String
@@ -736,12 +736,12 @@ Sub ToggleElevationAdjust()
             n = CStr(dashRow)
             rng.Formula = "=IFERROR(IF($G$" & n & "=" & q & q & ",NA()," & _
                 "IF($N$5+ROW()-26>$N$6,NA()," & _
-                "IF(INDEX('Raw Pressure Data'!$A:$ZZ," & _
+                "IF(INDEX('Pressure Data'!$A:$ZZ," & _
                 "$N$5+ROW()-26-$I$" & n & "," & _
-                "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))=-999,NA()," & _
-                "INDEX('Raw Pressure Data'!$A:$ZZ," & _
+                "MATCH($G$" & n & ",'Pressure Data'!$1:$1,0))=-999,NA()," & _
+                "INDEX('Pressure Data'!$A:$ZZ," & _
                 "$N$5+ROW()-26-$I$" & n & "," & _
-                "MATCH($G$" & n & ",'Raw Pressure Data'!$1:$1,0))" & _
+                "MATCH($G$" & n & ",'Pressure Data'!$1:$1,0))" & _
                 "+$H$" & n & "))),NA())"
         End If
 
@@ -763,15 +763,15 @@ End Sub
 ' ===========================================================================
 ' ExportOnePRN  - exports the PRN file for the sensor in one dashboard row.
 '
-' Dashboard layout (rows 3-22):
+' Total Head layout (rows 3-22):
 '   Col B (2)  = Flow name       Col F (6)  = Flow PRN button
 '   Col G (7)  = Pres name       Col L (12) = Pres PRN button
 '   Col M (13) = Client Name label   Col N (14) = Client Name value (row 8)
 '                                    Col N (14) = Export Path value  (row 9)
 '   Col M (13) = Export All PRNs button (row 10)
 '
-' isFlow : True  = flow row (col B name, Raw Flow Data)
-'          False = pressure/depth row (col G name, Raw Pressure Data)
+' isFlow : True  = flow row (col B name, Flow Data)
+'          False = pressure/depth row (col G name, Pressure Data)
 ' sRow   : selector row index 1-20
 ' ===========================================================================
 Sub ExportOnePRN(isFlow As Boolean, sRow As Long)
@@ -784,7 +784,7 @@ Sub ExportOnePRN(isFlow As Boolean, sRow As Long)
     Const INPUT_COL  As Long = 14  ' N
 
     Dim wsDash As Worksheet
-    Set wsDash = Worksheets("Dashboard")
+    Set wsDash = Worksheets("Total Head")
 
     Dim dashRow As Long
     dashRow = SEL_START + sRow - 1
@@ -810,7 +810,7 @@ Sub ExportOnePRN(isFlow As Boolean, sRow As Long)
     exportPath  = Trim(CStr(wsDash.Cells(PATH_ROW,   INPUT_COL).Value))
 
     If exportPath = "" Then
-        MsgBox "Please enter an Export Path in cell N9 on the Dashboard.", _
+        MsgBox "Please enter an Export Path in cell N9 on the Total Head sheet.", _
                vbExclamation, "Export Path Missing"
         Exit Sub
     End If
@@ -829,9 +829,9 @@ Sub ExportOnePRN(isFlow As Boolean, sRow As Long)
 
     Dim wsRaw As Worksheet
     If isFlow Then
-        Set wsRaw = Worksheets("Raw Flow Data")
+        Set wsRaw = Worksheets("Flow Data")
     Else
-        Set wsRaw = Worksheets("Raw Pressure Data")
+        Set wsRaw = Worksheets("Pressure Data")
     End If
 
     On Error GoTo ErrHandler
@@ -858,7 +858,7 @@ Sub ExportAllPRNs()
     Const INPUT_COL  As Long = 14  ' N
 
     Dim wsDash As Worksheet
-    Set wsDash = Worksheets("Dashboard")
+    Set wsDash = Worksheets("Total Head")
 
     Dim clientName As String
     Dim exportPath As String
@@ -866,7 +866,7 @@ Sub ExportAllPRNs()
     exportPath  = Trim(CStr(wsDash.Cells(PATH_ROW,   INPUT_COL).Value))
 
     If exportPath = "" Then
-        MsgBox "Please enter an Export Path in cell N9 on the Dashboard.", _
+        MsgBox "Please enter an Export Path in cell N9 on the Total Head sheet.", _
                vbExclamation, "Export Path Missing"
         Exit Sub
     End If
@@ -876,8 +876,8 @@ Sub ExportAllPRNs()
     Dim wsFlow As Worksheet
     Dim wsPres As Worksheet
     On Error Resume Next
-    Set wsFlow = Worksheets("Raw Flow Data")
-    Set wsPres = Worksheets("Raw Pressure Data")
+    Set wsFlow = Worksheets("Flow Data")
+    Set wsPres = Worksheets("Pressure Data")
     On Error GoTo 0
 
     Dim exported As Long: exported = 0
@@ -954,7 +954,7 @@ End Sub
 '   chanType   : "flow", "pressure", or "depth"
 '   chanUnit   : "l/s" or "m"
 '   loggerID   : string, "0" if blank/unknown
-'   wsRaw      : Raw Flow Data or Raw Pressure Data worksheet
+'   wsRaw      : Flow Data or Pressure Data worksheet
 '   clientName : text for the Title line
 '   exportPath : folder path ending in "\\"
 ' ===========================================================================
@@ -1051,12 +1051,12 @@ Function GetLoggerIDFromPointIndex(sensorName As String) As String
     If wsIdx Is Nothing Then Exit Function
 
     Dim lastHdrCol As Long
-    lastHdrCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    lastHdrCol = wsIdx.Cells(3, wsIdx.Columns.Count).End(xlToLeft).Column
     Dim pointRefCol As Long: pointRefCol = 0
     Dim loggerCol   As Long: loggerCol   = 0
     Dim c As Long
     For c = 1 To lastHdrCol
-        Select Case LCase(Trim(wsIdx.Cells(1, c).Value))
+        Select Case LCase(Trim(wsIdx.Cells(3, c).Value))
             Case "point ref": pointRefCol = c
             Case "logger id": loggerCol   = c
         End Select
@@ -1066,7 +1066,7 @@ Function GetLoggerIDFromPointIndex(sensorName As String) As String
     Dim lastRow As Long
     lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
     Dim r As Long
-    For r = 2 To lastRow
+    For r = 4 To lastRow
         If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
             Dim logVal As Variant
             logVal = wsIdx.Cells(r, loggerCol).Value
@@ -1100,11 +1100,11 @@ Function GetSensorTypeFromPointIndex(sensorName As String) As String
     If wsIdx Is Nothing Then Exit Function
 
     Dim lastHdrCol As Long
-    lastHdrCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    lastHdrCol = wsIdx.Cells(3, wsIdx.Columns.Count).End(xlToLeft).Column
     Dim pointRefCol As Long: pointRefCol = 0
     Dim c As Long
     For c = 1 To lastHdrCol
-        If LCase(Trim(wsIdx.Cells(1, c).Value)) = "point ref" Then
+        If LCase(Trim(wsIdx.Cells(3, c).Value)) = "point ref" Then
             pointRefCol = c
             Exit For
         End If
@@ -1114,9 +1114,9 @@ Function GetSensorTypeFromPointIndex(sensorName As String) As String
     Dim lastRow As Long
     lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
     Dim lastCol As Long
-    lastCol = wsIdx.Cells(1, wsIdx.Columns.Count).End(xlToLeft).Column
+    lastCol = wsIdx.Cells(3, wsIdx.Columns.Count).End(xlToLeft).Column
     Dim r As Long
-    For r = 2 To lastRow
+    For r = 4 To lastRow
         If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
             For c = 1 To lastCol
                 If InStr(1, LCase(Trim(CStr(wsIdx.Cells(r, c).Value))), "depth") > 0 Then
@@ -1341,9 +1341,9 @@ def _build_instructions_xml():
     # ── 1. Quick Start ────────────────────────────────────────────────────────
     sec(r, "1.  QUICK START  (works immediately — no setup needed)", S_HDR1); r += 1
     for line in [
-        "Step 1:  Paste your flow data into 'Raw Flow Data' (delete sample rows, keep Row 1 headers).",
-        "Step 2:  Paste your pressure data into 'Raw Pressure Data' (same format).",
-        "Step 3:  Go to the Dashboard sheet.",
+        "Step 1:  Paste your flow data into 'Flow Data' (delete sample rows, keep Row 1 headers).",
+        "Step 2:  Paste your pressure data into 'Pressure Data' (same format).",
+        "Step 3:  Go to the Total Head sheet.",
         "Step 4:  Rows 3-22 (col B) are the 20 flow selectors — pick a sensor from the dropdown.",
         "         Leave unused rows blank to hide that series.",
         "Step 5:  Rows 3-22 (col G) are the 20 pressure selectors — same idea.",
@@ -1428,7 +1428,7 @@ def _build_instructions_xml():
         "Step A:  Press Alt+F11 to open the VBA editor.",
         "Step B:  Click Insert \u2192 Module.  Open VBA_Module1_SaveSensor.txt in",
         "         Notepad, press Ctrl+A then Ctrl+C, and paste into the new module.",
-        "Step C:  In the Project tree double-click 'Sheet1 (Dashboard)'.",
+        "Step C:  In the Project tree double-click 'Sheet1 (Total Head)'.",
         "         Open VBA_Dashboard_Sheet.txt in Notepad, press Ctrl+A then",
         "         Ctrl+C, and paste into that sheet module.",
         "Step D:  Close the VBA editor and save the file as .xlsm.",
@@ -1442,7 +1442,7 @@ def _build_instructions_xml():
     # ── 5. Data Format Reference ──────────────────────────────────────────────
     sec(r, "5.  DATA FORMAT REFERENCE", S_HDR5); r += 1
     for line in [
-        "Both Raw Data sheets use this wide format:",
+        "Both Flow Data / Pressure Data sheets use this wide format:",
         "",
         "    Date               | AL012       | AL013       | AL014       | ...  ",
         "    01/12/2026 00:00   | 3.168205    | 2.204250    | 2.665153    | ...  ",
