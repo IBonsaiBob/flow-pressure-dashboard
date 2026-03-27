@@ -117,6 +117,16 @@ Private Sub Worksheet_SelectionChange(ByVal Target As Range)
         Application.EnableEvents = True
         Call SavePlots
     End If
+
+    ' L2 = "REFRESH CHART" button.
+    ' Also called automatically when headers (B6:K6) change or a date is entered.
+    ' Click this after manually pasting sensor names or editing column headers.
+    If cell.Row = 2 And cell.Column = 12 Then
+        Application.EnableEvents = False
+        cell.Offset(0, -1).Select
+        Application.EnableEvents = True
+        Call RefreshPlotsChart
+    End If
 End Sub
 """
 
@@ -524,6 +534,72 @@ Sub SaveNotesToPointIndex(dateStr As String, _
 End Sub
 
 ' ---------------------------------------------------------------------------
+' CopySelectionToPlotsHeaders
+' Reads non-empty text values from the current selection (on any sheet) and
+' writes them as sensor column headers into B6:K6 on the Plots sheet, then
+' calls RefreshPlotsChart so the chart updates immediately.
+'
+' Typical workflow:
+'   1. Open the Point Index sheet (or any sheet with sensor names).
+'   2. Select one or more cells that contain sensor / point reference names.
+'   3. Press Ctrl+Shift+V  — or click the REFRESH CHART button after pasting
+'      names manually into B6:K6.
+'
+' The shortcut is registered automatically when the workbook opens; see the
+' Workbook_Open event in ThisWorkbook.
+' ---------------------------------------------------------------------------
+Sub CopySelectionToPlotsHeaders()
+    Dim wsPlots As Worksheet
+    On Error Resume Next
+    Set wsPlots = ThisWorkbook.Sheets("Plots")
+    On Error GoTo 0
+    If wsPlots Is Nothing Then
+        MsgBox "Plots sheet not found.", vbExclamation, "Copy to Plots"
+        Exit Sub
+    End If
+
+    ' Collect up to 10 non-empty text values from the current selection.
+    Dim vals(9) As String
+    Dim nVals As Long: nVals = 0
+    Dim cell As Range
+    For Each cell In Application.Selection
+        Dim v As String
+        v = Trim(CStr(cell.Value))
+        If v <> "" And v <> "0" Then
+            If nVals < 10 Then
+                vals(nVals) = v
+                nVals = nVals + 1
+            End If
+        End If
+    Next cell
+
+    If nVals = 0 Then
+        MsgBox "No sensor names found in the current selection." & vbNewLine & _
+               "Select one or more sensor name cells, then press Ctrl+Shift+V.", _
+               vbInformation, "Copy to Plots Headers"
+        Exit Sub
+    End If
+
+    ' Write the names into B6:K6, clearing any existing headers first.
+    Application.EnableEvents = False
+    On Error Resume Next
+    wsPlots.Range("B6:K6").ClearContents
+    Dim i As Long
+    For i = 0 To nVals - 1
+        wsPlots.Cells(6, 2 + i).Value = vals(i)
+    Next i
+    Application.EnableEvents = True
+    On Error GoTo 0
+
+    ' Rebuild the chart series for the new headers.
+    Call RefreshPlotsChart
+
+    MsgBox nVals & " sensor name(s) copied to Plots B6:K6." & vbNewLine & _
+           "Switch to the Plots sheet to see the updated chart.", _
+           vbInformation, "Headers Updated"
+End Sub
+
+' ---------------------------------------------------------------------------
 ' AutoFillSensorData
 ' Searches "Raw Pressure Data" then "Raw Flow Data" for readings that match
 ' the date in B2.  Writes sensor names to B6:K6 and values to B7:K102.
@@ -669,6 +745,36 @@ Function FillFromRawSheet(wsPlots As Worksheet, _
 End Function
 """
 
+# ── VBA: ThisWorkbook — Workbook event handlers ──────────────────────────────
+VBA_THIS_WORKBOOK = """\
+' ============================================================
+' ThisWorkbook — Workbook Event Handlers
+' How to install:
+'   1. Alt+F11 to open the VBA editor.
+'   2. In the Project pane, expand "Microsoft Excel Objects".
+'   3. Double-click "ThisWorkbook".
+'   4. Paste this entire block, replacing any existing code.
+' ============================================================
+
+Private Sub Workbook_Open()
+    ' Register Ctrl+Shift+V as a shortcut to push the currently selected
+    ' sensor names (from any sheet, e.g. Point Index) into the Plots sheet
+    ' header row (B6:K6), then refresh the chart automatically.
+    '
+    ' Usage:
+    '   1. On the Point Index sheet, select one or more cells containing
+    '      sensor / point-reference names.
+    '   2. Press Ctrl+Shift+V.
+    '   3. Switch to the Plots sheet — the chart will reflect the new headers.
+    Application.OnKey "^+V", "CopySelectionToPlotsHeaders"
+End Sub
+
+Private Sub Workbook_BeforeClose(Cancel As Boolean)
+    ' Deregister the custom shortcut so it does not persist in other workbooks.
+    Application.OnKey "^+V"
+End Sub
+"""
+
 
 # ── XML helpers ──────────────────────────────────────────────────────────────
 
@@ -794,7 +900,8 @@ def _build_plots_sheet_xml() -> str:
         _str_cell(8, 2, S_DEFAULT, "Y-Axis Label:"),       # H2 label
         _str_cell(9, 2, S_YELLOW_IN, ""),                  # I2 y-axis input ← y label (I2:J2 merged)
         _empty_cell(10, 2, S_YELLOW_IN),                   # J2
-        _str_cell(11, 2, S_GREEN_BTN, "\U0001f4be  SAVE PLOTS"),  # K2 button
+        _str_cell(11, 2, S_GREEN_BTN, "\U0001f4be  SAVE PLOTS"),   # K2 button
+        _str_cell(12, 2, S_MED_HDR,   "\u21ba  REFRESH CHART"),    # L2 button
     ]
     rows.append(f'<row r="2" ht="22" customHeight="1">{"".join(r)}</row>')
     merges.append('<mergeCell ref="E2:G2"/>')
@@ -871,7 +978,7 @@ def _build_plots_sheet_xml() -> str:
         "<cols>"
         '<col min="1"  max="1"  width="13"  customWidth="1"/>'  # A  timestamps
         '<col min="2"  max="11" width="12"  customWidth="1"/>'  # B-K sensor data
-        '<col min="12" max="12" width="3"   customWidth="1"/>'  # L  gap
+        '<col min="12" max="12" width="16"  customWidth="1"/>'  # L  REFRESH CHART button
         '<col min="13" max="19" width="14"  customWidth="1"/>'  # M-S chart zone
         '<col min="20" max="32" width="10"  customWidth="1"/>'  # T-AF paste zone
         "</cols>"
@@ -1087,6 +1194,7 @@ def main() -> None:
     for filename, content in [
         ("VBA_Plots_Sheet.txt",    VBA_PLOTS_SHEET),
         ("VBA_Module2_Plots.txt",  VBA_MODULE2_PLOTS),
+        ("VBA_ThisWorkbook.txt",   VBA_THIS_WORKBOOK),
     ]:
         path = os.path.join(out_dir, filename)
         with open(path, "w", encoding="utf-8") as fh:
@@ -1103,7 +1211,11 @@ def main() -> None:
     print("     (double-click 'Plots' under Microsoft Excel Objects).")
     print("  4. Insert a new standard Module (Insert → Module) and paste")
     print("     VBA_Module2_Plots.txt into it.")
-    print("  5. Save the file as .xlsm to retain the macros.")
+    print("  5. Paste VBA_ThisWorkbook.txt into the ThisWorkbook module")
+    print("     (double-click 'ThisWorkbook' under Microsoft Excel Objects).")
+    print("  6. Save the file as .xlsm to retain the macros.")
+    print("  7. Close and reopen the workbook so Workbook_Open fires and")
+    print("     registers the Ctrl+Shift+V shortcut.")
     print()
     print("Plots sheet usage:")
     print("  • B2  — Enter the date (DD/MM/YY); timestamps fill A7:A102 automatically.")
@@ -1111,10 +1223,16 @@ def main() -> None:
     print("  • I2  — Enter the Y-axis label (e.g. 'Flow (L/s)' or 'Pressure (bar)'); updates live.")
     print("  • B3  — Enter the export folder path (e.g. C:\\Reports\\).")
     print("  • B4  — Enter session notes (saved to Point Index col M on Save).")
-    print("  • B7:K102 — Paste your sensor data here (one sensor per column).")
-    print("  • Right panel — The chart appears automatically; paste your software")
-    print("    screenshot below it (Ctrl+V after clicking in the right area).")
+    print("  • B6:K6 — Sensor column headers (auto-filled by date; edit manually to swap sensors).")
+    print("  • B7:K102 — Sensor data (auto-filled by date; paste manually to override).")
     print("  • K2  — Click SAVE PLOTS to export PNGs and archive data.")
+    print("  • L2  — Click REFRESH CHART to rebuild chart series from current B6:K6 headers.")
+    print()
+    print("Dynamic sensor workflow:")
+    print("  Option A — Auto-fill: enter a date in B2; sensors from Raw Data fill automatically.")
+    print("  Option B — Manual headers: type or paste sensor names into B6:K6, then click L2.")
+    print("  Option C — From Point Index: select sensor names in Point Index sheet,")
+    print("             then press Ctrl+Shift+V to copy them to B6:K6 and refresh the chart.")
 
 
 if __name__ == "__main__":

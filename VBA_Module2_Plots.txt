@@ -400,6 +400,72 @@ Sub SaveNotesToPointIndex(dateStr As String, _
 End Sub
 
 ' ---------------------------------------------------------------------------
+' CopySelectionToPlotsHeaders
+' Reads non-empty text values from the current selection (on any sheet) and
+' writes them as sensor column headers into B6:K6 on the Plots sheet, then
+' calls RefreshPlotsChart so the chart updates immediately.
+'
+' Typical workflow:
+'   1. Open the Point Index sheet (or any sheet with sensor names).
+'   2. Select one or more cells that contain sensor / point reference names.
+'   3. Press Ctrl+Shift+V  — or click the REFRESH CHART button after pasting
+'      names manually into B6:K6.
+'
+' The shortcut is registered automatically when the workbook opens; see the
+' Workbook_Open event in ThisWorkbook.
+' ---------------------------------------------------------------------------
+Sub CopySelectionToPlotsHeaders()
+    Dim wsPlots As Worksheet
+    On Error Resume Next
+    Set wsPlots = ThisWorkbook.Sheets("Plots")
+    On Error GoTo 0
+    If wsPlots Is Nothing Then
+        MsgBox "Plots sheet not found.", vbExclamation, "Copy to Plots"
+        Exit Sub
+    End If
+
+    ' Collect up to 10 non-empty text values from the current selection.
+    Dim vals(9) As String
+    Dim nVals As Long: nVals = 0
+    Dim cell As Range
+    For Each cell In Application.Selection
+        Dim v As String
+        v = Trim(CStr(cell.Value))
+        If v <> "" And v <> "0" Then
+            If nVals < 10 Then
+                vals(nVals) = v
+                nVals = nVals + 1
+            End If
+        End If
+    Next cell
+
+    If nVals = 0 Then
+        MsgBox "No sensor names found in the current selection." & vbNewLine & _
+               "Select one or more sensor name cells, then press Ctrl+Shift+V.", _
+               vbInformation, "Copy to Plots Headers"
+        Exit Sub
+    End If
+
+    ' Write the names into B6:K6, clearing any existing headers first.
+    Application.EnableEvents = False
+    On Error Resume Next
+    wsPlots.Range("B6:K6").ClearContents
+    Dim i As Long
+    For i = 0 To nVals - 1
+        wsPlots.Cells(6, 2 + i).Value = vals(i)
+    Next i
+    Application.EnableEvents = True
+    On Error GoTo 0
+
+    ' Rebuild the chart series for the new headers.
+    Call RefreshPlotsChart
+
+    MsgBox nVals & " sensor name(s) copied to Plots B6:K6." & vbNewLine & _
+           "Switch to the Plots sheet to see the updated chart.", _
+           vbInformation, "Headers Updated"
+End Sub
+
+' ---------------------------------------------------------------------------
 ' AutoFillSensorData
 ' Searches "Raw Pressure Data" then "Raw Flow Data" for readings that match
 ' the date in B2.  Writes sensor names to B6:K6 and values to B7:K102.

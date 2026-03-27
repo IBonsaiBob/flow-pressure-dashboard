@@ -74,4 +74,14 @@ Private Sub Worksheet_SelectionChange(ByVal Target As Range)
         Application.EnableEvents = True
         Call SavePlots
     End If
+
+    ' L2 = "REFRESH CHART" button.
+    ' Also called automatically when headers (B6:K6) change or a date is entered.
+    ' Click this after manually pasting sensor names or editing column headers.
+    If cell.Row = 2 And cell.Column = 12 Then
+        Application.EnableEvents = False
+        cell.Offset(0, -1).Select
+        Application.EnableEvents = True
+        Call RefreshPlotsChart
+    End If
 End Sub
