@@ -46,6 +46,7 @@ Private Sub Worksheet_Change(ByVal Target As Range)
     Const CONF_REF    As Long = 1    ' col A: Point Ref
     Const CONF_OFF    As Long = 2    ' col B: Offset
     Const CONF_DT     As Long = 3    ' col C: Δt (timesteps)
+    Const CONF_ELEV   As Long = 4    ' col D: Z (m)
     Const CONF_NOTES  As Long = 7    ' col G: Point Notes
 
     Application.EnableEvents = False
@@ -88,8 +89,8 @@ Private Sub Worksheet_Change(ByVal Target As Range)
                     PopulateOneSensor Me, pCell.Row
                     needRefresh = True
 
-                Case CONF_OFF, CONF_DT
-                    ' Offset / Δt changed: repopulate data column
+                Case CONF_OFF, CONF_DT, CONF_ELEV
+                    ' Offset / Δt / Z(m) changed: repopulate data column
                     PopulateOneSensor Me, pCell.Row
                     needRefresh = True
 

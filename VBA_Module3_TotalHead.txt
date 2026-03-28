@@ -24,8 +24,8 @@
 '   Col A = "Point Ref"   Col O = "FINAL Z / BWL"   Col R = "Logger ID"
 '
 ' ── Pressure Data assumed ─────────────────────────────────────────────────────
-'   Header row 5: A="Date", B+= sensor / logger codes
-'   Data row 6+:  A=timestamp serial, B+= pressure readings (-999 = no data)
+'   Header row 7: A="Date", B+= sensor / logger codes
+'   Data row 8+:  A=timestamp serial, B+= pressure readings (-999 = no data)
 ' ──────────────────────────────────────────────────────────────────────────────
 
 ' ── Layout constants ─────────────────────────────────────────────────────────
@@ -35,6 +35,10 @@ Private Const TH_SENSOR_CNT As Long = 35    ' sensor config rows (43-9+1)
 Private Const TH_HDR_ROW    As Long = 45    ' data table header row
 Private Const TH_DATA_ROW   As Long = 46    ' first data row
 Private Const TH_MAX_ROWS   As Long = 2976  ' 1 month of 15-min data (31 × 96)
+
+' ── Pressure Data row layout ─────────────────────────────────────────────────
+Private Const PRES_HDR_ROW  As Long = 7    ' row containing sensor-name headers
+Private Const PRES_DATA_ROW As Long = 8    ' first data row
 
 ' ── Column indices on the Total Head sheet ───────────────────────────────────
 Private Const TH_REF   As Long = 1   ' col A: Point Ref
@@ -153,7 +157,7 @@ End Function
 
 ' ---------------------------------------------------------------------------
 ' FindPressureDataCol
-' Returns the column in Pressure Data (header row 5) whose header matches
+' Returns the column in Pressure Data (header row 7) whose header matches
 ' the Point Ref (case-insensitive).  Falls back to Logger ID lookup if the
 ' direct match fails.  Returns 0 if not found.
 ' ---------------------------------------------------------------------------
@@ -163,14 +167,14 @@ Private Function FindPressureDataCol(wsPres As Worksheet, _
     If pointRef = "" Then Exit Function
 
     Dim lastCol As Long
-    lastCol = wsPres.Cells(5, wsPres.Columns.Count).End(xlToLeft).Column
+    lastCol = wsPres.Cells(PRES_HDR_ROW, wsPres.Columns.Count).End(xlToLeft).Column
     If lastCol < 2 Then Exit Function
 
     Dim c As Long
 
-    ' First: search for Point Ref directly in row 5
+    ' First: search for Point Ref directly in the header row
     For c = 2 To lastCol
-        If LCase(Trim(CStr(wsPres.Cells(5, c).Value))) = LCase(pointRef) Then
+        If LCase(Trim(CStr(wsPres.Cells(PRES_HDR_ROW, c).Value))) = LCase(pointRef) Then
             FindPressureDataCol = c
             Exit Function
         End If
@@ -181,7 +185,7 @@ Private Function FindPressureDataCol(wsPres As Worksheet, _
     loggerID = FindLoggerID(pointRef)
     If loggerID <> "" And LCase(loggerID) <> LCase(pointRef) Then
         For c = 2 To lastCol
-            If LCase(Trim(CStr(wsPres.Cells(5, c).Value))) = LCase(loggerID) Then
+            If LCase(Trim(CStr(wsPres.Cells(PRES_HDR_ROW, c).Value))) = LCase(loggerID) Then
                 FindPressureDataCol = c
                 Exit Function
             End If
@@ -250,13 +254,13 @@ Sub RebuildDataTable(ws As Worksheet)
     Next wsT
     If wsPres Is Nothing Then GoTo Done
 
-    ' ── Load ALL timestamps from Pressure Data (col A, rows 6+) ──────────
+    ' ── Load ALL timestamps from Pressure Data (col A, PRES_DATA_ROW+) ──────
     Dim pLastRow As Long
     pLastRow = wsPres.Cells(wsPres.Rows.Count, 1).End(xlUp).Row
-    If pLastRow < 6 Then GoTo Done
+    If pLastRow < PRES_DATA_ROW Then GoTo Done
 
     Dim allTS As Variant
-    allTS = wsPres.Range(wsPres.Cells(6, 1), wsPres.Cells(pLastRow, 1)).Value
+    allTS = wsPres.Range(wsPres.Cells(PRES_DATA_ROW, 1), wsPres.Cells(pLastRow, 1)).Value
 
     ' ── Find the rows that fall within [startDbl, endDbl + 1 day) ────────
     Dim pStart As Long: pStart = 0
@@ -367,13 +371,13 @@ Sub PopulateOneSensor(ws As Worksheet, cfgRow As Long)
     ' Load raw pressure timestamps + values from Pressure Data into arrays
     Dim pLastRow As Long
     pLastRow = wsPres.Cells(wsPres.Rows.Count, 1).End(xlUp).Row
-    If pLastRow < 6 Then Exit Sub
+    If pLastRow < PRES_DATA_ROW Then Exit Sub
 
-    Dim rawN As Long: rawN = pLastRow - 5   ' rows 6..pLastRow
+    Dim rawN As Long: rawN = pLastRow - PRES_DATA_ROW + 1   ' number of data rows
     Dim rawTSArr  As Variant
     Dim rawValArr As Variant
-    rawTSArr  = wsPres.Range(wsPres.Cells(6, 1),      wsPres.Cells(pLastRow, 1)).Value
-    rawValArr = wsPres.Range(wsPres.Cells(6, rawCol),  wsPres.Cells(pLastRow, rawCol)).Value
+    rawTSArr  = wsPres.Range(wsPres.Cells(PRES_DATA_ROW, 1),      wsPres.Cells(pLastRow, 1)).Value
+    rawValArr = wsPres.Range(wsPres.Cells(PRES_DATA_ROW, rawCol),  wsPres.Cells(pLastRow, rawCol)).Value
 
     Dim rawTS()   As Double
     Dim rawVals() As Variant
@@ -450,12 +454,14 @@ Sub RecordSensorNote(ws As Worksheet, cfgRow As Long, Optional forceRef As Strin
     End If
     If pointRef = "" Then Exit Sub
 
+    Dim zVal   As Variant: zVal   = ws.Cells(cfgRow, TH_ELEV).Value
     Dim offVal As Variant: offVal = ws.Cells(cfgRow, TH_OFF).Value
     Dim dtVal  As Variant: dtVal  = ws.Cells(cfgRow, TH_DT).Value
     Dim notes  As String:  notes  = Trim(CStr(ws.Cells(cfgRow, TH_NOTES).Value))
 
     Dim note As String
     note = Format(Now, "dd/mm/yyyy HH:nn")
+    If IsNumeric(zVal)   Then note = note & " | Z: "      & Format(CDbl(zVal),   "0.###")
     If IsNumeric(offVal) Then note = note & " | Offset: " & Format(CDbl(offVal), "0.###")
     If IsNumeric(dtVal)  Then note = note & " | Dt: "     & CLng(dtVal)
     If notes <> ""       Then note = note & " | Notes: "  & notes
@@ -515,16 +521,23 @@ Sub RestorePointNotesTH(ws As Worksheet, cfgRow As Long)
             lastEntry = Trim(entries(UBound(entries)))
             If lastEntry = "" Then Exit Sub
 
-            ' Parse "dd/mm/yyyy HH:nn | Offset: x | Dt: n | Notes: text"
+            ' Parse "dd/mm/yyyy HH:nn | Z: v | Offset: x | Dt: n | Notes: text"
             Dim segments() As String
             segments = Split(lastEntry, " | ")
+            Dim zR    As Double: zR    = 0
+            Dim zSet  As Boolean: zSet = False
             Dim off   As Double: off   = 0
             Dim dt    As Long:   dt    = 0
             Dim notes As String: notes = ""
             Dim s As Long
             For s = 1 To UBound(segments)
                 Dim seg As String: seg = Trim(segments(s))
-                If LCase(Left(seg, 8)) = "offset: " Then
+                If LCase(Left(seg, 3)) = "z: " Then
+                    On Error Resume Next
+                    zR   = CDbl(Mid(seg, 4))
+                    zSet = True
+                    On Error GoTo 0
+                ElseIf LCase(Left(seg, 8)) = "offset: " Then
                     On Error Resume Next
                     off = CDbl(Mid(seg, 9))
                     On Error GoTo 0
@@ -544,6 +557,7 @@ Sub RestorePointNotesTH(ws As Worksheet, cfgRow As Long)
             Next s
 
             ' Restore values into the config row
+            If zSet Then ws.Cells(cfgRow, TH_ELEV).Value = zR
             ws.Cells(cfgRow, TH_OFF).Value   = off
             ws.Cells(cfgRow, TH_DT).Value    = dt
             ws.Cells(cfgRow, TH_NOTES).Value = notes

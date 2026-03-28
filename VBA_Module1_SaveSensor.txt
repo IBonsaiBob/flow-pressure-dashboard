@@ -525,7 +525,7 @@ Sub WriteDataNoteToPointIndex(sensorName As String, noteText As String)
     lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
     Dim r As Long
     For r = 4 To lastRow
-        If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
+        If LCase(Trim(CStr(wsIdx.Cells(r, pointRefCol).Value))) = LCase(sensorName) Then
             Dim existingText As String
             existingText = wsIdx.Cells(r, pointNotesCol).Value
             If existingText = "" Then
