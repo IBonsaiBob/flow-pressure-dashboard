@@ -1,5 +1,5 @@
 ' ============================================================
-' Total Head (New) Worksheet — Event Handlers  (v1.51)
+' Total Head (New) Worksheet — Event Handlers  (v1.52)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. In the Project pane, expand "Microsoft Excel Objects".
@@ -10,8 +10,8 @@
 ' ── Layout reference ────────────────────────────────────────────────────────
 '   A3  = "Zone Name:"    label      C3  = zone name / chart title input
 '   A4  = "Export Path:"  label      C4  = export folder path input
-'   A5  = "Start Date:"   label      C5  = start date input
-'   A6  = "End Date:"     label      C6  = end date input
+'   A5  = "Start Date:"   label      D5  = start date input  (merged D5:E5)
+'   A6  = "End Date:"     label      D6  = end date input    (merged D6:E6)
 '   A7  = "Zone Notes:"   label      C7  = zone notes input
 '   E3  = "Driving Head:" label      K3  = driving head sensor (free-text note)
 '   E5  = "SAVE"  (click-button)
@@ -96,8 +96,8 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         GoTo Done
     End If
 
-    ' ── C5 or C6 (Start / End Date) changed → full rebuild ───────────────────
-    If Not Intersect(Target, Me.Range("C5:C6")) Is Nothing Then
+    ' ── D5 or D6 (Start / End Date) changed → full rebuild ───────────────────
+    If Not Intersect(Target, Me.Range("D5:D6")) Is Nothing Then
         RebuildDataTable Me
         RefreshTotalHeadChart Me
         GoTo Done

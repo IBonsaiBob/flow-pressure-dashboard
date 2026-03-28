@@ -1,5 +1,5 @@
 ' ============================================================
-' Module3 — Total Head (New) Sheet Procedures  (v1.51)
+' Module3 — Total Head (New) Sheet Procedures  (v1.52)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. Insert → Module.
@@ -11,8 +11,8 @@
 ' ── Sheet layout assumed ─────────────────────────────────────────────────────
 '   C3  = Zone Name / chart title       K3  = Driving Head sensor
 '   C4  = Export Path                   (A4 label set by InitTotalHeadSheet)
-'   C5  = Start Date                    E5  = SAVE   G5 = LOAD
-'   C6  = End Date
+'   D5  = Start Date (merged D5:E5)     E5  = SAVE   G5 = LOAD
+'   D6  = End Date   (merged D6:E6)
 '   C7  = Zone Notes
 '   Rows 9-43: sensor config
 '              col A=Point Ref | B=Offset | C=(unused) | D=Z(m) | F=PRN | G=Point Notes
@@ -250,8 +250,8 @@ Sub RebuildDataTable(ws As Worksheet)
     ws.Range("A45").Value = "Timestamp"
 
     ' ── Read and validate Start / End dates ───────────────────────────────
-    Dim startV As Variant: startV = ws.Cells(5, 3).Value   ' C5
-    Dim endV   As Variant: endV   = ws.Cells(6, 3).Value   ' C6
+    Dim startV As Variant: startV = ws.Cells(5, 4).Value   ' D5 (merged D5:E5)
+    Dim endV   As Variant: endV   = ws.Cells(6, 4).Value   ' D6 (merged D6:E6)
     If Not IsDate(startV) Or Not IsDate(endV) Then GoTo Done
 
     Dim startDbl As Double: startDbl = Int(CDbl(CDate(startV)))
@@ -801,8 +801,8 @@ Sub ArchiveTotalHeadData(ws As Worksheet)
     wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 3).Value)): col = col + 1   ' Zone Name C3
     wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 3).Value)): col = col + 1   ' Chart Title (same as Zone Name)
     wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 11).Value)): col = col + 1  ' Driving Head K3
-    wsA.Cells(nxtRow, col).Value = ws.Cells(5, 3).Value: col = col + 1               ' Start Date C5
-    wsA.Cells(nxtRow, col).Value = ws.Cells(6, 3).Value: col = col + 1               ' End Date C6
+    wsA.Cells(nxtRow, col).Value = ws.Cells(5, 4).Value: col = col + 1               ' Start Date D5
+    wsA.Cells(nxtRow, col).Value = ws.Cells(6, 4).Value: col = col + 1               ' End Date D6
     wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(7, 3).Value)): col = col + 1   ' Zone Notes C7
     wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(4, 3).Value)): col = col + 1   ' Export Path C4
 
@@ -901,8 +901,8 @@ Sub LoadTotalHead()
     ws.Cells(3, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Name
     col = col + 1                                                            ' skip Chart Title (duplicate)
     ws.Cells(3, 11).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Driving Head
-    ws.Cells(5, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Start Date
-    ws.Cells(6, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' End Date
+    ws.Cells(5, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Start Date
+    ws.Cells(6, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' End Date
     ws.Cells(7, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Notes
     ws.Cells(4, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Export Path
 
@@ -1046,8 +1046,8 @@ Sub LoadTotalHeadByName(zoneName As String)
     ws.Cells(3, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Name
     col = col + 1                                                            ' skip Chart Title
     ws.Cells(3, 11).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Driving Head
-    ws.Cells(5, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Start Date
-    ws.Cells(6, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' End Date
+    ws.Cells(5, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Start Date
+    ws.Cells(6, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' End Date
     ws.Cells(7, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Notes
     ws.Cells(4, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Export Path
 
