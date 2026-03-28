@@ -1,5 +1,5 @@
 ' ============================================================
-' Module3 — Total Head (New) Sheet Procedures  (v1.50)
+' Module3 — Total Head (New) Sheet Procedures  (v1.51)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. Insert → Module.
@@ -225,6 +225,8 @@ End Sub
 '   4. Does NOT rebuild the chart — caller must call RefreshTotalHeadChart.
 ' ---------------------------------------------------------------------------
 Sub RebuildDataTable(ws As Worksheet)
+    ' Guarantee cleanup (ScreenUpdating + Calculation) even on unexpected errors.
+    On Error GoTo Done
     Application.ScreenUpdating = False
     Application.Calculation   = xlCalculationManual
 
@@ -271,7 +273,7 @@ Sub RebuildDataTable(ws As Worksheet)
     For i = 1 To UBound(allTS, 1)
         On Error Resume Next
         tsDbl = CDbl(allTS(i, 1))
-        On Error GoTo 0
+        On Error GoTo Done     ' re-establish function-level handler
         If Int(tsDbl) >= startDbl And pStart = 0 Then pStart = i
         If Int(tsDbl) <= endDbl Then pEnd = i
     Next i
