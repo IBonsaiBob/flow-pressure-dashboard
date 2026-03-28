@@ -371,9 +371,9 @@ End Sub
 ' ---------------------------------------------------------------------------
 ' LookupAndFillSensorColumn
 ' Called when the user types a sensor code into a cell in B6:K6, or when
-' the date in B2 changes.  Searches the header row (row 1) of
-' "Pressure Data" then "Flow Data" for a column whose name matches
-' the typed code (case-insensitive).  If found and B2 contains a valid date,
+' the date in B2 changes.  Searches rows 1-7 of "Pressure Data" then
+' "Flow Data" for a column whose name matches the typed code
+' (case-insensitive).  If found and B2 contains a valid date,
 ' fills the corresponding data column (rows 7-102) with the matched values.
 ' Clears the data column first; leaves it blank if no match or no date.
 ' ---------------------------------------------------------------------------
@@ -420,9 +420,9 @@ End Sub
 
 ' ---------------------------------------------------------------------------
 ' FillColumnFromRawSheet  (helper for LookupAndFillSensorColumn)
-' Finds the column in wsRaw whose row-1 header matches sensorCode
-' (case-insensitive), then fills wsPlots data column colNum (rows 7-102)
-' for baseDate using nearest-timestamp matching within +/-7.5 minutes.
+' Finds the column in wsRaw whose header (scanned in rows 1-7) matches
+' sensorCode (case-insensitive), then fills wsPlots data column colNum
+' (rows 7-102) for baseDate using nearest-timestamp matching within +/-7.5 min.
 ' Returns True if at least one value was written.
 ' ---------------------------------------------------------------------------
 Function FillColumnFromRawSheet(wsPlots As Worksheet, _
@@ -432,19 +432,25 @@ Function FillColumnFromRawSheet(wsPlots As Worksheet, _
                                 baseDate As Date) As Boolean
     FillColumnFromRawSheet = False
 
-    Dim lastCol As Long
-    lastCol = wsRaw.Cells(1, wsRaw.Columns.Count).End(xlToLeft).Column
-    If lastCol < 2 Then Exit Function
-
-    ' Find the matching column header (case-insensitive).
+    ' Scan rows 1-7 for the sensor code — handles both simple format (row 1
+    ' headers) and any number of metadata rows prepended to the data (e.g.
+    ' v1.45 layout where install/retrieval/offset rows push headers to row 7).
     Dim rawCol As Long: rawCol = 0
     Dim c As Long
-    For c = 2 To lastCol
-        If LCase(Trim(CStr(wsRaw.Cells(1, c).Value))) = LCase(sensorCode) Then
-            rawCol = c
-            Exit For
+    Dim r As Long
+    Dim lastCol As Long
+    For r = 1 To 7
+        lastCol = wsRaw.Cells(r, wsRaw.Columns.Count).End(xlToLeft).Column
+        If lastCol >= 2 Then
+            For c = 2 To lastCol
+                If LCase(Trim(CStr(wsRaw.Cells(r, c).Value))) = LCase(sensorCode) Then
+                    rawCol = c
+                    Exit For
+                End If
+            Next c
         End If
-    Next c
+        If rawCol <> 0 Then Exit For
+    Next r
     If rawCol = 0 Then Exit Function
 
     Dim lastRow As Long
@@ -455,7 +461,6 @@ Function FillColumnFromRawSheet(wsPlots As Worksheet, _
 
     ' Find the first row whose date portion equals baseDate.
     Dim startRow As Long: startRow = 0
-    Dim r As Long
     Dim tsDbl As Double
     For r = 2 To lastRow
         On Error Resume Next

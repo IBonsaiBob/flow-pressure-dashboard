@@ -39,7 +39,7 @@ Private Const TH_MAX_ROWS   As Long = 2976  ' 1 month of 15-min data (31 × 96)
 ' ── Pressure Data row layout ─────────────────────────────────────────────────
 Private Const PRES_OFFSET_ROW As Long = 5    ' OFFSET row in Pressure Data
 Private Const PRES_HDR_ROW    As Long = 7    ' row containing sensor-name headers
-Private Const PRES_DATA_ROW   As Long = 8    ' first data row
+Private Const PRES_DATA_ROW   As Long = 2    ' scan from row 2; metadata rows (text in col A) are skipped by CDbl/date-range guard
 
 ' ── Column indices on the Total Head sheet ───────────────────────────────────
 Private Const TH_REF   As Long = 1   ' col A: Point Ref
@@ -167,31 +167,42 @@ Private Function FindPressureDataCol(wsPres As Worksheet, _
     FindPressureDataCol = 0
     If pointRef = "" Then Exit Function
 
-    Dim lastCol As Long
-    lastCol = wsPres.Cells(PRES_HDR_ROW, wsPres.Columns.Count).End(xlToLeft).Column
-    If lastCol < 2 Then Exit Function
-
     Dim c As Long
+    Dim r As Long
+    Dim lastCol As Long
 
-    ' First: search for Point Ref directly in the header row
-    For c = 2 To lastCol
-        If LCase(Trim(CStr(wsPres.Cells(PRES_HDR_ROW, c).Value))) = LCase(pointRef) Then
-            FindPressureDataCol = c
-            Exit Function
+    ' Scan rows 1 through PRES_HDR_ROW looking for the sensor code.
+    ' This handles any number of metadata rows prepended to the data:
+    '   simple format  — row 1 = sensor codes, row 2+ = data
+    '   v1.45 format   — rows 1-6 = metadata, row 7 = codes, row 8+ = data
+    '   in-between     — user added fewer/more header rows
+    For r = 1 To PRES_HDR_ROW
+        lastCol = wsPres.Cells(r, wsPres.Columns.Count).End(xlToLeft).Column
+        If lastCol >= 2 Then
+            For c = 2 To lastCol
+                If LCase(Trim(CStr(wsPres.Cells(r, c).Value))) = LCase(pointRef) Then
+                    FindPressureDataCol = c
+                    Exit Function
+                End If
+            Next c
         End If
-    Next c
+    Next r
 
     ' Fallback: look up Logger ID from Point Index and search with that
     Dim loggerID As String
     loggerID = FindLoggerID(pointRef)
-    If loggerID <> "" And LCase(loggerID) <> LCase(pointRef) Then
-        For c = 2 To lastCol
-            If LCase(Trim(CStr(wsPres.Cells(PRES_HDR_ROW, c).Value))) = LCase(loggerID) Then
-                FindPressureDataCol = c
-                Exit Function
-            End If
-        Next c
-    End If
+    If loggerID = "" Or LCase(loggerID) = LCase(pointRef) Then Exit Function
+    For r = 1 To PRES_HDR_ROW
+        lastCol = wsPres.Cells(r, wsPres.Columns.Count).End(xlToLeft).Column
+        If lastCol >= 2 Then
+            For c = 2 To lastCol
+                If LCase(Trim(CStr(wsPres.Cells(r, c).Value))) = LCase(loggerID) Then
+                    FindPressureDataCol = c
+                    Exit Function
+                End If
+            Next c
+        End If
+    Next r
 End Function
 
 ' ---------------------------------------------------------------------------
