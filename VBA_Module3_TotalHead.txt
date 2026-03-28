@@ -270,13 +270,16 @@ Sub RebuildDataTable(ws As Worksheet)
     Dim pEnd   As Long: pEnd   = 0
     Dim tsDbl  As Double
     Dim i      As Long
+    On Error Resume Next
     For i = 1 To UBound(allTS, 1)
-        On Error Resume Next
+        tsDbl = 0                           ' reset so a failed CDbl leaves 0, not a stale value
         tsDbl = CDbl(allTS(i, 1))
-        On Error GoTo Done     ' re-establish function-level handler
-        If Int(tsDbl) >= startDbl And pStart = 0 Then pStart = i
-        If Int(tsDbl) <= endDbl Then pEnd = i
+        If tsDbl > 0 Then
+            If Int(tsDbl) >= startDbl And pStart = 0 Then pStart = i
+            If Int(tsDbl) <= endDbl Then pEnd = i
+        End If
     Next i
+    On Error GoTo Done                      ' re-establish only after loop is complete
     If pStart = 0 Or pEnd < pStart Then GoTo Done
 
     ' Clamp to TH_MAX_ROWS

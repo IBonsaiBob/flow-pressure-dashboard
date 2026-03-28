@@ -59,8 +59,14 @@ Private Sub Worksheet_Activate()
         For Each co In Me.ChartObjects: co.Delete: Next co
         RebuildDataTable Me
         CreateTotalHeadChart Me   ' also calls RefreshTotalHeadChart internally
+    ElseIf Me.Cells(46, 1).Value = "" Then
+        ' Chart exists but data table is empty (workbook just opened / data cleared):
+        ' rebuild now.  Only fires when A46 is genuinely empty, so the clipboard is
+        ' not disturbed on normal tab re-visits when data is already present.
+        RebuildDataTable Me
+        RefreshTotalHeadChart Me
     Else
-        ' Chart already exists — repaint from existing data, no cell writes.
+        ' Chart exists and data table is populated — repaint chart only, no cell writes.
         RefreshTotalHeadChart Me
     End If
 
