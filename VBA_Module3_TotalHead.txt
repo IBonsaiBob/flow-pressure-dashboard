@@ -436,13 +436,18 @@ End Sub
 
 ' ---------------------------------------------------------------------------
 ' RecordSensorNote
-' Appends a compact note to the "Data Notes" column in Point Index for the
+' Appends a compact note to the "Point Notes" column in Point Index for the
 ' sensor in the given config row.  Records Offset, Δt and Point Notes.
-' Called automatically whenever Offset, Δt or Point Notes changes.
+' Called only when the Point Ref is cleared.  Pass forceRef when the cell
+' has already been cleared and the old ref is no longer readable from the sheet.
 ' ---------------------------------------------------------------------------
-Sub RecordSensorNote(ws As Worksheet, cfgRow As Long)
+Sub RecordSensorNote(ws As Worksheet, cfgRow As Long, Optional forceRef As String = "")
     Dim pointRef As String
-    pointRef = Trim(CStr(ws.Cells(cfgRow, TH_REF).Value))
+    If forceRef <> "" Then
+        pointRef = forceRef
+    Else
+        pointRef = Trim(CStr(ws.Cells(cfgRow, TH_REF).Value))
+    End If
     If pointRef = "" Then Exit Sub
 
     Dim offVal As Variant: offVal = ws.Cells(cfgRow, TH_OFF).Value
@@ -459,7 +464,94 @@ Sub RecordSensorNote(ws As Worksheet, cfgRow As Long)
 End Sub
 
 ' ---------------------------------------------------------------------------
-' CreateTotalHeadChart
+' RestorePointNotesTH
+' When a Point Ref is (re-)entered, reads the most-recently saved config from
+' the "Point Notes" column of Point Index and restores Offset, Δt and Notes
+' into the config row.  Silently does nothing if no saved entry exists.
+' ---------------------------------------------------------------------------
+Sub RestorePointNotesTH(ws As Worksheet, cfgRow As Long)
+    Dim pointRef As String
+    pointRef = Trim(CStr(ws.Cells(cfgRow, TH_REF).Value))
+    If pointRef = "" Then Exit Sub
+
+    ' Find Point Index sheet
+    Dim wsIdx As Worksheet
+    Dim wsT   As Worksheet
+    For Each wsT In ThisWorkbook.Worksheets
+        If LCase(Trim(wsT.Name)) = "point index" Then
+            Set wsIdx = wsT: Exit For
+        End If
+    Next wsT
+    If wsIdx Is Nothing Then Exit Sub
+
+    ' Find "Point Ref" and "Point Notes" column headers (row 3)
+    Dim lastHdrCol    As Long
+    lastHdrCol = wsIdx.Cells(3, wsIdx.Columns.Count).End(xlToLeft).Column
+    Dim pointRefCol   As Long: pointRefCol   = 0
+    Dim pointNotesCol As Long: pointNotesCol = 0
+    Dim c As Long
+    For c = 1 To lastHdrCol
+        Select Case LCase(Trim(wsIdx.Cells(3, c).Value))
+            Case "point ref":   pointRefCol   = c
+            Case "point notes": pointNotesCol = c
+        End Select
+    Next c
+    If pointRefCol = 0 Or pointNotesCol = 0 Then Exit Sub
+
+    ' Find the matching sensor row
+    Dim lastRow As Long
+    lastRow = wsIdx.Cells(wsIdx.Rows.Count, pointRefCol).End(xlUp).Row
+    Dim r As Long
+    For r = 4 To lastRow
+        If LCase(Trim(CStr(wsIdx.Cells(r, pointRefCol).Value))) = LCase(pointRef) Then
+            Dim saved As String
+            saved = Trim(CStr(wsIdx.Cells(r, pointNotesCol).Value))
+            If saved = "" Then Exit Sub
+
+            ' Find the last appended entry (entries are separated by Chr(10) & Chr(10))
+            Dim entries()  As String
+            entries = Split(saved, Chr(10) & Chr(10))
+            Dim lastEntry As String
+            lastEntry = Trim(entries(UBound(entries)))
+            If lastEntry = "" Then Exit Sub
+
+            ' Parse "dd/mm/yyyy HH:nn | Offset: x | Dt: n | Notes: text"
+            Dim segments() As String
+            segments = Split(lastEntry, " | ")
+            Dim off   As Double: off   = 0
+            Dim dt    As Long:   dt    = 0
+            Dim notes As String: notes = ""
+            Dim s As Long
+            For s = 1 To UBound(segments)
+                Dim seg As String: seg = Trim(segments(s))
+                If LCase(Left(seg, 8)) = "offset: " Then
+                    On Error Resume Next
+                    off = CDbl(Mid(seg, 9))
+                    On Error GoTo 0
+                ElseIf LCase(Left(seg, 4)) = "dt: " Then
+                    On Error Resume Next
+                    dt = CLng(Mid(seg, 5))
+                    On Error GoTo 0
+                ElseIf LCase(Left(seg, 7)) = "notes: " Then
+                    notes = Mid(seg, 8)
+                    ' Re-join any trailing segments in case the notes text contained " | "
+                    Dim j As Long
+                    For j = s + 1 To UBound(segments)
+                        notes = notes & " | " & segments(j)
+                    Next j
+                    Exit For
+                End If
+            Next s
+
+            ' Restore values into the config row
+            ws.Cells(cfgRow, TH_OFF).Value   = off
+            ws.Cells(cfgRow, TH_DT).Value    = dt
+            ws.Cells(cfgRow, TH_NOTES).Value = notes
+            Exit Sub
+        End If
+    Next r
+End Sub
+
 ' Creates a line chart to the right of the sensor config table (at col I,
 ' row 3) sized 30 cm wide × 16 cm tall.  One series per active sensor.
 ' X-axis: full date+time timestamp.   Y-axis: "Total Head (mAOD)".

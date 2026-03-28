@@ -24,6 +24,11 @@
 '   Row 46+: data rows            (A=date+time serial, B..AJ = pressure values)
 ' ────────────────────────────────────────────────────────────────────────────
 
+' Module-level array: stores each config row's Point Ref as it was when the
+' user last selected that cell, so Worksheet_Change can use the old value
+' when the ref is cleared (the cell is already empty when Change fires).
+Private mPrevRefByRow(9 To 43) As String
+
 Private Sub Worksheet_Activate()
     ' Initialise row-4 Export Path label if this is the first visit.
     Application.EnableEvents = False
@@ -67,24 +72,30 @@ Private Sub Worksheet_Change(ByVal Target As Range)
                     Dim hdr As String
                     hdr = Trim(CStr(Me.Cells(pCell.Row, CONF_REF).Value))
                     Me.Cells(45, TH_DataCol(pCell.Row)).Value = hdr
-                    ' When Point Ref is cleared, reset Offset, Δt and Point Notes to defaults
                     If hdr = "" Then
+                        ' Save config to Point Index before resetting (cell is already
+                        ' empty here, so pass the previously captured ref as forceRef)
+                        RecordSensorNote Me, pCell.Row, mPrevRefByRow(pCell.Row)
                         Me.Cells(pCell.Row, CONF_OFF).Value = 0
                         Me.Cells(pCell.Row, CONF_DT).Value = 0
                         Me.Cells(pCell.Row, CONF_NOTES).ClearContents
+                        mPrevRefByRow(pCell.Row) = ""
+                    Else
+                        ' Restore previously saved Offset, Δt and Notes from Point Index
+                        RestorePointNotesTH Me, pCell.Row
+                        mPrevRefByRow(pCell.Row) = hdr   ' keep in sync for next clear
                     End If
                     PopulateOneSensor Me, pCell.Row
                     needRefresh = True
 
                 Case CONF_OFF, CONF_DT
-                    ' Offset / Δt changed: repopulate and record note in Point Index
+                    ' Offset / Δt changed: repopulate data column
                     PopulateOneSensor Me, pCell.Row
-                    RecordSensorNote Me, pCell.Row
                     needRefresh = True
 
                 Case CONF_NOTES
-                    ' Point Notes changed: record note in Point Index
-                    RecordSensorNote Me, pCell.Row
+                    ' Point Notes changed — no automatic Point Index write;
+                    ' the note is saved to Point Index when the ref is cleared.
 
             End Select
         End If
@@ -110,6 +121,13 @@ Private Sub Worksheet_SelectionChange(ByVal Target As Range)
 
     Dim cell As Range
     Set cell = Target.Cells(1, 1)
+
+    ' ── Capture Point Ref before user edits it ───────────────────────────────
+    ' Worksheet_Change fires after the cell is already changed, so we snapshot
+    ' the current value here while it is still intact.
+    If cell.Column = 1 And cell.Row >= CONF_START And cell.Row <= CONF_END Then
+        mPrevRefByRow(cell.Row) = Trim(CStr(Me.Cells(cell.Row, 1).Value))
+    End If
 
     ' ── E5 = SAVE button ─────────────────────────────────────────────────────
     If cell.Row = 5 And cell.Column = 5 Then

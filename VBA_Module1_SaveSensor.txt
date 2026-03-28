@@ -497,16 +497,16 @@ Sub WriteDataNoteToPointIndex(sensorName As String, noteText As String)
         Exit Sub
     End If
 
-    ' Find "Point Ref" and "Data Notes" column headers dynamically
+    ' Find "Point Ref" and "Point Notes" column headers dynamically
     Dim lastHdrCol As Long
     lastHdrCol = wsIdx.Cells(3, wsIdx.Columns.Count).End(xlToLeft).Column
-    Dim pointRefCol  As Long: pointRefCol  = 0
-    Dim dataNotesCol As Long: dataNotesCol = 0
+    Dim pointRefCol   As Long: pointRefCol   = 0
+    Dim pointNotesCol As Long: pointNotesCol = 0
     Dim c As Long
     For c = 1 To lastHdrCol
         Select Case LCase(Trim(wsIdx.Cells(3, c).Value))
-            Case "point ref":  pointRefCol  = c
-            Case "data notes": dataNotesCol = c
+            Case "point ref":   pointRefCol   = c
+            Case "point notes": pointNotesCol = c
         End Select
     Next c
     If pointRefCol = 0 Then
@@ -514,10 +514,10 @@ Sub WriteDataNoteToPointIndex(sensorName As String, noteText As String)
         Exit Sub
     End If
 
-    ' If "Data Notes" column doesn't exist yet, create it after last used column
-    If dataNotesCol = 0 Then
-        dataNotesCol = lastHdrCol + 1
-        wsIdx.Cells(3, dataNotesCol).Value = "Data Notes"
+    ' If "Point Notes" column doesn't exist yet, create it after last used column
+    If pointNotesCol = 0 Then
+        pointNotesCol = lastHdrCol + 1
+        wsIdx.Cells(3, pointNotesCol).Value = "Point Notes"
     End If
 
     ' Find the matching sensor row and append the note
@@ -527,13 +527,13 @@ Sub WriteDataNoteToPointIndex(sensorName As String, noteText As String)
     For r = 4 To lastRow
         If Trim(wsIdx.Cells(r, pointRefCol).Value) = sensorName Then
             Dim existingText As String
-            existingText = wsIdx.Cells(r, dataNotesCol).Value
+            existingText = wsIdx.Cells(r, pointNotesCol).Value
             If existingText = "" Then
-                wsIdx.Cells(r, dataNotesCol).Value = noteText
+                wsIdx.Cells(r, pointNotesCol).Value = noteText
             Else
-                wsIdx.Cells(r, dataNotesCol).Value = existingText & Chr(10) & Chr(10) & noteText
+                wsIdx.Cells(r, pointNotesCol).Value = existingText & Chr(10) & Chr(10) & noteText
             End If
-            wsIdx.Cells(r, dataNotesCol).WrapText = True
+            wsIdx.Cells(r, pointNotesCol).WrapText = True
             Exit Sub
         End If
     Next r
