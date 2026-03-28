@@ -1,5 +1,5 @@
 ' ============================================================
-' Module3 — Total Head (New) Sheet Procedures  (v1.55)
+' Module3 — Total Head (New) Sheet Procedures  (v1.56)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. Insert → Module.
@@ -626,8 +626,8 @@ Sub CreateTotalHeadChart(ws As Worksheet)
     Dim chtObj As ChartObject
     Set chtObj = ws.ChartObjects.Add( _
         anchorCell.Left, anchorCell.Top, _
-        Application.CentimetersToPoints(30), _
-        Application.CentimetersToPoints(16))
+        Application.CentimetersToPoints(37.17), _
+        Application.CentimetersToPoints(22.28))
     chtObj.Name = "TotalHeadChart"
 
     With chtObj.Chart
@@ -694,12 +694,19 @@ Sub RefreshTotalHeadChart(ws As Worksheet)
                         Dim dc As Long: dc = TH_DataCol(r)
                         Dim sr As Series
                         Set sr = .SeriesCollection.NewSeries
-                        sr.Name    = pRef
-                        sr.XValues = xRng
-                        sr.Values  = ws.Range(ws.Cells(TH_DATA_ROW, dc), _
-                                              ws.Cells(lastDataRow, dc))
+                        sr.Name        = pRef
+                        sr.XValues     = xRng
+                        sr.Values      = ws.Range(ws.Cells(TH_DATA_ROW, dc), _
+                                                  ws.Cells(lastDataRow, dc))
+                        sr.MarkerStyle = xlMarkerStyleNone
                     End If
                 Next r
+
+                ' ── Y-axis: always auto-scale ────────────────────────────────────────
+                With .Axes(xlValue)
+                    .MinimumScaleIsAuto = True
+                    .MaximumScaleIsAuto = True
+                End With
 
                 ' ── X-axis: no padding, date-appropriate tick intervals ──────────────
                 Dim startV As Variant: startV = ws.Cells(5, 4).Value   ' D5 start date
@@ -713,7 +720,7 @@ Sub RefreshTotalHeadChart(ws As Worksheet)
                     Dim minUnit As Double
                     ' Choose tick intervals by span length (Excel date serial units = days)
                     Select Case True
-                        Case xSpan <= 1:  majUnit = 1 / 24:    minUnit = 1 / 96    ' 1 hr / 15 min
+                        Case xSpan <= 1:  majUnit = 1 / 24:    minUnit = 1 / 24    ' 1 hr / 1 hr (no sub-hour ticks)
                         Case xSpan <= 3:  majUnit = 6 / 24:    minUnit = 1 / 24    ' 6 hr / 1 hr
                         Case xSpan <= 7:  majUnit = 1:         minUnit = 6 / 24    ' 1 day / 6 hr
                         Case xSpan <= 31: majUnit = 7:         minUnit = 1         ' 1 wk / 1 day
