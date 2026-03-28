@@ -1,5 +1,5 @@
 ' ============================================================
-' Module3 — Total Head (New) Sheet Procedures  (v1.53)
+' Module3 — Total Head (New) Sheet Procedures  (v1.55)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. Insert → Module.
@@ -631,7 +631,7 @@ Sub CreateTotalHeadChart(ws As Worksheet)
     chtObj.Name = "TotalHeadChart"
 
     With chtObj.Chart
-        .ChartType = xlLine
+        .ChartType = xlXYScatterSmooth
 
         ' Remove the default series Excel adds automatically
         Do While .SeriesCollection.Count > 0
@@ -647,8 +647,10 @@ Sub CreateTotalHeadChart(ws As Worksheet)
             .AxisTitle.Text = "Total Head (mAOD)"
         End With
 
-        ' X-axis — will be set properly in RefreshTotalHeadChart
+        ' X-axis — scale and tick intervals set in RefreshTotalHeadChart
         With .Axes(xlCategory)
+            .HasTitle = True
+            .AxisTitle.Text = "Time / Date"
             .TickLabels.NumberFormat = "DD/MM/YY HH:MM"
             .TickLabels.Orientation  = xlTickLabelOrientationUpward
         End With
@@ -698,6 +700,40 @@ Sub RefreshTotalHeadChart(ws As Worksheet)
                                               ws.Cells(lastDataRow, dc))
                     End If
                 Next r
+
+                ' ── X-axis: no padding, date-appropriate tick intervals ──────────────
+                Dim startV As Variant: startV = ws.Cells(5, 4).Value   ' D5 start date
+                Dim endV   As Variant: endV   = ws.Cells(6, 4).Value   ' D6 end date
+                If IsNumeric(startV) And CDbl(startV) > 0 And _
+                   IsNumeric(endV)   And CDbl(endV)   > 0 Then
+                    Dim xMin    As Double: xMin = Int(CDbl(startV))
+                    Dim xMax    As Double: xMax = Int(CDbl(endV)) + 1  ' +1 to include the full end date
+                    Dim xSpan   As Double: xSpan = xMax - xMin
+                    Dim majUnit As Double
+                    Dim minUnit As Double
+                    ' Choose tick intervals by span length (Excel date serial units = days)
+                    Select Case True
+                        Case xSpan <= 1:  majUnit = 1 / 24:    minUnit = 1 / 96    ' 1 hr / 15 min
+                        Case xSpan <= 3:  majUnit = 6 / 24:    minUnit = 1 / 24    ' 6 hr / 1 hr
+                        Case xSpan <= 7:  majUnit = 1:         minUnit = 6 / 24    ' 1 day / 6 hr
+                        Case xSpan <= 31: majUnit = 7:         minUnit = 1         ' 1 wk / 1 day
+                        Case Else:        majUnit = 14:        minUnit = 7         ' 2 wk / 1 wk
+                    End Select
+                    With .Axes(xlCategory)
+                        .MinimumScaleIsAuto = False
+                        .MaximumScaleIsAuto = False
+                        .MinimumScale       = xMin
+                        .MaximumScale       = xMax
+                        .MajorUnitIsAuto    = False
+                        .MajorUnit          = majUnit
+                        .MinorUnitIsAuto    = False
+                        .MinorUnit          = minUnit
+                        .HasTitle = True
+                        .AxisTitle.Text = "Time / Date"
+                        .TickLabels.NumberFormat = "DD/MM/YY HH:MM"
+                        .TickLabels.Orientation  = xlTickLabelOrientationUpward
+                    End With
+                End If
 
                 ' Update chart title
                 .HasTitle = True
