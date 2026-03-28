@@ -15,10 +15,12 @@ Private Sub Worksheet_Activate()
 End Sub
 
 Private Sub Worksheet_Change(ByVal Target As Range)
-    ' B2 date changed → re-fill data for every sensor code already in B6:K6.
+    ' B2 date changed → fill timestamps A7:A102 (always start at 00:00),
+    ' then re-fill data for every sensor code already in B6:K6.
     If Not Intersect(Target, Me.Range("B2")) Is Nothing Then
         Application.EnableEvents = False
         On Error Resume Next
+        Call FillTimestamps
         Dim sensCol As Long
         For sensCol = 2 To 11
             If Trim(CStr(Me.Cells(6, sensCol).Value)) <> "" Then

@@ -33,9 +33,11 @@ Sub FillTimestamps()
     End If
 
     ' Write 96 timestamps: 00:00, 00:15, ... 23:45
+    ' Strip any time component so slots always start at exactly midnight.
+    Dim baseMidnight As Double: baseMidnight = Int(CDbl(baseDate))
     Dim i As Long
     For i = 0 To 95
-        ws.Cells(7 + i, 1).Value = baseDate + CDbl(i * 15) / 1440
+        ws.Cells(7 + i, 1).Value = baseMidnight + CDbl(i * 15) / 1440
         ws.Cells(7 + i, 1).NumberFormat = "HH:MM"
     Next i
 End Sub
@@ -457,7 +459,8 @@ Function FillColumnFromRawSheet(wsPlots As Worksheet, _
     lastRow = wsRaw.Cells(wsRaw.Rows.Count, 1).End(xlUp).Row
     If lastRow < 2 Then Exit Function
 
-    Dim baseDbl As Double: baseDbl = CDbl(baseDate)
+    ' Strip any time component so slot 0 is always exactly midnight (00:00).
+    Dim baseDbl As Double: baseDbl = Int(CDbl(baseDate))
 
     ' Find the first row whose date portion equals baseDate.
     Dim startRow As Long: startRow = 0
@@ -526,3 +529,57 @@ Function FillColumnFromRawSheet(wsPlots As Worksheet, _
         End If
     Next i
 End Function
+
+' ---------------------------------------------------------------------------
+' CopySelectionToPlotsHeaders
+' Bound to Ctrl+Shift+V (registered in ThisWorkbook.Workbook_Open).
+' Takes the currently selected cells (from any sheet), extracts up to 10
+' non-empty text values, writes them sequentially into B6:K6 on the Plots
+' sheet, then triggers a data lookup for each column and refreshes the chart.
+' This lets the user select sensor codes in Point Index (or anywhere else)
+' and paste them straight into the Plots header row in one keystroke.
+' ---------------------------------------------------------------------------
+Sub CopySelectionToPlotsHeaders()
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Plots")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    ' Capture the current selection before potentially activating another sheet.
+    Dim sel As Range
+    On Error Resume Next
+    Set sel = Application.Selection
+    On Error GoTo 0
+    If sel Is Nothing Then Exit Sub
+
+    ' Collect up to 10 non-empty string values from the selected cells.
+    Dim vals(0 To 9) As String
+    Dim count As Integer: count = 0
+    Dim cel As Range
+    For Each cel In sel.Cells
+        If count >= 10 Then Exit For
+        Dim v As String: v = Trim(CStr(cel.Value))
+        If v <> "" Then
+            vals(count) = v
+            count = count + 1
+        End If
+    Next cel
+    If count = 0 Then Exit Sub
+
+    ' Write codes into B6:K6 and trigger lookup + chart refresh.
+    Application.EnableEvents = False
+    Dim col As Long
+    For col = 0 To count - 1
+        ws.Cells(6, 2 + col).Value = vals(col)
+    Next col
+    Application.EnableEvents = True
+
+    For col = 0 To count - 1
+        Call LookupAndFillSensorColumn(2 + col)
+    Next col
+    Call RefreshPlotsChart
+
+    ' Switch to the Plots sheet so the user sees the result immediately.
+    ws.Activate
+End Sub

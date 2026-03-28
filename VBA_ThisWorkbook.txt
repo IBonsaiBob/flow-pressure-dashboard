@@ -8,18 +8,18 @@
 ' ============================================================
 
 Private Sub Workbook_Open()
-    ' Clear any keyboard shortcuts registered by older versions of this file
-    ' (Ctrl+Shift+V and Ctrl+Shift+H were previously used but caused conflicts).
-    ' All Plots functionality is now driven by the sheet buttons in row 2.
+    ' Ctrl+Shift+V → copy current selection's values into the Plots header row
+    ' (B6:K6), trigger sensor lookup, and refresh the chart.
+    ' Deregistered on close so Excel's own Paste Special is restored.
     On Error Resume Next
-    Application.OnKey "^+V"   ' restore Excel's own Paste Special
-    Application.OnKey "^+H"   ' clear our previous custom shortcut
+    Application.OnKey "^+V", "CopySelectionToPlotsHeaders"
+    Application.OnKey "^+H"   ' clear any previous custom shortcut for ^+H
     On Error GoTo 0
 End Sub
 
 Private Sub Workbook_BeforeClose(Cancel As Boolean)
     On Error Resume Next
-    Application.OnKey "^+V"
+    Application.OnKey "^+V"   ' restore Excel's own Paste Special
     Application.OnKey "^+H"
     On Error GoTo 0
 End Sub
