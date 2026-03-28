@@ -17,7 +17,7 @@
 '   E5  = "SAVE"  (click-button)
 '   G5  = "LOAD"  (click-button)
 '   Row 8  : table header
-'            A=Point Ref | B=Offset | C=Δt | D=Z(m) | E=(reserved) | F=PRN | G=Point Notes
+'            A=Point Ref | B=Offset | C=(unused) | D=Z(m) | E=(reserved) | F=PRN | G=Point Notes
 '   Rows 9-43 : sensor config rows (35 rows, col A = yellow Point Ref input)
 '   Row 44 : spacer
 '   Row 45 : data table headers  (A=Timestamp, B..AJ = one col per sensor)
@@ -45,7 +45,6 @@ Private Sub Worksheet_Change(ByVal Target As Range)
     Const CONF_END    As Long = 43   ' last sensor config row
     Const CONF_REF    As Long = 1    ' col A: Point Ref
     Const CONF_OFF    As Long = 2    ' col B: Offset
-    Const CONF_DT     As Long = 3    ' col C: Δt (timesteps)
     Const CONF_ELEV   As Long = 4    ' col D: Z (m)
     Const CONF_NOTES  As Long = 7    ' col G: Point Notes
 
@@ -78,19 +77,19 @@ Private Sub Worksheet_Change(ByVal Target As Range)
                         ' empty here, so pass the previously captured ref as forceRef)
                         RecordSensorNote Me, pCell.Row, mPrevRefByRow(pCell.Row)
                         Me.Cells(pCell.Row, CONF_OFF).Value = 0
-                        Me.Cells(pCell.Row, CONF_DT).Value = 0
                         Me.Cells(pCell.Row, CONF_NOTES).ClearContents
                         mPrevRefByRow(pCell.Row) = ""
                     Else
-                        ' Restore previously saved Offset, Δt and Notes from Point Index
+                        ' Restore previously saved Offset and Notes from Point Index
                         RestorePointNotesTH Me, pCell.Row
                         mPrevRefByRow(pCell.Row) = hdr   ' keep in sync for next clear
                     End If
                     PopulateOneSensor Me, pCell.Row
                     needRefresh = True
 
-                Case CONF_OFF, CONF_DT, CONF_ELEV
-                    ' Offset / Δt / Z(m) changed: repopulate data column
+                Case CONF_OFF, CONF_ELEV
+                    ' Offset / Z(m) changed: sync offset to Pressure Data, repopulate data column
+                    If pCell.Column = CONF_OFF Then SyncOffsetToPressureData Me, pCell.Row
                     PopulateOneSensor Me, pCell.Row
                     needRefresh = True
 

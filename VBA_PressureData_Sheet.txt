@@ -1,0 +1,55 @@
+' ============================================================
+' Pressure Data Sheet — Event Handlers  (v1.45)
+' How to install:
+'   1. Alt+F11 to open the VBA editor.
+'   2. In the Project pane, expand "Microsoft Excel Objects".
+'   3. Double-click "Pressure Data".
+'   4. Paste this entire block, replacing any existing code.
+' ============================================================
+'
+' Depends on Module3 (SyncOffsetToTotalHead, PopulateInstallRetrievalForColumn)
+' being installed.
+'
+' ── Pressure Data layout ─────────────────────────────────────────────────────
+'   Row 1 : Install Time/Date   — col A = label; col B+ = install datetime per sensor
+'   Row 2 : Retrieval Time/Date — col A = label; col B+ = retrieval datetime per sensor
+'   Row 3 : INSTALL CHK         — col B+ = "Y" / "N"
+'   Row 4 : RETRIEVAL CHK       — col B+ = "Y" / "N"
+'   Row 5 : OFFSET              — col A = label; col B+ = numeric offset per sensor
+'   Row 6 : FACTOR              — col A = label; col B+ = numeric factor per sensor
+'   Row 7 : Headers             — col A = "Date"; col B+ = sensor/logger codes
+'   Row 8+: data                — col A = timestamp serial; col B+ = pressure readings
+' ──────────────────────────────────────────────────────────────────────────────
+
+Private Const PRES_INSTALL_ROW   As Long = 1   ' install datetime row
+Private Const PRES_RETRIEVAL_ROW As Long = 2   ' retrieval datetime row
+Private Const PRES_OFFSET_ROW    As Long = 5   ' OFFSET row
+Private Const PRES_HDR_ROW       As Long = 7   ' sensor-name header row
+
+Private Sub Worksheet_Change(ByVal Target As Range)
+    Application.EnableEvents = False
+    On Error Resume Next
+
+    Dim pCell As Range
+    For Each pCell In Target
+
+        ' ── Sensor header changed (row 7, col B+) ────────────────────────────
+        ' Auto-fill install / retrieval datetimes from Point Index.
+        If pCell.Row = PRES_HDR_ROW And pCell.Column >= 2 Then
+            PopulateInstallRetrievalForColumn Me, pCell.Column
+        End If
+
+        ' ── OFFSET cell changed (row 5, col B+) ──────────────────────────────
+        ' Sync the new value to the matching sensor row in Total Head (col B).
+        ' SyncOffsetToTotalHead also calls PopulateOneSensor + RefreshTotalHeadChart
+        ' on the Total Head sheet so the data table updates immediately.
+        If pCell.Row = PRES_OFFSET_ROW And pCell.Column >= 2 Then
+            SyncOffsetToTotalHead Me, pCell.Column
+        End If
+
+    Next pCell
+
+    ' Guaranteed restore: runs even if On Error Resume Next swallowed an error
+    Application.EnableEvents = True
+    On Error GoTo 0
+End Sub

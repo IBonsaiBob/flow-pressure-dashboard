@@ -15,7 +15,7 @@
 '   C6  = End Date
 '   C7  = Zone Notes
 '   Rows 9-43: sensor config
-'              col A=Point Ref | B=Offset | C=Δt | D=Z(m) | F=PRN | G=Point Notes
+'              col A=Point Ref | B=Offset | C=(unused) | D=Z(m) | F=PRN | G=Point Notes
 '   Row 45: data table headers  (A=Timestamp, B..=sensor Point Refs)
 '   Row 46+: data rows          (A=timestamp serial, B..=pressure readings)
 '
@@ -37,13 +37,13 @@ Private Const TH_DATA_ROW   As Long = 46    ' first data row
 Private Const TH_MAX_ROWS   As Long = 2976  ' 1 month of 15-min data (31 × 96)
 
 ' ── Pressure Data row layout ─────────────────────────────────────────────────
-Private Const PRES_HDR_ROW  As Long = 7    ' row containing sensor-name headers
-Private Const PRES_DATA_ROW As Long = 8    ' first data row
+Private Const PRES_OFFSET_ROW As Long = 5    ' OFFSET row in Pressure Data
+Private Const PRES_HDR_ROW    As Long = 7    ' row containing sensor-name headers
+Private Const PRES_DATA_ROW   As Long = 8    ' first data row
 
 ' ── Column indices on the Total Head sheet ───────────────────────────────────
 Private Const TH_REF   As Long = 1   ' col A: Point Ref
 Private Const TH_OFF   As Long = 2   ' col B: Offset
-Private Const TH_DT    As Long = 3   ' col C: Δt (timesteps)
 Private Const TH_ELEV  As Long = 4   ' col D: Z (m)
 Private Const TH_NOTES As Long = 7   ' col G: Point Notes
 
@@ -346,15 +346,12 @@ Sub PopulateOneSensor(ws As Worksheet, cfgRow As Long)
     rawCol = FindPressureDataCol(wsPres, pointRef)
     If rawCol = 0 Then Exit Sub    ' sensor not in Pressure Data — leave blank
 
-    ' Read Offset, Δt and Z elevation
+    ' Read Offset and Z elevation (Δt removed — no time shift)
     Dim offset As Double: offset = 0
     Dim zElev  As Double: zElev  = 0
-    Dim dt     As Long:   dt     = 0
     Dim v As Variant
     v = ws.Cells(cfgRow, TH_OFF).Value
     If IsNumeric(v) Then offset = CDbl(v)
-    v = ws.Cells(cfgRow, TH_DT).Value
-    If IsNumeric(v) Then dt = CLng(v)
     v = ws.Cells(cfgRow, TH_ELEV).Value
     If IsNumeric(v) Then zElev = CDbl(v)
 
@@ -391,13 +388,9 @@ Sub PopulateOneSensor(ws As Worksheet, cfgRow As Long)
         rawVals(ii) = rawValArr(ii, 1)
     Next ii
 
-    ' Build output array applying Δt shift and Offset.
-    ' Δt is in 15-min timesteps: for output row i, read from raw row i - dt
-    ' (same convention as SaveOneSensor: srcIdx = j - dt).
-    ' If the raw timestamps are not perfectly regular, use nearest-match
-    ' within 7.5 minutes for safety.
+    ' Build output array applying Offset only (Δt time shift removed).
+    ' Use nearest-match within 7.5 minutes to handle irregular timestamps.
     Dim halfStep As Double: halfStep = (1# / 96) / 2   ' 7.5 min as day fraction
-    Dim dtFrac   As Double: dtFrac   = CDbl(dt) / 96#   ' Δt in day fraction
 
     Dim outArr() As Variant
     ReDim outArr(1 To nRows, 1 To 1)
@@ -410,7 +403,7 @@ Sub PopulateOneSensor(ws As Worksheet, cfgRow As Long)
 
     For i = 1 To nRows
         On Error Resume Next
-        tgt = CDbl(dtTS(i, 1)) + dtFrac   ' target timestamp with Δt applied
+        tgt = CDbl(dtTS(i, 1))   ' target timestamp (no shift)
         On Error GoTo 0
 
         best  = 0
@@ -441,7 +434,7 @@ End Sub
 ' ---------------------------------------------------------------------------
 ' RecordSensorNote
 ' Appends a compact note to the "Point Notes" column in Point Index for the
-' sensor in the given config row.  Records Offset, Δt and Point Notes.
+' sensor in the given config row.  Records Z, Offset and Point Notes.
 ' Called only when the Point Ref is cleared.  Pass forceRef when the cell
 ' has already been cleared and the old ref is no longer readable from the sheet.
 ' ---------------------------------------------------------------------------
@@ -456,14 +449,12 @@ Sub RecordSensorNote(ws As Worksheet, cfgRow As Long, Optional forceRef As Strin
 
     Dim zVal   As Variant: zVal   = ws.Cells(cfgRow, TH_ELEV).Value
     Dim offVal As Variant: offVal = ws.Cells(cfgRow, TH_OFF).Value
-    Dim dtVal  As Variant: dtVal  = ws.Cells(cfgRow, TH_DT).Value
     Dim notes  As String:  notes  = Trim(CStr(ws.Cells(cfgRow, TH_NOTES).Value))
 
     Dim note As String
     note = Format(Now, "dd/mm/yyyy HH:nn")
     If IsNumeric(zVal)   Then note = note & " | Z: "      & Format(CDbl(zVal),   "0.###")
     If IsNumeric(offVal) Then note = note & " | Offset: " & Format(CDbl(offVal), "0.###")
-    If IsNumeric(dtVal)  Then note = note & " | Dt: "     & CLng(dtVal)
     If notes <> ""       Then note = note & " | Notes: "  & notes
 
     WriteDataNoteToPointIndex pointRef, note
@@ -521,13 +512,12 @@ Sub RestorePointNotesTH(ws As Worksheet, cfgRow As Long)
             lastEntry = Trim(entries(UBound(entries)))
             If lastEntry = "" Then Exit Sub
 
-            ' Parse "dd/mm/yyyy HH:nn | Z: v | Offset: x | Dt: n | Notes: text"
+            ' Parse "dd/mm/yyyy HH:nn | Z: v | Offset: x | Notes: text"
             Dim segments() As String
             segments = Split(lastEntry, " | ")
             Dim zR    As Double: zR    = 0
             Dim zSet  As Boolean: zSet = False
             Dim off   As Double: off   = 0
-            Dim dt    As Long:   dt    = 0
             Dim notes As String: notes = ""
             Dim s As Long
             For s = 1 To UBound(segments)
@@ -541,10 +531,6 @@ Sub RestorePointNotesTH(ws As Worksheet, cfgRow As Long)
                     On Error Resume Next
                     off = CDbl(Mid(seg, 9))
                     On Error GoTo 0
-                ElseIf LCase(Left(seg, 4)) = "dt: " Then
-                    On Error Resume Next
-                    dt = CLng(Mid(seg, 5))
-                    On Error GoTo 0
                 ElseIf LCase(Left(seg, 7)) = "notes: " Then
                     notes = Mid(seg, 8)
                     ' Re-join any trailing segments in case the notes text contained " | "
@@ -556,10 +542,9 @@ Sub RestorePointNotesTH(ws As Worksheet, cfgRow As Long)
                 End If
             Next s
 
-            ' Restore values into the config row
+            ' Restore values into the config row (Δt not restored — feature removed)
             If zSet Then ws.Cells(cfgRow, TH_ELEV).Value = zR
             ws.Cells(cfgRow, TH_OFF).Value   = off
-            ws.Cells(cfgRow, TH_DT).Value    = dt
             ws.Cells(cfgRow, TH_NOTES).Value = notes
             Exit Sub
         End If
@@ -789,12 +774,12 @@ Sub ArchiveTotalHeadData(ws As Worksheet)
     wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(7, 3).Value)): col = col + 1   ' Zone Notes C7
     wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(4, 3).Value)): col = col + 1   ' Export Path C4
 
-    ' ── Write per-sensor config (35 rows × 5 values) ─────────────────────
+    ' ── Write per-sensor config (35 rows × 5 values; Dt written as 0 — feature removed) ──
     Dim r As Long
     For r = TH_CONF_START To TH_CONF_END
         wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(r, TH_REF).Value)):   col = col + 1
         wsA.Cells(nxtRow, col).Value = ws.Cells(r, TH_OFF).Value:               col = col + 1
-        wsA.Cells(nxtRow, col).Value = ws.Cells(r, TH_DT).Value:                col = col + 1
+        wsA.Cells(nxtRow, col).Value = 0:                                        col = col + 1  ' Dt — always 0; kept to preserve the 183-column Total Head Archive schema
         wsA.Cells(nxtRow, col).Value = ws.Cells(r, TH_ELEV).Value:              col = col + 1
         wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(r, TH_NOTES).Value)): col = col + 1
     Next r
@@ -808,7 +793,7 @@ End Sub
 ' LoadTotalHead
 ' Displays a list of archived sessions and restores the selected one,
 ' including: Zone Name, Export Path, Start/End Date, Zone Notes, Driving Head
-' and all 35 sensor rows (Point Ref, Offset, Δt, Z(m), Point Notes).
+' and all 35 sensor rows (Point Ref, Offset, Z(m), Point Notes).
 ' Triggers a full data-table rebuild after restoring.
 ' ---------------------------------------------------------------------------
 Sub LoadTotalHead()
@@ -890,7 +875,7 @@ Sub LoadTotalHead()
     For r = TH_CONF_START To TH_CONF_END
         ws.Cells(r, TH_REF).Value   = wsA.Cells(archRow, col).Value: col = col + 1
         ws.Cells(r, TH_OFF).Value   = wsA.Cells(archRow, col).Value: col = col + 1
-        ws.Cells(r, TH_DT).Value    = wsA.Cells(archRow, col).Value: col = col + 1
+        col = col + 1                                                              ' skip Dt — feature removed
         ws.Cells(r, TH_ELEV).Value  = wsA.Cells(archRow, col).Value: col = col + 1
         ws.Cells(r, TH_NOTES).Value = wsA.Cells(archRow, col).Value: col = col + 1
     Next r
@@ -972,4 +957,209 @@ Sub ExportTotalHeadPRN(cfgRow As Long)
     Close #ff
 
     MsgBox "PRN exported: " & fileName, vbInformation, "Export Complete"
+End Sub
+
+' ---------------------------------------------------------------------------
+' SyncOffsetToPressureData
+' Called when Total Head col B (Offset) changes.
+' Writes the same value to Pressure Data row 5 for the matching sensor column.
+' Events are already disabled by the TH Worksheet_Change caller, so no loop.
+' ---------------------------------------------------------------------------
+Sub SyncOffsetToPressureData(wsTH As Worksheet, cfgRow As Long)
+    Dim pointRef As String
+    pointRef = Trim(CStr(wsTH.Cells(cfgRow, TH_REF).Value))
+    If pointRef = "" Then Exit Sub
+
+    Dim wsPres As Worksheet
+    Dim wsT    As Worksheet
+    For Each wsT In ThisWorkbook.Worksheets
+        If LCase(Trim(wsT.Name)) = "pressure data" Then
+            Set wsPres = wsT: Exit For
+        End If
+    Next wsT
+    If wsPres Is Nothing Then Exit Sub
+
+    Dim rawCol As Long
+    rawCol = FindPressureDataCol(wsPres, pointRef)
+    If rawCol = 0 Then Exit Sub
+
+    wsPres.Cells(PRES_OFFSET_ROW, rawCol).Value = wsTH.Cells(cfgRow, TH_OFF).Value
+End Sub
+
+' ---------------------------------------------------------------------------
+' SyncOffsetToTotalHead
+' Called when Pressure Data row 5 (OFFSET) changes for a sensor column.
+' Writes the value to Total Head col B for the matching sensor config row and
+' triggers a data-column repopulation + chart refresh.
+' Events are already disabled by the Pres Data Worksheet_Change caller.
+' ---------------------------------------------------------------------------
+Sub SyncOffsetToTotalHead(wsPres As Worksheet, presCol As Long)
+    Dim pointRef As String
+    pointRef = Trim(CStr(wsPres.Cells(PRES_HDR_ROW, presCol).Value))
+    If pointRef = "" Then Exit Sub
+
+    Dim wsTH As Worksheet
+    Dim wsT  As Worksheet
+    For Each wsT In ThisWorkbook.Worksheets
+        If LCase(Trim(wsT.Name)) = "total head" Then
+            Set wsTH = wsT: Exit For
+        End If
+    Next wsT
+    If wsTH Is Nothing Then Exit Sub
+
+    Dim offVal As Variant
+    offVal = wsPres.Cells(PRES_OFFSET_ROW, presCol).Value
+
+    Dim r As Long
+    For r = TH_CONF_START To TH_CONF_END
+        If LCase(Trim(CStr(wsTH.Cells(r, TH_REF).Value))) = LCase(pointRef) Then
+            wsTH.Cells(r, TH_OFF).Value = offVal
+            ' Repopulate the data column and refresh chart since events are off
+            PopulateOneSensor wsTH, r
+            RefreshTotalHeadChart wsTH
+            Exit For
+        End If
+    Next r
+End Sub
+
+' ---------------------------------------------------------------------------
+' FindInstallRetrievalDates
+' Looks up a sensor code (Logger ID first, then Point Ref) in Point Index and
+' returns the install and retrieval datetimes.
+' Point Index layout:
+'   Row 2 : merged group labels — "INSTALL" spans several cols, "RETRIEVAL" spans others
+'   Row 3 : sub-headers — "Date / Time", "GAUGE / DIP", "READING" per group
+'   Row 4+: data
+' ---------------------------------------------------------------------------
+Private Sub FindInstallRetrievalDates(sensorCode As String, _
+                                      ByRef installDt As Variant, _
+                                      ByRef retrievalDt As Variant)
+    installDt   = Empty
+    retrievalDt = Empty
+    If sensorCode = "" Then Exit Sub
+
+    Dim wsIdx As Worksheet
+    Dim wsT   As Worksheet
+    For Each wsT In ThisWorkbook.Worksheets
+        If LCase(Trim(wsT.Name)) = "point index" Then
+            Set wsIdx = wsT: Exit For
+        End If
+    Next wsT
+    If wsIdx Is Nothing Then Exit Sub
+
+    Dim lastHdrCol As Long
+    lastHdrCol = wsIdx.Cells(3, wsIdx.Columns.Count).End(xlToLeft).Column
+
+    ' Find key columns in row 3
+    Dim ptCol As Long: ptCol = 0
+    Dim lgCol As Long: lgCol = 0
+    Dim c As Long
+    For c = 1 To lastHdrCol
+        Select Case LCase(Trim(CStr(wsIdx.Cells(3, c).Value)))
+            Case "point ref": ptCol = c
+            Case "logger id": lgCol = c
+        End Select
+    Next c
+
+    ' Find INSTALL and RETRIEVAL group start columns from row 2 merged-cell labels
+    Dim instGroupStart As Long: instGroupStart = 0
+    Dim retvGroupStart As Long: retvGroupStart = 0
+    For c = 1 To lastHdrCol
+        Dim r2Val As String
+        r2Val = LCase(Trim(CStr(wsIdx.Cells(2, c).Value)))
+        If InStr(r2Val, "install") > 0 And instGroupStart = 0 Then
+            instGroupStart = c
+        End If
+        If (InStr(r2Val, "retrival") > 0 Or InStr(r2Val, "retrieval") > 0) And _
+           retvGroupStart = 0 Then
+            retvGroupStart = c
+        End If
+    Next c
+
+    ' Within each group, find the "Date / Time" sub-header in row 3
+    Dim instCol As Long: instCol = 0
+    Dim retvCol As Long: retvCol = 0
+    Dim scanEnd As Long
+
+    If instGroupStart > 0 Then
+        scanEnd = Application.Min(instGroupStart + 10, lastHdrCol)
+        For c = instGroupStart To scanEnd
+            Dim h3 As String: h3 = LCase(Trim(CStr(wsIdx.Cells(3, c).Value)))
+            If InStr(h3, "date") > 0 And InStr(h3, "time") > 0 Then
+                instCol = c: Exit For
+            End If
+        Next c
+    End If
+
+    If retvGroupStart > 0 Then
+        scanEnd = Application.Min(retvGroupStart + 10, lastHdrCol)
+        For c = retvGroupStart To scanEnd
+            h3 = LCase(Trim(CStr(wsIdx.Cells(3, c).Value)))
+            If InStr(h3, "date") > 0 And InStr(h3, "time") > 0 Then
+                retvCol = c: Exit For
+            End If
+        Next c
+    End If
+
+    If instCol = 0 And retvCol = 0 Then Exit Sub
+
+    ' Find the data row — match Logger ID first, then Point Ref
+    Dim searchCol As Long
+    searchCol = IIf(lgCol > 0, lgCol, ptCol)
+    If searchCol = 0 Then Exit Sub
+
+    Dim lastRow As Long
+    lastRow = wsIdx.Cells(wsIdx.Rows.Count, searchCol).End(xlUp).Row
+    Dim rr As Long
+    For rr = 4 To lastRow
+        Dim matched As Boolean: matched = False
+        If lgCol > 0 Then
+            If LCase(Trim(CStr(wsIdx.Cells(rr, lgCol).Value))) = LCase(sensorCode) Then
+                matched = True
+            End If
+        End If
+        If Not matched And ptCol > 0 Then
+            If LCase(Trim(CStr(wsIdx.Cells(rr, ptCol).Value))) = LCase(sensorCode) Then
+                matched = True
+            End If
+        End If
+        If matched Then
+            If instCol > 0  Then installDt   = wsIdx.Cells(rr, instCol).Value
+            If retvCol > 0  Then retrievalDt = wsIdx.Cells(rr, retvCol).Value
+            Exit For
+        End If
+    Next rr
+End Sub
+
+' ---------------------------------------------------------------------------
+' PopulateInstallRetrievalForColumn
+' When a sensor header is set/cleared in Pressure Data row 7 for a given
+' column, looks up the install and retrieval datetimes from Point Index and
+' writes them into rows 1 and 2 of the same column.
+' ---------------------------------------------------------------------------
+Sub PopulateInstallRetrievalForColumn(wsPres As Worksheet, presCol As Long)
+    Dim sensorCode As String
+    sensorCode = Trim(CStr(wsPres.Cells(PRES_HDR_ROW, presCol).Value))
+
+    If sensorCode = "" Then
+        wsPres.Cells(1, presCol).ClearContents
+        wsPres.Cells(2, presCol).ClearContents
+        Exit Sub
+    End If
+
+    Dim installDt   As Variant
+    Dim retrievalDt As Variant
+    FindInstallRetrievalDates sensorCode, installDt, retrievalDt
+
+    If Not IsEmpty(installDt) And CStr(installDt) <> "" Then
+        wsPres.Cells(1, presCol).Value = installDt
+    Else
+        wsPres.Cells(1, presCol).ClearContents
+    End If
+
+    If Not IsEmpty(retrievalDt) And CStr(retrievalDt) <> "" Then
+        wsPres.Cells(2, presCol).Value = retrievalDt
+    Else
+        wsPres.Cells(2, presCol).ClearContents
+    End If
 End Sub
