@@ -1,5 +1,5 @@
 ' ============================================================
-' Total Head (New) Worksheet — Event Handlers  (v1.49)
+' Total Head (New) Worksheet — Event Handlers  (v1.50)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. In the Project pane, expand "Microsoft Excel Objects".
@@ -40,8 +40,16 @@ Private Sub Worksheet_Activate()
     Application.EnableEvents = False
     On Error Resume Next
     InitTotalHeadSheet Me
+
+    ' Rebuild the data table FIRST so data is already present when chart series
+    ' are populated (avoids an empty chart when CreateTotalHeadChart calls
+    ' RefreshTotalHeadChart internally before the table has been filled).
+    RebuildDataTable Me
+
     ' If no chart named "TotalHeadChart" exists (e.g. a stale pre-built chart from
     ' the template is present), delete all chart objects and create a fresh VBA one.
+    ' Because the data table is now populated, RefreshTotalHeadChart inside
+    ' CreateTotalHeadChart will immediately add the correct series.
     Dim co As ChartObject
     Dim chartOk As Boolean: chartOk = False
     For Each co In Me.ChartObjects
@@ -49,12 +57,12 @@ Private Sub Worksheet_Activate()
     Next co
     If Not chartOk Then
         For Each co In Me.ChartObjects: co.Delete: Next co
-        CreateTotalHeadChart Me
+        CreateTotalHeadChart Me   ' also calls RefreshTotalHeadChart internally
+    Else
+        ' Chart already exists — just repaint it to match the current data.
+        RefreshTotalHeadChart Me
     End If
-    ' Rebuild the data table so timestamps always reflect the current Start / End
-    ' dates (C5:C6), then repaint the chart to match.
-    RebuildDataTable Me
-    RefreshTotalHeadChart Me
+
     Application.EnableEvents = True
     On Error GoTo 0
 End Sub
