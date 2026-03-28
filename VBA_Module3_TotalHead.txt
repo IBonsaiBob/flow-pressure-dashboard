@@ -1,5 +1,5 @@
 ' ============================================================
-' Module3 — Total Head (New) Sheet Procedures  (v1.45)
+' Module3 — Total Head (New) Sheet Procedures  (v1.49)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. Insert → Module.
@@ -69,6 +69,7 @@ Sub InitTotalHeadSheet(ws As Worksheet)
     If Trim(CStr(ws.Range("A45").Value)) = "" Then
         ws.Range("A45").Value = "Timestamp"
     End If
+    RefreshLoadDropdown ws   ' populate / refresh the archive load dropdown (L5)
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -573,9 +574,9 @@ Sub CreateTotalHeadChart(ws As Worksheet)
         If co.Name = "TotalHeadChart" Then co.Delete: Exit For
     Next co
 
-    ' Anchor at I3
+    ' Anchor at O3
     Dim anchorCell As Range
-    Set anchorCell = ws.Cells(3, 9)
+    Set anchorCell = ws.Cells(3, 15)
     Dim chtObj As ChartObject
     Set chtObj = ws.ChartObjects.Add( _
         anchorCell.Left, anchorCell.Top, _
@@ -798,6 +799,9 @@ Sub ArchiveTotalHeadData(ws As Worksheet)
     ' Format date columns
     wsA.Cells(nxtRow, 5).NumberFormat = "DD/MM/YYYY"
     wsA.Cells(nxtRow, 6).NumberFormat = "DD/MM/YYYY"
+    ' Refresh the archive load dropdown on the Total Head sheet so the newly
+    ' saved Zone Name is immediately available for selection.
+    RefreshLoadDropdown ws
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -893,6 +897,150 @@ Sub LoadTotalHead()
 
     Application.EnableEvents = True
     ' Rebuild data table with the restored configuration (fires Worksheet_Change)
+    RebuildDataTable ws
+    RefreshTotalHeadChart ws
+    Application.ScreenUpdating = True
+
+    MsgBox "Session restored: " & CStr(wsA.Cells(archRow, 2).Value), _
+           vbInformation, "Session Loaded"
+End Sub
+
+' ---------------------------------------------------------------------------
+' RefreshLoadDropdown
+' Applies an Excel data-validation list to cell L5 (the "load saved
+' selections" cell) using Zone Names from "Total Head Archive" col B.
+' This gives a click-dropdown so the user can reload a previous session
+' without the InputBox number-picker.
+' Called automatically from InitTotalHeadSheet and after every archive save.
+' ---------------------------------------------------------------------------
+Sub RefreshLoadDropdown(ws As Worksheet)
+    Const LOAD_CELL   As String = "L5"
+    Const PLACEHOLDER As String = "Drop Down to load saved selections"
+
+    On Error Resume Next
+    Dim cell As Range
+    Set cell = ws.Range(LOAD_CELL)
+    If cell Is Nothing Then Exit Sub
+
+    ' Remove any existing validation so we can re-apply it cleanly.
+    cell.Validation.Delete
+
+    ' Locate the Total Head Archive sheet.
+    Dim wsA As Worksheet
+    Dim wsT As Worksheet
+    For Each wsT In ThisWorkbook.Worksheets
+        If LCase(Trim(wsT.Name)) = "total head archive" Then
+            Set wsA = wsT: Exit For
+        End If
+    Next wsT
+
+    If wsA Is Nothing Then
+        If Trim(CStr(cell.Value)) = "" Then cell.Value = PLACEHOLDER
+        On Error GoTo 0
+        Exit Sub
+    End If
+
+    ' Count non-blank Zone Name entries (col B, rows 2+).
+    Dim lastRow As Long
+    lastRow = wsA.Cells(wsA.Rows.Count, 2).End(xlUp).Row
+    If lastRow < 2 Then
+        If Trim(CStr(cell.Value)) = "" Then cell.Value = PLACEHOLDER
+        On Error GoTo 0
+        Exit Sub
+    End If
+
+    ' Apply data-validation list pointing to archive Zone Names.
+    Dim formula As String
+    formula = "='Total Head Archive'!$B$2:$B$" & lastRow
+    cell.Validation.Add _
+        Type:=xlValidateList, _
+        AlertStyle:=xlValidAlertInformation, _
+        Operator:=xlBetween, _
+        Formula1:=formula
+    cell.Validation.ShowInput = False
+    cell.Validation.ShowError = False
+
+    ' Keep placeholder text while no session has been selected yet.
+    If Trim(CStr(cell.Value)) = "" Then cell.Value = PLACEHOLDER
+    On Error GoTo 0
+End Sub
+
+' ---------------------------------------------------------------------------
+' LoadTotalHeadByName
+' Finds the most-recently archived session whose Zone Name matches zoneName
+' and restores it to the Total Head sheet.  Identical restore logic to
+' LoadTotalHead but driven by name (from the L5 dropdown) instead of the
+' InputBox number-picker.
+' ---------------------------------------------------------------------------
+Sub LoadTotalHeadByName(zoneName As String)
+    Const ARCH_SHEET As String = "Total Head Archive"
+    Const HDR_CHECK  As String = "S1_Ref"
+
+    If Trim(zoneName) = "" Then Exit Sub
+
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Total Head")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    Dim wsA As Worksheet
+    On Error Resume Next
+    Set wsA = ThisWorkbook.Sheets(ARCH_SHEET)
+    On Error GoTo 0
+    If wsA Is Nothing Then
+        MsgBox "No saved sessions found — 'Total Head Archive' does not exist.", _
+               vbInformation, "Nothing to Load"
+        Exit Sub
+    End If
+
+    ' Verify archive format.
+    If Trim(CStr(wsA.Cells(1, 9).Value)) <> HDR_CHECK Then
+        MsgBox "The 'Total Head Archive' is in an old format and cannot be loaded. " & _
+               "Please save a new session first to initialise the updated archive.", _
+               vbExclamation, "Incompatible Archive Format"
+        Exit Sub
+    End If
+
+    ' Search from the bottom for the most-recent matching Zone Name.
+    Dim lastRow As Long
+    lastRow = wsA.Cells(wsA.Rows.Count, 1).End(xlUp).Row
+    Dim archRow As Long: archRow = 0
+    Dim i As Long
+    For i = lastRow To 2 Step -1
+        If LCase(Trim(CStr(wsA.Cells(i, 2).Value))) = LCase(Trim(zoneName)) Then
+            archRow = i: Exit For
+        End If
+    Next i
+
+    If archRow = 0 Then
+        MsgBox "No saved session found for: " & zoneName, vbExclamation
+        Exit Sub
+    End If
+
+    ' ── Restore (identical to LoadTotalHead restore block) ───────────────────
+    Application.EnableEvents   = False
+    Application.ScreenUpdating = False
+
+    Dim col As Long: col = 2
+    ws.Cells(3, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Name
+    col = col + 1                                                            ' skip Chart Title
+    ws.Cells(3, 11).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Driving Head
+    ws.Cells(5, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Start Date
+    ws.Cells(6, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' End Date
+    ws.Cells(7, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Notes
+    ws.Cells(4, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Export Path
+
+    Dim r As Long
+    For r = TH_CONF_START To TH_CONF_END
+        ws.Cells(r, TH_REF).Value   = wsA.Cells(archRow, col).Value: col = col + 1
+        ws.Cells(r, TH_OFF).Value   = wsA.Cells(archRow, col).Value: col = col + 1
+        col = col + 1                                                              ' skip Dt
+        ws.Cells(r, TH_ELEV).Value  = wsA.Cells(archRow, col).Value: col = col + 1
+        ws.Cells(r, TH_NOTES).Value = wsA.Cells(archRow, col).Value: col = col + 1
+    Next r
+
+    Application.EnableEvents = True
     RebuildDataTable ws
     RefreshTotalHeadChart ws
     Application.ScreenUpdating = True

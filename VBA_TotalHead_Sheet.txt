@@ -1,5 +1,5 @@
 ' ============================================================
-' Total Head (New) Worksheet — Event Handlers  (v1.45)
+' Total Head (New) Worksheet — Event Handlers  (v1.49)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. In the Project pane, expand "Microsoft Excel Objects".
@@ -13,15 +13,18 @@
 '   A5  = "Start Date:"   label      C5  = start date input
 '   A6  = "End Date:"     label      C6  = end date input
 '   A7  = "Zone Notes:"   label      C7  = zone notes input
-'   E3  = "Driving Head:" label      K3  = driving head sensor input
+'   E3  = "Driving Head:" label      K3  = driving head sensor (free-text note)
 '   E5  = "SAVE"  (click-button)
-'   G5  = "LOAD"  (click-button)
+'   G5  = "LOAD"  (click-button / InputBox picker)
+'   L5  = archive load dropdown  (data-validation list of saved Zone Names;
+'         selecting a name loads that session without the InputBox)
 '   Row 8  : table header
 '            A=Point Ref | B=Offset | C=(unused) | D=Z(m) | E=(reserved) | F=PRN | G=Point Notes
 '   Rows 9-43 : sensor config rows (35 rows, col A = yellow Point Ref input)
 '   Row 44 : spacer
 '   Row 45 : data table headers  (A=Timestamp, B..AJ = one col per sensor)
 '   Row 46+: data rows            (A=date+time serial, B..AJ = pressure values)
+'   Chart  : "TotalHeadChart" anchored at O3, created / refreshed by VBA
 ' ────────────────────────────────────────────────────────────────────────────
 
 ' Module-level arrays: snapshot state per config row.
@@ -33,11 +36,25 @@ Private mPrevRefByRow(9 To 43) As String
 Private mOrigZByRow(9 To 43)   As Variant
 
 Private Sub Worksheet_Activate()
-    ' Initialise row-4 Export Path label if this is the first visit.
+    ' Initialise sheet labels and ensure chart exists and is linked to current data.
     Application.EnableEvents = False
     On Error Resume Next
     InitTotalHeadSheet Me
-    If Me.ChartObjects.Count = 0 Then CreateTotalHeadChart Me
+    ' If no chart named "TotalHeadChart" exists (e.g. a stale pre-built chart from
+    ' the template is present), delete all chart objects and create a fresh VBA one.
+    Dim co As ChartObject
+    Dim chartOk As Boolean: chartOk = False
+    For Each co In Me.ChartObjects
+        If co.Name = "TotalHeadChart" Then chartOk = True: Exit For
+    Next co
+    If Not chartOk Then
+        For Each co In Me.ChartObjects: co.Delete: Next co
+        CreateTotalHeadChart Me
+    End If
+    ' Rebuild the data table so timestamps always reflect the current Start / End
+    ' dates (C5:C6), then repaint the chart to match.
+    RebuildDataTable Me
+    RefreshTotalHeadChart Me
     Application.EnableEvents = True
     On Error GoTo 0
 End Sub
@@ -53,6 +70,16 @@ Private Sub Worksheet_Change(ByVal Target As Range)
 
     Application.EnableEvents = False
     On Error Resume Next
+
+    ' ── L5 = archive load dropdown — load the selected session ───────────────
+    If Not Intersect(Target, Me.Range("L5")) Is Nothing Then
+        Dim selZone As String
+        selZone = Trim(CStr(Me.Range("L5").Value))
+        If selZone <> "" And LCase(selZone) <> "drop down to load saved selections" Then
+            LoadTotalHeadByName selZone
+        End If
+        GoTo Done
+    End If
 
     ' ── C5 or C6 (Start / End Date) changed → full rebuild ───────────────────
     If Not Intersect(Target, Me.Range("C5:C6")) Is Nothing Then
