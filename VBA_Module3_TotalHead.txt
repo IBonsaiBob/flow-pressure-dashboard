@@ -1,5 +1,5 @@
 ' ============================================================
-' Module3 — Total Head (New) Sheet Procedures  (v1.56)
+' Module3 — Total Head (New) Sheet Procedures  (v1.57)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. Insert → Module.
@@ -10,7 +10,7 @@
 '
 ' ── Sheet layout assumed ─────────────────────────────────────────────────────
 '   D3  = Zone Name / chart title  (merged D3:I4)   L3  = Driving Head sensor  (merged L3:N4)
-'   C4  = Export Path                               (B4 label set by InitTotalHeadSheet)
+'   C4  = System name                               (B4 label "System:" set by InitTotalHeadSheet)
 '   D5  = Start Date (merged D5:E5)                 I5  = SAVE  (merged I5:I6)
 '   D6  = End Date   (merged D6:E6)
 '   J9  = Zone Notes  (merged J9:N43)
@@ -18,6 +18,7 @@
 '              col A=Point Ref | B=Offset | C=(unused) | D=Z(m) | F=PRN | G=Point Notes
 '   Row 45: data table headers  (A=Timestamp, B..=sensor Point Refs)
 '   Row 46+: data rows          (A=timestamp serial, B..=pressure readings)
+'   Export path: read from Front Page B6 (not stored on this sheet)
 '
 ' ── Point Index assumed ───────────────────────────────────────────────────────
 '   Header row 3, data row 4+
@@ -58,13 +59,13 @@ End Function
 
 ' ---------------------------------------------------------------------------
 ' InitTotalHeadSheet
-' Writes the "Export Path:" label in B4 if the cell is empty, and ensures
+' Writes the "System:" label in B4 if the cell is empty, and ensures
 ' the data-table anchor label "Timestamp" is in A45.
 ' Called on Worksheet_Activate.
 ' ---------------------------------------------------------------------------
 Sub InitTotalHeadSheet(ws As Worksheet)
     If Trim(CStr(ws.Range("B4").Value)) = "" Then
-        ws.Range("B4").Value = "Export Path:"
+        ws.Range("B4").Value = "System:"
     End If
     If Trim(CStr(ws.Range("A45").Value)) = "" Then
         ws.Range("A45").Value = "Timestamp"
@@ -755,7 +756,7 @@ End Sub
 ' ---------------------------------------------------------------------------
 ' SaveTotalHead
 ' 1. Archives the full session to "Total Head Archive".
-' 2. Exports the chart as a PNG to the folder in C4 (export path).
+' 2. Exports the chart as a PNG to the folder in Front Page B6 (export path).
 ' ---------------------------------------------------------------------------
 Sub SaveTotalHead()
     Dim ws As Worksheet
@@ -764,11 +765,17 @@ Sub SaveTotalHead()
     On Error GoTo 0
     If ws Is Nothing Then Exit Sub
 
-    ' ── Validate export path (C4) ─────────────────────────────────────────
+    ' ── Validate export path (Front Page B6) ──────────────────────────────
     Dim exportPath As String
-    exportPath = Trim(CStr(ws.Cells(4, 3).Value))
+    Dim wsFP As Worksheet
+    On Error Resume Next
+    Set wsFP = ThisWorkbook.Sheets("Front Page")
+    On Error GoTo 0
+    If Not wsFP Is Nothing Then
+        exportPath = Trim(CStr(wsFP.Range("B6").Value))
+    End If
     If exportPath = "" Then
-        MsgBox "Please enter an export folder path in cell C4.", _
+        MsgBox "Please enter an export folder path in cell B6 on the 'Front Page' sheet.", _
                vbExclamation, "Missing Export Path"
         Exit Sub
     End If
@@ -813,14 +820,13 @@ End Sub
 ' ---------------------------------------------------------------------------
 ' ArchiveTotalHeadData
 ' Appends one row to "Total Head Archive" recording the complete session:
-'   Archived | Zone Name | Chart Title | Driving Head | Start Date | End Date |
-'   Zone Notes | Export Path |
-'   [per sensor × 35: Point Ref | Offset | Δt | Z(m) | Point Notes]
+'   Archived | System | Zone | Driving Head | Zone Notes |
+'   [per sensor × 35: Point Ref only]
 ' Creates the sheet and writes headers if they are missing or outdated.
 ' ---------------------------------------------------------------------------
 Sub ArchiveTotalHeadData(ws As Worksheet)
     Const ARCH_SHEET As String = "Total Head Archive"
-    Const HDR_CHECK  As String = "S1_Ref"   ' sentinel for new-format header
+    Const HDR_CHECK  As String = "Sensor 1"   ' sentinel for new-format header (col 6)
 
     ' ── Get or create archive sheet ───────────────────────────────────────
     Dim wsA As Worksheet
@@ -836,25 +842,18 @@ Sub ArchiveTotalHeadData(ws As Worksheet)
     ' ── Write headers if missing or in old format ─────────────────────────
     Dim needHdr As Boolean
     needHdr = (Trim(CStr(wsA.Cells(1, 1).Value)) = "") Or _
-              (Trim(CStr(wsA.Cells(1, 9).Value)) <> HDR_CHECK)
+              (Trim(CStr(wsA.Cells(1, 6).Value)) <> HDR_CHECK)
     If needHdr Then
         wsA.Rows(1).ClearContents
         Dim hc As Long: hc = 1
         wsA.Cells(1, hc).Value = "Archived":     hc = hc + 1
-        wsA.Cells(1, hc).Value = "Zone Name":    hc = hc + 1
-        wsA.Cells(1, hc).Value = "Chart Title":  hc = hc + 1
+        wsA.Cells(1, hc).Value = "System":       hc = hc + 1
+        wsA.Cells(1, hc).Value = "Zone":         hc = hc + 1
         wsA.Cells(1, hc).Value = "Driving Head": hc = hc + 1
-        wsA.Cells(1, hc).Value = "Start Date":   hc = hc + 1
-        wsA.Cells(1, hc).Value = "End Date":     hc = hc + 1
         wsA.Cells(1, hc).Value = "Zone Notes":   hc = hc + 1
-        wsA.Cells(1, hc).Value = "Export Path":  hc = hc + 1
         Dim sn As Long
         For sn = 1 To TH_SENSOR_CNT
-            wsA.Cells(1, hc).Value = "S" & sn & "_Ref":    hc = hc + 1
-            wsA.Cells(1, hc).Value = "S" & sn & "_Offset": hc = hc + 1
-            wsA.Cells(1, hc).Value = "S" & sn & "_Dt":     hc = hc + 1
-            wsA.Cells(1, hc).Value = "S" & sn & "_Z(m)":   hc = hc + 1
-            wsA.Cells(1, hc).Value = "S" & sn & "_Notes":  hc = hc + 1
+            wsA.Cells(1, hc).Value = "Sensor " & sn: hc = hc + 1
         Next sn
         wsA.Rows(1).Font.Bold = True
     End If
@@ -867,27 +866,17 @@ Sub ArchiveTotalHeadData(ws As Worksheet)
     ' ── Write metadata ────────────────────────────────────────────────────
     Dim col As Long: col = 1
     wsA.Cells(nxtRow, col).Value = Format(Now, "DD/MM/YYYY HH:nn"): col = col + 1
-    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 4).Value)): col = col + 1   ' Zone Name D3
-    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 4).Value)): col = col + 1   ' Chart Title (same as Zone Name, D3)
-    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 12).Value)): col = col + 1  ' Driving Head L3
-    wsA.Cells(nxtRow, col).Value = ws.Cells(5, 4).Value: col = col + 1               ' Start Date D5
-    wsA.Cells(nxtRow, col).Value = ws.Cells(6, 4).Value: col = col + 1               ' End Date D6
+    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(4, 3).Value)):  col = col + 1   ' System C4
+    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 4).Value)):  col = col + 1   ' Zone D3
+    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 12).Value)): col = col + 1   ' Driving Head L3
     wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(9, 10).Value)): col = col + 1   ' Zone Notes J9
-    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(4, 3).Value)): col = col + 1   ' Export Path C4 (col C, row 4)
 
-    ' ── Write per-sensor config (35 rows × 5 values; Dt written as 0 — feature removed) ──
+    ' ── Write per-sensor Point Refs (one column per sensor) ───────────────
     Dim r As Long
     For r = TH_CONF_START To TH_CONF_END
-        wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(r, TH_REF).Value)):   col = col + 1
-        wsA.Cells(nxtRow, col).Value = ws.Cells(r, TH_OFF).Value:               col = col + 1
-        wsA.Cells(nxtRow, col).Value = 0:                                        col = col + 1  ' Dt — always 0; kept to preserve the 183-column Total Head Archive schema
-        wsA.Cells(nxtRow, col).Value = ws.Cells(r, TH_ELEV).Value:              col = col + 1
-        wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(r, TH_NOTES).Value)): col = col + 1
+        wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(r, TH_REF).Value)): col = col + 1
     Next r
 
-    ' Format date columns
-    wsA.Cells(nxtRow, 5).NumberFormat = "DD/MM/YYYY"
-    wsA.Cells(nxtRow, 6).NumberFormat = "DD/MM/YYYY"
     ' Refresh the archive load dropdown on the Total Head sheet so the newly
     ' saved Zone Name is immediately available for selection.
     RefreshLoadDropdown ws
@@ -896,13 +885,13 @@ End Sub
 ' ---------------------------------------------------------------------------
 ' LoadTotalHead
 ' Displays a list of archived sessions and restores the selected one,
-' including: Zone Name, Export Path, Start/End Date, Zone Notes, Driving Head
-' and all 35 sensor rows (Point Ref, Offset, Z(m), Point Notes).
+' including: System, Zone, Driving Head, Zone Notes
+' and all 35 sensor Point Refs (offsets / Z repopulated from source data).
 ' Triggers a full data-table rebuild after restoring.
 ' ---------------------------------------------------------------------------
 Sub LoadTotalHead()
     Const ARCH_SHEET As String = "Total Head Archive"
-    Const HDR_CHECK  As String = "S1_Ref"
+    Const HDR_CHECK  As String = "Sensor 1"
 
     Dim ws As Worksheet
     On Error Resume Next
@@ -928,7 +917,7 @@ Sub LoadTotalHead()
     End If
 
     ' Verify archive is in the new format
-    If Trim(CStr(wsA.Cells(1, 9).Value)) <> HDR_CHECK Then
+    If Trim(CStr(wsA.Cells(1, 6).Value)) <> HDR_CHECK Then
         MsgBox "The 'Total Head Archive' is in an old format and cannot be loaded. " & _
                "Please save a new session first to initialise the updated archive.", _
                vbExclamation, "Incompatible Archive Format"
@@ -941,7 +930,7 @@ Sub LoadTotalHead()
     For i = 2 To lastRow
         pickList = pickList & (i - 1) & ":  " & _
                    CStr(wsA.Cells(i, 1).Value) & "  |  " & _
-                   CStr(wsA.Cells(i, 2).Value) & vbNewLine
+                   CStr(wsA.Cells(i, 3).Value) & vbNewLine
     Next i
 
     Dim choice As String
@@ -967,21 +956,14 @@ Sub LoadTotalHead()
     Application.ScreenUpdating = False
 
     Dim col As Long: col = 2   ' skip col 1 (Archived timestamp)
-    ws.Cells(3, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Name
-    col = col + 1                                                            ' skip Chart Title (duplicate)
-    ws.Cells(3, 12).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Driving Head
-    ws.Cells(5, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Start Date
-    ws.Cells(6, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' End Date
-    ws.Cells(9, 10).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Notes
-    ws.Cells(4, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Export Path
+    ws.Cells(4, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' System → C4
+    ws.Cells(3, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone → D3
+    ws.Cells(3, 12).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Driving Head → L3
+    ws.Cells(9, 10).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Notes → J9
 
     Dim r As Long
     For r = TH_CONF_START To TH_CONF_END
-        ws.Cells(r, TH_REF).Value   = wsA.Cells(archRow, col).Value: col = col + 1
-        ws.Cells(r, TH_OFF).Value   = wsA.Cells(archRow, col).Value: col = col + 1
-        col = col + 1                                                              ' skip Dt — feature removed
-        ws.Cells(r, TH_ELEV).Value  = wsA.Cells(archRow, col).Value: col = col + 1
-        ws.Cells(r, TH_NOTES).Value = wsA.Cells(archRow, col).Value: col = col + 1
+        ws.Cells(r, TH_REF).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Point Ref only
     Next r
 
     Application.EnableEvents = True
@@ -990,21 +972,22 @@ Sub LoadTotalHead()
     RefreshTotalHeadChart ws
     Application.ScreenUpdating = True
 
-    MsgBox "Session restored: " & CStr(wsA.Cells(archRow, 2).Value), _
+    MsgBox "Session restored: " & CStr(wsA.Cells(archRow, 3).Value), _
            vbInformation, "Session Loaded"
 End Sub
 
 ' ---------------------------------------------------------------------------
 ' RefreshLoadDropdown
 ' Applies an Excel data-validation list to cell L5 (the "load saved
-' selections" cell) using Zone Names from "Total Head Archive" col B.
+' selections" cell) using Zone Names from "Total Head Archive" col C.
 ' This gives a click-dropdown so the user can reload a previous session
 ' without the InputBox number-picker.
 ' Called automatically from InitTotalHeadSheet and after every archive save.
+' The displayed value is the current Zone Name (D3) for a new session, or the
+' loaded session name after picking one from the archive.
 ' ---------------------------------------------------------------------------
 Sub RefreshLoadDropdown(ws As Worksheet)
     Const LOAD_CELL   As String = "L5"
-    Const PLACEHOLDER As String = "Drop Down to load saved selections"
 
     On Error Resume Next
     Dim cell As Range
@@ -1023,24 +1006,29 @@ Sub RefreshLoadDropdown(ws As Worksheet)
         End If
     Next wsT
 
+    ' Default display: Zone Name from D3 (or blank placeholder if D3 is empty).
+    Dim defaultDisplay As String
+    defaultDisplay = Trim(CStr(ws.Cells(3, 4).Value))
+    If defaultDisplay = "" Then defaultDisplay = "Drop Down to load saved selections"
+
     If wsA Is Nothing Then
-        If Trim(CStr(cell.Value)) = "" Then cell.Value = PLACEHOLDER
+        If Trim(CStr(cell.Value)) = "" Then cell.Value = defaultDisplay
         On Error GoTo 0
         Exit Sub
     End If
 
-    ' Count non-blank Zone Name entries (col B, rows 2+).
+    ' Count non-blank Zone entries (col C, rows 2+).
     Dim lastRow As Long
-    lastRow = wsA.Cells(wsA.Rows.Count, 2).End(xlUp).Row
+    lastRow = wsA.Cells(wsA.Rows.Count, 3).End(xlUp).Row
     If lastRow < 2 Then
-        If Trim(CStr(cell.Value)) = "" Then cell.Value = PLACEHOLDER
+        If Trim(CStr(cell.Value)) = "" Then cell.Value = defaultDisplay
         On Error GoTo 0
         Exit Sub
     End If
 
-    ' Apply data-validation list pointing to archive Zone Names.
+    ' Apply data-validation list pointing to archive Zone Names (col C).
     Dim formula As String
-    formula = "='Total Head Archive'!$B$2:$B$" & lastRow
+    formula = "='Total Head Archive'!$C$2:$C$" & lastRow
     cell.Validation.Add _
         Type:=xlValidateList, _
         AlertStyle:=xlValidAlertInformation, _
@@ -1049,8 +1037,11 @@ Sub RefreshLoadDropdown(ws As Worksheet)
     cell.Validation.ShowInput = False
     cell.Validation.ShowError = False
 
-    ' Keep placeholder text while no session has been selected yet.
-    If Trim(CStr(cell.Value)) = "" Then cell.Value = PLACEHOLDER
+    ' Set display to Zone Name (D3) if cell is currently empty or showing old placeholder.
+    Dim curVal As String: curVal = Trim(CStr(cell.Value))
+    If curVal = "" Or LCase(curVal) = "drop down to load saved selections" Then
+        cell.Value = defaultDisplay
+    End If
     On Error GoTo 0
 End Sub
 
@@ -1063,7 +1054,7 @@ End Sub
 ' ---------------------------------------------------------------------------
 Sub LoadTotalHeadByName(zoneName As String)
     Const ARCH_SHEET As String = "Total Head Archive"
-    Const HDR_CHECK  As String = "S1_Ref"
+    Const HDR_CHECK  As String = "Sensor 1"
 
     If Trim(zoneName) = "" Then Exit Sub
 
@@ -1084,49 +1075,39 @@ Sub LoadTotalHeadByName(zoneName As String)
     End If
 
     ' Verify archive format.
-    If Trim(CStr(wsA.Cells(1, 9).Value)) <> HDR_CHECK Then
+    If Trim(CStr(wsA.Cells(1, 6).Value)) <> HDR_CHECK Then
         MsgBox "The 'Total Head Archive' is in an old format and cannot be loaded. " & _
                "Please save a new session first to initialise the updated archive.", _
                vbExclamation, "Incompatible Archive Format"
         Exit Sub
     End If
 
-    ' Search from the bottom for the most-recent matching Zone Name.
+    ' Search from the bottom for the most-recent matching Zone Name (col C).
     Dim lastRow As Long
     lastRow = wsA.Cells(wsA.Rows.Count, 1).End(xlUp).Row
     Dim archRow As Long: archRow = 0
     Dim i As Long
     For i = lastRow To 2 Step -1
-        If LCase(Trim(CStr(wsA.Cells(i, 2).Value))) = LCase(Trim(zoneName)) Then
+        If LCase(Trim(CStr(wsA.Cells(i, 3).Value))) = LCase(Trim(zoneName)) Then
             archRow = i: Exit For
         End If
     Next i
 
-    If archRow = 0 Then
-        MsgBox "No saved session found for: " & zoneName, vbExclamation
-        Exit Sub
-    End If
+    If archRow = 0 Then Exit Sub   ' silently skip if not found (e.g. L5 showing D3 zone name not yet archived)
 
     ' ── Restore (identical to LoadTotalHead restore block) ───────────────────
     Application.EnableEvents   = False
     Application.ScreenUpdating = False
 
-    Dim col As Long: col = 2
-    ws.Cells(3, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Name
-    col = col + 1                                                            ' skip Chart Title
-    ws.Cells(3, 12).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Driving Head
-    ws.Cells(5, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Start Date
-    ws.Cells(6, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' End Date
-    ws.Cells(9, 10).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Notes
-    ws.Cells(4, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Export Path
+    Dim col As Long: col = 2   ' skip col 1 (Archived timestamp)
+    ws.Cells(4, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' System → C4
+    ws.Cells(3, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone → D3
+    ws.Cells(3, 12).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Driving Head → L3
+    ws.Cells(9, 10).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Notes → J9
 
     Dim r As Long
     For r = TH_CONF_START To TH_CONF_END
-        ws.Cells(r, TH_REF).Value   = wsA.Cells(archRow, col).Value: col = col + 1
-        ws.Cells(r, TH_OFF).Value   = wsA.Cells(archRow, col).Value: col = col + 1
-        col = col + 1                                                              ' skip Dt
-        ws.Cells(r, TH_ELEV).Value  = wsA.Cells(archRow, col).Value: col = col + 1
-        ws.Cells(r, TH_NOTES).Value = wsA.Cells(archRow, col).Value: col = col + 1
+        ws.Cells(r, TH_REF).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Point Ref only
     Next r
 
     Application.EnableEvents = True
@@ -1134,7 +1115,7 @@ Sub LoadTotalHeadByName(zoneName As String)
     RefreshTotalHeadChart ws
     Application.ScreenUpdating = True
 
-    MsgBox "Session restored: " & CStr(wsA.Cells(archRow, 2).Value), _
+    MsgBox "Session restored: " & CStr(wsA.Cells(archRow, 3).Value), _
            vbInformation, "Session Loaded"
 End Sub
 
@@ -1142,7 +1123,7 @@ End Sub
 ' ExportTotalHeadPRN
 ' Exports data for one sensor as a tab-delimited PRN file.
 ' Only called from Worksheet_SelectionChange when col A is non-empty.
-' Uses the export path from C4.
+' Uses the export path from Front Page B6.
 ' ---------------------------------------------------------------------------
 Sub ExportTotalHeadPRN(cfgRow As Long)
     Dim ws As Worksheet
@@ -1156,9 +1137,15 @@ Sub ExportTotalHeadPRN(cfgRow As Long)
     If pointRef = "" Then Exit Sub
 
     Dim exportPath As String
-    exportPath = Trim(CStr(ws.Cells(4, 3).Value))
+    Dim wsFP As Worksheet
+    On Error Resume Next
+    Set wsFP = ThisWorkbook.Sheets("Front Page")
+    On Error GoTo 0
+    If Not wsFP Is Nothing Then
+        exportPath = Trim(CStr(wsFP.Range("B6").Value))
+    End If
     If exportPath = "" Then
-        MsgBox "Please enter an export folder path in cell C4.", _
+        MsgBox "Please enter an export folder path in cell B6 on the 'Front Page' sheet.", _
                vbExclamation, "Missing Export Path"
         Exit Sub
     End If

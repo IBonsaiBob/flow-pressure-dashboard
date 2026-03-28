@@ -1,5 +1,5 @@
 ' ============================================================
-' Total Head (New) Worksheet — Event Handlers  (v1.56)
+' Total Head (New) Worksheet — Event Handlers  (v1.57)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. In the Project pane, expand "Microsoft Excel Objects".
@@ -9,14 +9,15 @@
 '
 ' ── Layout reference ────────────────────────────────────────────────────────
 '   B3  = "Zone Name:"    label      D3  = zone name / chart title input  (merged D3:I4)
-'   B4  = "Export Path:"  label      C4  = export folder path input
+'   B4  = "System:"       label      C4  = system name input
 '   B5  = "Start Date:"   label      D5  = start date input  (merged D5:E5)
 '   B6  = "End Date:"     label      D6  = end date input    (merged D6:E6)
 '   J3  = "Driving Head:" label      L3  = driving head sensor  (merged L3:N4)
 '   I5  = "SAVE"  (click-button, merged I5:I6)
 '   K5  = "Load"    label  (not a button — use L5:N6 dropdown to load)
 '   L5  = archive load dropdown  (merged L5:N6; data-validation list of saved
-'         Zone Names; selecting a name loads that session without the InputBox)
+'         Zone Names; displays current Zone Name (D3) when no session loaded;
+'         selecting a name loads that session without the InputBox)
 '   J8  = "Zone Notes"    label
 '   J9  = zone notes input  (merged J9:N43)
 '   Row 8  : table header
@@ -26,6 +27,7 @@
 '   Row 45 : data table headers  (A=Timestamp, B..AJ = one col per sensor)
 '   Row 46+: data rows            (A=date+time serial, B..AJ = pressure values)
 '   Chart  : "TotalHeadChart" anchored at O3, created / refreshed by VBA
+'   Export path: read from Front Page B6 (not stored on this sheet)
 ' ────────────────────────────────────────────────────────────────────────────
 
 ' Module-level arrays: snapshot state per config row.
@@ -92,21 +94,24 @@ Private Sub Worksheet_Change(ByVal Target As Range)
     If Not Intersect(Target, Me.Range("L5")) Is Nothing Then
         Dim selZone As String
         selZone = Trim(CStr(Me.Range("L5").Value))
-        If selZone <> "" And LCase(selZone) <> "drop down to load saved selections" Then
+        If selZone <> "" And selZone <> Trim(CStr(Me.Cells(3, 4).Value)) Then
             LoadTotalHeadByName selZone
         End If
         GoTo Done
     End If
 
-    ' ── D3 (Zone Name / Chart Title) changed → update chart title immediately ─
+    ' ── D3 (Zone Name / Chart Title) changed → update chart title and L5 ─────
     If Not Intersect(Target, Me.Range("D3")) Is Nothing Then
+        Dim newZone As String: newZone = Trim(CStr(Me.Cells(3, 4).Value))
         Dim coTitle As ChartObject
         For Each coTitle In Me.ChartObjects
             If coTitle.Name = "TotalHeadChart" Then
-                coTitle.Chart.ChartTitle.Text = Trim(CStr(Me.Cells(3, 4).Value))
+                coTitle.Chart.ChartTitle.Text = newZone
                 Exit For
             End If
         Next coTitle
+        ' Keep L5 in sync: always reflect the current Zone Name for new sessions
+        Me.Range("L5").Value = IIf(newZone <> "", newZone, "Drop Down to load saved selections")
         GoTo Done
     End If
 
