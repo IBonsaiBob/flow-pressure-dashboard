@@ -285,6 +285,8 @@ Sub RebuildDataTable(ws As Worksheet)
     For i = 1 To UBound(allTS, 1)
         tsDbl = 0                           ' reset so a failed CDbl leaves 0, not a stale value
         tsDbl = CDbl(allTS(i, 1))
+        ' Fallback: handle text-formatted timestamps (e.g. "15/09/2025 00:00" from CSV import)
+        If tsDbl = 0 And IsDate(allTS(i, 1)) Then tsDbl = CDbl(CDate(allTS(i, 1)))
         If tsDbl > 0 Then
             If Int(tsDbl) >= startDbl And pStart = 0 Then pStart = i
             If Int(tsDbl) <= endDbl Then pEnd = i
@@ -401,6 +403,8 @@ Sub PopulateOneSensor(ws As Worksheet, cfgRow As Long)
     For ii = 1 To rawN
         On Error Resume Next
         rawTS(ii)   = CDbl(rawTSArr(ii, 1))
+        ' Fallback: handle text-formatted timestamps (e.g. "15/09/2025 00:00" from CSV import)
+        If rawTS(ii) = 0 And IsDate(rawTSArr(ii, 1)) Then rawTS(ii) = CDbl(CDate(rawTSArr(ii, 1)))
         On Error GoTo 0
         rawVals(ii) = rawValArr(ii, 1)
     Next ii
