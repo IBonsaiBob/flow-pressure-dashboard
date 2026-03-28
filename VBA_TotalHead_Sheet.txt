@@ -37,29 +37,30 @@ Private mOrigZByRow(9 To 43)   As Variant
 
 Private Sub Worksheet_Activate()
     ' Initialise sheet labels and ensure chart exists and is linked to current data.
+    ' Pattern mirrors the Plots sheet: only write to cells (RebuildDataTable) when
+    ' the chart must be created from scratch.  On subsequent activations we only
+    ' call RefreshTotalHeadChart, which is a pure chart-object operation and never
+    ' writes to worksheet cells — so Application.CutCopyMode is left intact and
+    ' a Ctrl+V paste the user has queued up is not silently discarded.
     Application.EnableEvents = False
     On Error Resume Next
     InitTotalHeadSheet Me
 
-    ' Rebuild the data table FIRST so data is already present when chart series
-    ' are populated (avoids an empty chart when CreateTotalHeadChart calls
-    ' RefreshTotalHeadChart internally before the table has been filled).
-    RebuildDataTable Me
-
-    ' If no chart named "TotalHeadChart" exists (e.g. a stale pre-built chart from
-    ' the template is present), delete all chart objects and create a fresh VBA one.
-    ' Because the data table is now populated, RefreshTotalHeadChart inside
-    ' CreateTotalHeadChart will immediately add the correct series.
     Dim co As ChartObject
     Dim chartOk As Boolean: chartOk = False
     For Each co In Me.ChartObjects
         If co.Name = "TotalHeadChart" Then chartOk = True: Exit For
     Next co
+
     If Not chartOk Then
+        ' First visit or chart was deleted: populate the data table first so the
+        ' chart has series to display immediately on creation (same logic as v1.50,
+        ' but only runs when the chart is actually absent — not on every activate).
         For Each co In Me.ChartObjects: co.Delete: Next co
+        RebuildDataTable Me
         CreateTotalHeadChart Me   ' also calls RefreshTotalHeadChart internally
     Else
-        ' Chart already exists — just repaint it to match the current data.
+        ' Chart already exists — repaint from existing data, no cell writes.
         RefreshTotalHeadChart Me
     End If
 
