@@ -220,7 +220,9 @@ Sub PopulateElevationTH(ws As Worksheet, cfgRow As Long)
 
     Dim z As Variant
     z = FindElevationTH(pointRef)
-    If IsNumeric(z) Then
+    ' Note: IsNumeric(Empty) = True in VBA (Empty coerces to 0), so we must
+    ' guard with IsEmpty first to avoid writing 0 when the lookup finds nothing.
+    If Not IsEmpty(z) And IsNumeric(z) Then
         ws.Cells(cfgRow, TH_ELEV).Value = CDbl(z)
     Else
         ws.Cells(cfgRow, TH_ELEV).ClearContents
@@ -230,10 +232,10 @@ End Sub
 ' ---------------------------------------------------------------------------
 ' PopulateAllElevationsTH
 ' Fills col D (Z(m)) from Point Index for every config row that has a Point
-' Ref but no Z value.  Called on Worksheet_Activate so sensors that were
-' already in place when the workbook was opened get their elevations filled.
-' Does NOT overwrite cells that already have a numeric value, preserving any
-' user-edited or archive-restored Z values.
+' Ref but no meaningful Z value.  Called on Worksheet_Activate so sensors that
+' were already in place when the workbook was opened get their elevations filled.
+' Does NOT overwrite cells that already have a non-zero numeric value, preserving
+' any user-edited or archive-restored Z values.  Zero is treated as a placeholder.
 ' ---------------------------------------------------------------------------
 Sub PopulateAllElevationsTH(ws As Worksheet)
     Dim r As Long
@@ -241,9 +243,10 @@ Sub PopulateAllElevationsTH(ws As Worksheet)
         Dim ref As String
         ref = Trim(CStr(ws.Cells(r, TH_REF).Value))
         If ref <> "" Then
-            ' Only fill if the Z cell is currently empty (preserve manual edits)
-            If Not IsNumeric(ws.Cells(r, TH_ELEV).Value) Or _
-               IsEmpty(ws.Cells(r, TH_ELEV).Value) Then
+            ' Fill if the Z cell is empty, non-numeric, or zero (0 is a placeholder, not a real elevation)
+            Dim existingZ As Variant
+            existingZ = ws.Cells(r, TH_ELEV).Value
+            If IsEmpty(existingZ) Or Not IsNumeric(existingZ) Or CDbl(existingZ) = 0 Then
                 PopulateElevationTH ws, r
             End If
         End If
