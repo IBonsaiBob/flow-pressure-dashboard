@@ -68,28 +68,32 @@ Private Sub Worksheet_Change(ByVal Target As Range)
 
                 Case CONF_REF
                     ' Point Ref changed: refresh elevation, data column and header
-                    PopulateElevationTH Me, pCell.Row
                     Dim hdr As String
                     hdr = Trim(CStr(Me.Cells(pCell.Row, CONF_REF).Value))
                     Me.Cells(45, TH_DataCol(pCell.Row)).Value = hdr
                     If hdr = "" Then
-                        ' Save config to Point Index before resetting (cell is already
-                        ' empty here, so pass the previously captured ref as forceRef)
+                        ' ── Save note FIRST (before PopulateElevationTH clears col D) ─
+                        ' If RecordSensorNote runs after PopulateElevationTH, col D is
+                        ' already Empty and IsNumeric(Empty)=True→CDbl(Empty)=0 → "Z: 0."
                         RecordSensorNote Me, pCell.Row, mPrevRefByRow(pCell.Row)
+                        PopulateElevationTH Me, pCell.Row   ' clears col D (ref is "")
                         Me.Cells(pCell.Row, CONF_OFF).Value = 0
-                        Me.Cells(pCell.Row, CONF_NOTES).ClearContents
+                        Me.Cells(pCell.Row, CONF_NOTES).Value = ""   ' Value="" is more robust than ClearContents under On Error Resume Next
                         mPrevRefByRow(pCell.Row) = ""
                     Else
-                        ' Restore previously saved Offset and Notes from Point Index
+                        ' Fill elevation from Point Index, then restore saved Offset and Notes
+                        PopulateElevationTH Me, pCell.Row
                         RestorePointNotesTH Me, pCell.Row
-                        mPrevRefByRow(pCell.Row) = hdr   ' keep in sync for next clear
+                        mPrevRefByRow(pCell.Row) = hdr
                     End If
                     PopulateOneSensor Me, pCell.Row
                     needRefresh = True
 
                 Case CONF_OFF, CONF_ELEV
-                    ' Offset / Z(m) changed: sync offset to Pressure Data, repopulate data column
-                    If pCell.Column = CONF_OFF Then SyncOffsetToPressureData Me, pCell.Row
+                    ' Offset / Z(m) changed: sync offset to Pressure Data and/or
+                    ' write Z back to Point Index, then repopulate data column
+                    If pCell.Column = CONF_OFF  Then SyncOffsetToPressureData Me, pCell.Row
+                    If pCell.Column = CONF_ELEV Then WriteElevationToPointIndex Me, pCell.Row
                     PopulateOneSensor Me, pCell.Row
                     needRefresh = True
 
