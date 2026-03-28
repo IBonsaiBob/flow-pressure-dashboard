@@ -96,6 +96,18 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         GoTo Done
     End If
 
+    ' ── Sensor config changed but data table has no timestamps yet ───────────
+    ' When the user pastes Point Refs (or edits Offset/Z) before a rebuild has
+    ' run, PopulateOneSensor exits immediately because A46 is empty.  Fix: run
+    ' a full rebuild first so timestamps are in place, then let the per-column
+    ' handlers below update individual sensor columns as normal.
+    ' Row 46 = TH_DATA_ROW (first data row), defined as a Private Const in Module3.
+    If Me.Cells(46, 1).Value = "" Then
+        If Not Intersect(Target, Me.Range("A9:D43")) Is Nothing Then
+            RebuildDataTable Me
+        End If
+    End If
+
     ' ── Sensor config rows changed — handle per-column ────────────────────────
     Dim pCell As Range
     Dim needRefresh As Boolean: needRefresh = False
