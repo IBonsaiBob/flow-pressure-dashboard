@@ -1,5 +1,5 @@
 ' ============================================================
-' Module3 — Total Head (New) Sheet Procedures  (v1.57)
+' Module3 — Total Head (New) Sheet Procedures  (v1.58)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. Insert → Module.
@@ -10,7 +10,7 @@
 '
 ' ── Sheet layout assumed ─────────────────────────────────────────────────────
 '   D3  = Zone Name / chart title  (merged D3:I4)   L3  = Driving Head sensor  (merged L3:N4)
-'   C4  = System name                               (B4 label "System:" set by InitTotalHeadSheet)
+'   F6  = System name  (merged cell — user entry)
 '   D5  = Start Date (merged D5:E5)                 I5  = SAVE  (merged I5:I6)
 '   D6  = End Date   (merged D6:E6)
 '   J9  = Zone Notes  (merged J9:N43)
@@ -59,14 +59,11 @@ End Function
 
 ' ---------------------------------------------------------------------------
 ' InitTotalHeadSheet
-' Writes the "System:" label in B4 if the cell is empty, and ensures
-' the data-table anchor label "Timestamp" is in A45.
+' Ensures the data-table anchor label "Timestamp" is in A45.
+' System name is entered by the user in F6 (merged cell).
 ' Called on Worksheet_Activate.
 ' ---------------------------------------------------------------------------
 Sub InitTotalHeadSheet(ws As Worksheet)
-    If Trim(CStr(ws.Range("B4").Value)) = "" Then
-        ws.Range("B4").Value = "System:"
-    End If
     If Trim(CStr(ws.Range("A45").Value)) = "" Then
         ws.Range("A45").Value = "Timestamp"
     End If
@@ -866,7 +863,7 @@ Sub ArchiveTotalHeadData(ws As Worksheet)
     ' ── Write metadata ────────────────────────────────────────────────────
     Dim col As Long: col = 1
     wsA.Cells(nxtRow, col).Value = Format(Now, "DD/MM/YYYY HH:nn"): col = col + 1
-    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(4, 3).Value)):  col = col + 1   ' System C4
+    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(6, 6).Value)):  col = col + 1   ' System F6 (merged)
     wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 4).Value)):  col = col + 1   ' Zone D3
     wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 12).Value)): col = col + 1   ' Driving Head L3
     wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(9, 10).Value)): col = col + 1   ' Zone Notes J9
@@ -956,7 +953,7 @@ Sub LoadTotalHead()
     Application.ScreenUpdating = False
 
     Dim col As Long: col = 2   ' skip col 1 (Archived timestamp)
-    ws.Cells(4, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' System → C4
+    ws.Cells(6, 6).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' System → F6 (merged)
     ws.Cells(3, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone → D3
     ws.Cells(3, 12).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Driving Head → L3
     ws.Cells(9, 10).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Notes → J9
@@ -1100,7 +1097,7 @@ Sub LoadTotalHeadByName(zoneName As String)
     Application.ScreenUpdating = False
 
     Dim col As Long: col = 2   ' skip col 1 (Archived timestamp)
-    ws.Cells(4, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' System → C4
+    ws.Cells(6, 6).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' System → F6 (merged)
     ws.Cells(3, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone → D3
     ws.Cells(3, 12).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Driving Head → L3
     ws.Cells(9, 10).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Notes → J9

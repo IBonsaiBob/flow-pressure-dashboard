@@ -1,5 +1,5 @@
 ' ============================================================
-' Total Head (New) Worksheet — Event Handlers  (v1.57)
+' Total Head (New) Worksheet — Event Handlers  (v1.58)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. In the Project pane, expand "Microsoft Excel Objects".
@@ -9,7 +9,7 @@
 '
 ' ── Layout reference ────────────────────────────────────────────────────────
 '   B3  = "Zone Name:"    label      D3  = zone name / chart title input  (merged D3:I4)
-'   B4  = "System:"       label      C4  = system name input
+'   F6  = system name input  (merged cell)
 '   B5  = "Start Date:"   label      D5  = start date input  (merged D5:E5)
 '   B6  = "End Date:"     label      D6  = end date input    (merged D6:E6)
 '   J3  = "Driving Head:" label      L3  = driving head sensor  (merged L3:N4)
@@ -96,11 +96,13 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         selZone = Trim(CStr(Me.Range("L5").Value))
         If selZone <> "" And selZone <> Trim(CStr(Me.Cells(3, 4).Value)) Then
             LoadTotalHeadByName selZone
+            ' After loading, L5 should display the loaded zone name (D3 is now that name)
+            Me.Range("L5").Value = Trim(CStr(Me.Cells(3, 4).Value))
         End If
         GoTo Done
     End If
 
-    ' ── D3 (Zone Name / Chart Title) changed → update chart title and L5 ─────
+    ' ── D3 (Zone Name / Chart Title) changed → update chart title, L5 and reset Zone Notes ─────
     If Not Intersect(Target, Me.Range("D3")) Is Nothing Then
         Dim newZone As String: newZone = Trim(CStr(Me.Cells(3, 4).Value))
         Dim coTitle As ChartObject
@@ -110,6 +112,8 @@ Private Sub Worksheet_Change(ByVal Target As Range)
                 Exit For
             End If
         Next coTitle
+        ' Clear Zone Notes — user has changed the Zone Name, starting a new session
+        Me.Cells(9, 10).Value = ""
         ' Keep L5 in sync: always reflect the current Zone Name for new sessions
         Me.Range("L5").Value = IIf(newZone <> "", newZone, "Drop Down to load saved selections")
         GoTo Done
