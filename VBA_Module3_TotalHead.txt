@@ -1,5 +1,5 @@
 ' ============================================================
-' Module3 — Total Head (New) Sheet Procedures  (v1.52)
+' Module3 — Total Head (New) Sheet Procedures  (v1.53)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. Insert → Module.
@@ -9,11 +9,11 @@
 ' Depends on Module1 (WriteDataNoteToPointIndex) being installed.
 '
 ' ── Sheet layout assumed ─────────────────────────────────────────────────────
-'   C3  = Zone Name / chart title       K3  = Driving Head sensor
-'   C4  = Export Path                   (A4 label set by InitTotalHeadSheet)
-'   D5  = Start Date (merged D5:E5)     E5  = SAVE   G5 = LOAD
+'   D3  = Zone Name / chart title  (merged D3:I4)   L3  = Driving Head sensor  (merged L3:N4)
+'   C4  = Export Path                               (B4 label set by InitTotalHeadSheet)
+'   D5  = Start Date (merged D5:E5)                 I5  = SAVE  (merged I5:I6)
 '   D6  = End Date   (merged D6:E6)
-'   C7  = Zone Notes
+'   J9  = Zone Notes  (merged J9:N43)
 '   Rows 9-43: sensor config
 '              col A=Point Ref | B=Offset | C=(unused) | D=Z(m) | F=PRN | G=Point Notes
 '   Row 45: data table headers  (A=Timestamp, B..=sensor Point Refs)
@@ -58,13 +58,13 @@ End Function
 
 ' ---------------------------------------------------------------------------
 ' InitTotalHeadSheet
-' Writes the "Export Path:" label in A4 if the cell is empty, and ensures
+' Writes the "Export Path:" label in B4 if the cell is empty, and ensures
 ' the data-table anchor label "Timestamp" is in A45.
 ' Called on Worksheet_Activate.
 ' ---------------------------------------------------------------------------
 Sub InitTotalHeadSheet(ws As Worksheet)
-    If Trim(CStr(ws.Range("A4").Value)) = "" Then
-        ws.Range("A4").Value = "Export Path:"
+    If Trim(CStr(ws.Range("B4").Value)) = "" Then
+        ws.Range("B4").Value = "Export Path:"
     End If
     If Trim(CStr(ws.Range("A45").Value)) = "" Then
         ws.Range("A45").Value = "Timestamp"
@@ -225,6 +225,29 @@ Sub PopulateElevationTH(ws As Worksheet, cfgRow As Long)
     Else
         ws.Cells(cfgRow, TH_ELEV).ClearContents
     End If
+End Sub
+
+' ---------------------------------------------------------------------------
+' PopulateAllElevationsTH
+' Fills col D (Z(m)) from Point Index for every config row that has a Point
+' Ref but no Z value.  Called on Worksheet_Activate so sensors that were
+' already in place when the workbook was opened get their elevations filled.
+' Does NOT overwrite cells that already have a numeric value, preserving any
+' user-edited or archive-restored Z values.
+' ---------------------------------------------------------------------------
+Sub PopulateAllElevationsTH(ws As Worksheet)
+    Dim r As Long
+    For r = TH_CONF_START To TH_CONF_END
+        Dim ref As String
+        ref = Trim(CStr(ws.Cells(r, TH_REF).Value))
+        If ref <> "" Then
+            ' Only fill if the Z cell is currently empty (preserve manual edits)
+            If Not IsNumeric(ws.Cells(r, TH_ELEV).Value) Or _
+               IsEmpty(ws.Cells(r, TH_ELEV).Value) Then
+                PopulateElevationTH ws, r
+            End If
+        End If
+    Next r
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -613,7 +636,7 @@ Sub CreateTotalHeadChart(ws As Worksheet)
         Loop
 
         .HasTitle = True
-        .ChartTitle.Text = Trim(CStr(ws.Cells(3, 3).Value))
+        .ChartTitle.Text = Trim(CStr(ws.Cells(3, 4).Value))
 
         ' Y-axis
         With .Axes(xlValue)
@@ -675,7 +698,7 @@ Sub RefreshTotalHeadChart(ws As Worksheet)
 
                 ' Update chart title
                 .HasTitle = True
-                .ChartTitle.Text = Trim(CStr(ws.Cells(3, 3).Value))
+                .ChartTitle.Text = Trim(CStr(ws.Cells(3, 4).Value))
 
             End With
             Exit For
@@ -686,7 +709,7 @@ End Sub
 ' ---------------------------------------------------------------------------
 ' SaveTotalHead
 ' 1. Archives the full session to "Total Head Archive".
-' 2. Exports the chart as a PNG to the folder in C4.
+' 2. Exports the chart as a PNG to the folder in C4 (export path).
 ' ---------------------------------------------------------------------------
 Sub SaveTotalHead()
     Dim ws As Worksheet
@@ -707,7 +730,7 @@ Sub SaveTotalHead()
 
     ' ── Build a safe filename ─────────────────────────────────────────────
     Dim zoneName As String
-    zoneName = Trim(CStr(ws.Cells(3, 3).Value))
+    zoneName = Trim(CStr(ws.Cells(3, 4).Value))
     If zoneName = "" Then zoneName = "TotalHead"
     Dim safeTitle As String: safeTitle = zoneName
     Dim badChar As Variant
@@ -798,13 +821,13 @@ Sub ArchiveTotalHeadData(ws As Worksheet)
     ' ── Write metadata ────────────────────────────────────────────────────
     Dim col As Long: col = 1
     wsA.Cells(nxtRow, col).Value = Format(Now, "DD/MM/YYYY HH:nn"): col = col + 1
-    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 3).Value)): col = col + 1   ' Zone Name C3
-    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 3).Value)): col = col + 1   ' Chart Title (same as Zone Name)
-    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 11).Value)): col = col + 1  ' Driving Head K3
+    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 4).Value)): col = col + 1   ' Zone Name D3
+    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 4).Value)): col = col + 1   ' Chart Title (same as Zone Name, D3)
+    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(3, 12).Value)): col = col + 1  ' Driving Head L3
     wsA.Cells(nxtRow, col).Value = ws.Cells(5, 4).Value: col = col + 1               ' Start Date D5
     wsA.Cells(nxtRow, col).Value = ws.Cells(6, 4).Value: col = col + 1               ' End Date D6
-    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(7, 3).Value)): col = col + 1   ' Zone Notes C7
-    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(4, 3).Value)): col = col + 1   ' Export Path C4
+    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(9, 10).Value)): col = col + 1   ' Zone Notes J9
+    wsA.Cells(nxtRow, col).Value = Trim(CStr(ws.Cells(4, 3).Value)): col = col + 1   ' Export Path C4 (col C, row 4)
 
     ' ── Write per-sensor config (35 rows × 5 values; Dt written as 0 — feature removed) ──
     Dim r As Long
@@ -898,12 +921,12 @@ Sub LoadTotalHead()
     Application.ScreenUpdating = False
 
     Dim col As Long: col = 2   ' skip col 1 (Archived timestamp)
-    ws.Cells(3, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Name
+    ws.Cells(3, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Name
     col = col + 1                                                            ' skip Chart Title (duplicate)
-    ws.Cells(3, 11).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Driving Head
+    ws.Cells(3, 12).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Driving Head
     ws.Cells(5, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Start Date
     ws.Cells(6, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' End Date
-    ws.Cells(7, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Notes
+    ws.Cells(9, 10).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Notes
     ws.Cells(4, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Export Path
 
     Dim r As Long
@@ -1043,12 +1066,12 @@ Sub LoadTotalHeadByName(zoneName As String)
     Application.ScreenUpdating = False
 
     Dim col As Long: col = 2
-    ws.Cells(3, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Name
+    ws.Cells(3, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Name
     col = col + 1                                                            ' skip Chart Title
-    ws.Cells(3, 11).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Driving Head
+    ws.Cells(3, 12).Value = wsA.Cells(archRow, col).Value: col = col + 1   ' Driving Head
     ws.Cells(5, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Start Date
     ws.Cells(6, 4).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' End Date
-    ws.Cells(7, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Notes
+    ws.Cells(9, 10).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Zone Notes
     ws.Cells(4, 3).Value  = wsA.Cells(archRow, col).Value: col = col + 1   ' Export Path
 
     Dim r As Long
