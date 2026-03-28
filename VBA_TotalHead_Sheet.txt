@@ -24,10 +24,13 @@
 '   Row 46+: data rows            (A=date+time serial, B..AJ = pressure values)
 ' ────────────────────────────────────────────────────────────────────────────
 
-' Module-level array: stores each config row's Point Ref as it was when the
-' user last selected that cell, so Worksheet_Change can use the old value
-' when the ref is cleared (the cell is already empty when Change fires).
+' Module-level arrays: snapshot state per config row.
+'   mPrevRefByRow : Point Ref as it was before the user edited/cleared it
+'   mOrigZByRow   : Z(m) as filled from Point Index when the ref was entered —
+'                   used so RecordSensorNote can include the original PI Z even
+'                   after WriteElevationToPointIndex has already overwritten PI.
 Private mPrevRefByRow(9 To 43) As String
+Private mOrigZByRow(9 To 43)   As Variant
 
 Private Sub Worksheet_Activate()
     ' Initialise row-4 Export Path label if this is the first visit.
@@ -75,14 +78,19 @@ Private Sub Worksheet_Change(ByVal Target As Range)
                         ' ── Save note FIRST (before PopulateElevationTH clears col D) ─
                         ' If RecordSensorNote runs after PopulateElevationTH, col D is
                         ' already Empty and IsNumeric(Empty)=True→CDbl(Empty)=0 → "Z: 0."
-                        RecordSensorNote Me, pCell.Row, mPrevRefByRow(pCell.Row)
+                        ' Also pass the PI Z snapshot so the note can record the original.
+                        RecordSensorNote Me, pCell.Row, mPrevRefByRow(pCell.Row), mOrigZByRow(pCell.Row)
                         PopulateElevationTH Me, pCell.Row   ' clears col D (ref is "")
                         Me.Cells(pCell.Row, CONF_OFF).Value = 0
                         Me.Cells(pCell.Row, CONF_NOTES).Value = ""   ' Value="" is more robust than ClearContents under On Error Resume Next
                         mPrevRefByRow(pCell.Row) = ""
+                        mOrigZByRow(pCell.Row)   = Empty   ' clear snapshot
                     Else
-                        ' Fill elevation from Point Index, then restore saved Offset and Notes
+                        ' Fill elevation from Point Index, then restore saved Offset and Notes.
+                        ' Snapshot col D immediately after PopulateElevationTH fills it so we
+                        ' retain the original PI Z even if the user later overrides col D.
                         PopulateElevationTH Me, pCell.Row
+                        mOrigZByRow(pCell.Row) = Me.Cells(pCell.Row, CONF_ELEV).Value
                         RestorePointNotesTH Me, pCell.Row
                         mPrevRefByRow(pCell.Row) = hdr
                     End If

@@ -438,7 +438,9 @@ End Sub
 ' Called only when the Point Ref is cleared.  Pass forceRef when the cell
 ' has already been cleared and the old ref is no longer readable from the sheet.
 ' ---------------------------------------------------------------------------
-Sub RecordSensorNote(ws As Worksheet, cfgRow As Long, Optional forceRef As String = "")
+Sub RecordSensorNote(ws As Worksheet, cfgRow As Long, _
+                     Optional forceRef As String = "", _
+                     Optional origZ    As Variant = Empty)
     Dim pointRef As String
     If forceRef <> "" Then
         pointRef = forceRef
@@ -453,7 +455,16 @@ Sub RecordSensorNote(ws As Worksheet, cfgRow As Long, Optional forceRef As Strin
 
     Dim note As String
     note = Format(Now, "dd/mm/yyyy HH:nn")
-    If IsNumeric(zVal)   Then note = note & " | Z: "      & Format(CDbl(zVal),   "0.###")
+    If IsNumeric(zVal) Then note = note & " | Z: " & Format(CDbl(zVal), "0.###")
+    ' Include the original Point Index Z when it differs from the session Z, so the
+    ' history is preserved even after WriteElevationToPointIndex has overwritten PI.
+    ' "Z(PI):" is intentionally ignored by RestorePointNotesTH ("z(p" ≠ "z: ").
+    If Not IsEmpty(origZ) And IsNumeric(origZ) Then
+        Dim origZDbl As Double: origZDbl = CDbl(origZ)
+        If Not IsNumeric(zVal) Or Abs(origZDbl - CDbl(zVal)) > 0.0001 Then
+            note = note & " | Z(PI): " & Format(origZDbl, "0.###")
+        End If
+    End If
     If IsNumeric(offVal) Then note = note & " | Offset: " & Format(CDbl(offVal), "0.###")
     If notes <> ""       Then note = note & " | Notes: "  & notes
 
