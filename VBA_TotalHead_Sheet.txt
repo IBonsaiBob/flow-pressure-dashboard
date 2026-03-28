@@ -67,6 +67,12 @@ Private Sub Worksheet_Change(ByVal Target As Range)
                     Dim hdr As String
                     hdr = Trim(CStr(Me.Cells(pCell.Row, CONF_REF).Value))
                     Me.Cells(45, TH_DataCol(pCell.Row)).Value = hdr
+                    ' When Point Ref is cleared, reset Offset, Δt and Point Notes to defaults
+                    If hdr = "" Then
+                        Me.Cells(pCell.Row, CONF_OFF).Value = 0
+                        Me.Cells(pCell.Row, CONF_DT).Value = 0
+                        Me.Cells(pCell.Row, CONF_NOTES).ClearContents
+                    End If
                     PopulateOneSensor Me, pCell.Row
                     needRefresh = True
 

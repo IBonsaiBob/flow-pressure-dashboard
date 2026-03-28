@@ -342,14 +342,17 @@ Sub PopulateOneSensor(ws As Worksheet, cfgRow As Long)
     rawCol = FindPressureDataCol(wsPres, pointRef)
     If rawCol = 0 Then Exit Sub    ' sensor not in Pressure Data — leave blank
 
-    ' Read Offset and Δt
+    ' Read Offset, Δt and Z elevation
     Dim offset As Double: offset = 0
+    Dim zElev  As Double: zElev  = 0
     Dim dt     As Long:   dt     = 0
     Dim v As Variant
     v = ws.Cells(cfgRow, TH_OFF).Value
     If IsNumeric(v) Then offset = CDbl(v)
     v = ws.Cells(cfgRow, TH_DT).Value
     If IsNumeric(v) Then dt = CLng(v)
+    v = ws.Cells(cfgRow, TH_ELEV).Value
+    If IsNumeric(v) Then zElev = CDbl(v)
 
     ' How many rows are in the data table?
     lastData = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
@@ -420,7 +423,8 @@ Sub PopulateOneSensor(ws As Worksheet, cfgRow As Long)
 
         If best > 0 And bDiff <= halfStep Then
             If IsNumeric(rawVals(best)) And CDbl(rawVals(best)) <> -999 Then
-                outArr(i, 1) = CDbl(rawVals(best)) + offset
+                ' Total Head (mAOD) = pressure reading + Z elevation + offset
+                outArr(i, 1) = CDbl(rawVals(best)) + zElev + offset
             End If
         End If
     Next i
@@ -458,7 +462,7 @@ End Sub
 ' CreateTotalHeadChart
 ' Creates a line chart to the right of the sensor config table (at col I,
 ' row 3) sized 30 cm wide × 16 cm tall.  One series per active sensor.
-' X-axis: full date+time timestamp.   Y-axis: "Pressure (m)".
+' X-axis: full date+time timestamp.   Y-axis: "Total Head (mAOD)".
 ' ---------------------------------------------------------------------------
 Sub CreateTotalHeadChart(ws As Worksheet)
     ' Remove existing TotalHeadChart if present
@@ -491,7 +495,7 @@ Sub CreateTotalHeadChart(ws As Worksheet)
         ' Y-axis
         With .Axes(xlValue)
             .HasTitle = True
-            .AxisTitle.Text = "Pressure (m)"
+            .AxisTitle.Text = "Total Head (mAOD)"
         End With
 
         ' X-axis — will be set properly in RefreshTotalHeadChart
