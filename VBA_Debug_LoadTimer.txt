@@ -1,0 +1,595 @@
+' ============================================================
+' VBA_Debug_LoadTimer  —  Total Head load performance probe
+' Version 1.0
+'
+' HOW TO INSTALL (one-time):
+'   1. Press Alt+F11 to open the VBA editor.
+'   2. Click Insert → Module.  A new Module4 (or similar) appears.
+'   3. Paste THIS ENTIRE FILE into it.
+'   4. Close the VBA editor.
+'
+' HOW TO RUN:
+'   • Open the Total Head sheet and set your Start/End dates and at
+'     least one Point Ref in col A (rows 9-43) so there is real work to
+'     do — the timer is most useful when you have the slow session loaded.
+'   • Press Alt+F11, click anywhere inside  TH_Debug_LoadTimer  and
+'     press F5.  (Or Tools → Macros → TH_Debug_LoadTimer → Run.)
+'   • Watch the status bar for live progress.
+'   • When finished, a sheet called "TH Debug Log" is created/replaced
+'     with a row-by-row timing table AND a grand summary.
+'
+' WHAT IT MEASURES:
+'   Phase 0  – Find / verify worksheets (Total Head, Pressure Data, Point Index)
+'   Phase 1  – Read Pressure Data timestamp column (allTS array)
+'   Phase 2  – Scan allTS for date-range window (pStart / pEnd)
+'   Phase 3  – Write timestamps to data table col A
+'   Phase 4  – RepopulateOffsetsFromPressureData equivalent
+'   Phase 5  – PopulateAllElevationsTH equivalent
+'   Phase 6+ – Per-sensor:  FindPressureDataCol + read values + match + write
+'   Final    – RefreshTotalHeadChart
+' ============================================================
+
+Option Explicit
+
+' ── shared constants (must match Module3) ──────────────────────────────
+Private Const DBG_CONF_START As Long = 9
+Private Const DBG_CONF_END   As Long = 43
+Private Const DBG_HDR_ROW    As Long = 45
+Private Const DBG_DATA_ROW   As Long = 46
+Private Const DBG_MAX_ROWS   As Long = 2976
+Private Const DBG_PRES_HDR   As Long = 7    ' Pressure Data header row (sensor names)
+Private Const DBG_PRES_DATA  As Long = 2    ' Pressure Data first scan row
+Private Const DBG_PRES_OFF   As Long = 5    ' Pressure Data offset row
+Private Const DBG_TH_REF     As Long = 1    ' TH col A = Point Ref
+Private Const DBG_TH_OFF     As Long = 2    ' TH col B = Offset
+Private Const DBG_TH_ELEV    As Long = 4    ' TH col D = Z(m)
+Private Const DBG_LOG_SHEET  As String = "TH Debug Log"
+
+' ---------------------------------------------------------------------------
+' TH_Debug_LoadTimer  — main entry point
+' ---------------------------------------------------------------------------
+Sub TH_Debug_LoadTimer()
+
+    ' ── log storage ─────────────────────────────────────────────────────────
+    Dim logLines(0 To 300) As String   ' phase label, duration, notes
+    Dim logCount  As Long: logCount = 0
+
+    Dim tPhase As Double   ' start of current phase
+    Dim tAll   As Double   ' start of whole run
+    tAll = Timer
+
+    Application.StatusBar = "[TH Debug] Starting timer run …"
+    DoEvents
+
+    ' ====================================================================
+    ' PHASE 0 — find worksheets
+    ' ====================================================================
+    tPhase = Timer
+    Application.StatusBar = "[TH Debug] Phase 0: Finding worksheets …"
+    DoEvents
+
+    Dim wsTH    As Worksheet
+    Dim wsPres  As Worksheet
+    Dim wsIdx   As Worksheet
+    Dim wsT     As Worksheet
+
+    For Each wsT In ThisWorkbook.Worksheets
+        Select Case LCase(Trim(wsT.Name))
+            Case "total head":    Set wsTH   = wsT
+            Case "pressure data": Set wsPres = wsT
+            Case "point index":   Set wsIdx  = wsT
+        End Select
+    Next wsT
+
+    Dim msg As String
+    If wsTH   Is Nothing Then msg = msg & "  MISSING: 'Total Head'" & vbLf
+    If wsPres Is Nothing Then msg = msg & "  MISSING: 'Pressure Data'" & vbLf
+    If wsIdx  Is Nothing Then msg = msg & "  (not found: 'Point Index')" & vbLf
+
+    LogLine logLines, logCount, "Phase 0 – find worksheets", _
+            Elapsed(tPhase), _
+            IIf(msg = "", "OK – all sheets found", "WARNING: " & msg)
+
+    If wsTH Is Nothing Or wsPres Is Nothing Then
+        Application.StatusBar = False
+        MsgBox "Cannot continue — Total Head or Pressure Data sheet is missing.", _
+               vbCritical, "TH Debug"
+        GoTo WriteLog
+    End If
+
+    ' ====================================================================
+    ' PHASE 1 — read Pressure Data size + timestamp column
+    ' ====================================================================
+    tPhase = Timer
+    Application.StatusBar = "[TH Debug] Phase 1: Reading Pressure Data timestamps …"
+    DoEvents
+
+    Dim pLastRow As Long
+    pLastRow = wsPres.Cells(wsPres.Rows.Count, 1).End(xlUp).Row
+
+    Dim pLastCol As Long
+    pLastCol = wsPres.Cells(DBG_PRES_HDR, wsPres.Columns.Count).End(xlToLeft).Column
+
+    Dim allTS As Variant
+    If pLastRow >= DBG_PRES_DATA Then
+        allTS = wsPres.Range(wsPres.Cells(DBG_PRES_DATA, 1), _
+                             wsPres.Cells(pLastRow, 1)).Value
+    End If
+
+    Dim nPres As Long: nPres = pLastRow - DBG_PRES_DATA + 1
+
+    ' Sample first 3 timestamp values to check format
+    Dim sampleNote As String
+    If Not IsEmpty(allTS) Then
+        Dim si As Long
+        For si = 1 To WorksheetFunction.Min(3, UBound(allTS, 1))
+            Dim sv As Variant: sv = allTS(si, 1)
+            sampleNote = sampleNote & "[" & si & "]=" & CStr(sv) & _
+                         "  IsDate=" & IsDate(sv) & "  IsNum=" & IsNumeric(sv) & "  "
+        Next si
+    End If
+
+    LogLine logLines, logCount, "Phase 1 – read Pressure Data timestamps", _
+            Elapsed(tPhase), _
+            "Rows=" & nPres & "  Cols=" & pLastCol & "  " & sampleNote
+
+    ' ====================================================================
+    ' PHASE 2 — find date-range window in allTS
+    ' ====================================================================
+    tPhase = Timer
+    Application.StatusBar = "[TH Debug] Phase 2: Scanning timestamp range …"
+    DoEvents
+
+    Dim startV As Variant: startV = wsTH.Cells(5, 4).Value
+    Dim endV   As Variant: endV   = wsTH.Cells(6, 4).Value
+
+    If Not IsDate(startV) Or Not IsDate(endV) Then
+        LogLine logLines, logCount, "Phase 2 – scan date range", _
+                Elapsed(tPhase), _
+                "SKIPPED — D5/D6 not valid dates: D5=" & CStr(startV) & " D6=" & CStr(endV)
+        GoTo SkipDataPhases
+    End If
+
+    Dim startDbl As Double: startDbl = Int(CDbl(CDate(startV)))
+    Dim endDbl   As Double: endDbl   = Int(CDbl(CDate(endV)))
+
+    Dim pStart As Long: pStart = 0
+    Dim pEnd   As Long: pEnd   = 0
+    Dim tsDbl  As Double
+    Dim i      As Long
+
+    Dim textTSCount As Long: textTSCount = 0
+
+    On Error Resume Next
+    For i = 1 To UBound(allTS, 1)
+        tsDbl = 0
+        tsDbl = CDbl(allTS(i, 1))
+        If tsDbl = 0 And IsDate(allTS(i, 1)) Then
+            tsDbl = CDbl(CDate(allTS(i, 1)))
+            textTSCount = textTSCount + 1
+        End If
+        If tsDbl > 0 Then
+            If Int(tsDbl) >= startDbl And pStart = 0 Then pStart = i
+            If Int(tsDbl) <= endDbl Then pEnd = i
+        End If
+    Next i
+    On Error GoTo 0
+
+    Dim nRows As Long
+    If pStart > 0 And pEnd >= pStart Then
+        If pEnd - pStart + 1 > DBG_MAX_ROWS Then pEnd = pStart + DBG_MAX_ROWS - 1
+        nRows = pEnd - pStart + 1
+    End If
+
+    LogLine logLines, logCount, "Phase 2 – scan date range", _
+            Elapsed(tPhase), _
+            "pStart=" & pStart & "  pEnd=" & pEnd & "  nRows=" & nRows & _
+            "  textFormattedTS=" & textTSCount & _
+            IIf(textTSCount > 0, " *** TEXT TIMESTAMPS FOUND — SLOW PATH", "")
+
+    ' ====================================================================
+    ' PHASE 3 — write timestamps to data table col A
+    ' ====================================================================
+    tPhase = Timer
+    Application.StatusBar = "[TH Debug] Phase 3: Writing timestamps to data table …"
+    DoEvents
+
+    If nRows > 0 Then
+        Dim outTS() As Variant
+        ReDim outTS(1 To nRows, 1 To 1)
+        For i = 1 To nRows
+            outTS(i, 1) = allTS(pStart + i - 1, 1)
+        Next i
+        With wsTH.Range(wsTH.Cells(DBG_DATA_ROW, 1), _
+                        wsTH.Cells(DBG_DATA_ROW + nRows - 1, 1))
+            .Value        = outTS
+            .NumberFormat = "DD/MM/YYYY HH:MM"
+        End With
+    End If
+
+    LogLine logLines, logCount, "Phase 3 – write timestamps to data table", _
+            Elapsed(tPhase), "nRows=" & nRows
+
+    ' ====================================================================
+    ' PHASE 4 — RepopulateOffsetsFromPressureData equivalent
+    ' ====================================================================
+    tPhase = Timer
+    Application.StatusBar = "[TH Debug] Phase 4: Repopulate offsets from Pressure Data …"
+    DoEvents
+
+    ' Read header row once
+    Dim hdrArr As Variant
+    If pLastCol >= 1 Then
+        hdrArr = wsPres.Range(wsPres.Cells(DBG_PRES_HDR, 1), _
+                              wsPres.Cells(DBG_PRES_HDR, pLastCol)).Value
+    End If
+
+    Dim offArr  As Variant
+    If pLastCol >= 1 Then
+        offArr = wsPres.Range(wsPres.Cells(DBG_PRES_OFF, 1), _
+                              wsPres.Cells(DBG_PRES_OFF, pLastCol)).Value
+    End If
+
+    Dim r4 As Long, c4 As Long
+    Dim refStr4 As String
+    Dim matched4 As Long
+    For r4 = DBG_CONF_START To DBG_CONF_END
+        refStr4 = Trim(CStr(wsTH.Cells(r4, DBG_TH_REF).Value))
+        If refStr4 <> "" Then
+            For c4 = 1 To pLastCol
+                If LCase(Trim(CStr(hdrArr(1, c4)))) = LCase(refStr4) Then
+                    wsTH.Cells(r4, DBG_TH_OFF).Value = offArr(1, c4)
+                    matched4 = matched4 + 1
+                    Exit For
+                End If
+            Next c4
+        End If
+    Next r4
+
+    LogLine logLines, logCount, "Phase 4 – RepopulateOffsets", _
+            Elapsed(tPhase), "matched=" & matched4
+
+    ' ====================================================================
+    ' PHASE 5 — PopulateAllElevationsTH equivalent
+    ' ====================================================================
+    tPhase = Timer
+    Application.StatusBar = "[TH Debug] Phase 5: Populate elevations from Point Index …"
+    DoEvents
+
+    Dim matched5 As Long: matched5 = 0
+    Dim skipped5 As Long: skipped5 = 0
+    Dim noPI     As Boolean: noPI = (wsIdx Is Nothing)
+
+    If Not noPI Then
+        ' Find Point Ref col and FINAL Z col in Point Index header row 3
+        Dim piLastCol As Long
+        piLastCol = wsIdx.Cells(3, wsIdx.Columns.Count).End(xlToLeft).Column
+        Dim piPtCol As Long: piPtCol = 0
+        Dim piZCol  As Long: piZCol  = 0
+        Dim cp As Long
+        For cp = 1 To piLastCol
+            Select Case LCase(Trim(CStr(wsIdx.Cells(3, cp).Value)))
+                Case "point ref":     piPtCol = cp
+                Case "final z / bwl": piZCol  = cp
+            End Select
+        Next cp
+
+        Dim piLastRow As Long
+        If piPtCol > 0 Then
+            piLastRow = wsIdx.Cells(wsIdx.Rows.Count, piPtCol).End(xlUp).Row
+        End If
+
+        Dim r5 As Long
+        For r5 = DBG_CONF_START To DBG_CONF_END
+            Dim ref5 As String: ref5 = Trim(CStr(wsTH.Cells(r5, DBG_TH_REF).Value))
+            If ref5 <> "" Then
+                Dim existZ As Variant: existZ = wsTH.Cells(r5, DBG_TH_ELEV).Value
+                If IsEmpty(existZ) Or Not IsNumeric(existZ) Or CDbl(existZ) = 0 Then
+                    If piPtCol > 0 And piZCol > 0 Then
+                        Dim rp As Long
+                        For rp = 4 To piLastRow
+                            If LCase(Trim(CStr(wsIdx.Cells(rp, piPtCol).Value))) = LCase(ref5) Then
+                                Dim z5 As Variant: z5 = wsIdx.Cells(rp, piZCol).Value
+                                If Not IsEmpty(z5) And IsNumeric(z5) Then
+                                    wsTH.Cells(r5, DBG_TH_ELEV).Value = z5
+                                    matched5 = matched5 + 1
+                                End If
+                                Exit For
+                            End If
+                        Next rp
+                    End If
+                Else
+                    skipped5 = skipped5 + 1
+                End If
+            End If
+        Next r5
+    End If
+
+    LogLine logLines, logCount, "Phase 5 – PopulateAllElevationsTH", _
+            Elapsed(tPhase), _
+            IIf(noPI, "SKIPPED (no Point Index sheet)", _
+                "matched=" & matched5 & "  already-had-Z=" & skipped5)
+
+    ' ====================================================================
+    ' PHASE 6+ — per-sensor: FindPressureDataCol + read values + match + write
+    ' ====================================================================
+    Application.StatusBar = "[TH Debug] Phase 6: Per-sensor data fill …"
+    DoEvents
+
+    ' Re-read allTS for per-sensor work (same array already loaded)
+    ' Pre-convert allTS to a Double array once so per-sensor loops are fast
+    Dim preTS() As Double
+    If nRows > 0 And Not IsEmpty(allTS) Then
+        ReDim preTS(1 To UBound(allTS, 1))
+        Dim pi2 As Long
+        On Error Resume Next
+        For pi2 = 1 To UBound(allTS, 1)
+            preTS(pi2) = CDbl(allTS(pi2, 1))
+            If preTS(pi2) = 0 And IsDate(allTS(pi2, 1)) Then
+                preTS(pi2) = CDbl(CDate(allTS(pi2, 1)))
+            End If
+        Next pi2
+        On Error GoTo 0
+    End If
+
+    Dim rawN As Long: rawN = pLastRow - DBG_PRES_DATA + 1
+
+    ' Load data-table timestamps once
+    Dim dtTS As Variant
+    If nRows > 0 Then
+        dtTS = wsTH.Range(wsTH.Cells(DBG_DATA_ROW, 1), _
+                          wsTH.Cells(DBG_DATA_ROW + nRows - 1, 1)).Value
+    End If
+
+    Dim r6 As Long
+    For r6 = DBG_CONF_START To DBG_CONF_END
+        Dim ref6 As String: ref6 = Trim(CStr(wsTH.Cells(r6, DBG_TH_REF).Value))
+        If ref6 = "" Then GoTo NextSensor
+
+        Application.StatusBar = "[TH Debug] Phase 6: Sensor '" & ref6 & "' …"
+        DoEvents
+
+        ' ---- 6a: FindPressureDataCol ----
+        Dim tSensor As Double: tSensor = Timer
+
+        Dim rawCol As Long: rawCol = 0
+        Dim c6 As Long
+        ' First: exact match on Point Ref in header row
+        For c6 = 1 To pLastCol
+            If LCase(Trim(CStr(hdrArr(1, c6)))) = LCase(ref6) Then
+                rawCol = c6: Exit For
+            End If
+        Next c6
+        ' Fallback: Logger ID lookup
+        If rawCol = 0 And Not wsIdx Is Nothing Then
+            Dim lgID As String: lgID = ""
+            If piPtCol > 0 Then
+                Dim rl As Long
+                For rl = 4 To piLastRow
+                    If LCase(Trim(CStr(wsIdx.Cells(rl, piPtCol).Value))) = LCase(ref6) Then
+                        lgID = Trim(CStr(wsIdx.Cells(rl, 18).Value))  ' Logger ID col ~R
+                        Exit For
+                    End If
+                Next rl
+            End If
+            If lgID <> "" Then
+                For c6 = 1 To pLastCol
+                    If LCase(Trim(CStr(hdrArr(1, c6)))) = LCase(lgID) Then
+                        rawCol = c6: Exit For
+                    End If
+                Next c6
+            End If
+        End If
+
+        Dim tFindCol As Double: tFindCol = Elapsed(tSensor)
+
+        If rawCol = 0 Then
+            LogLine logLines, logCount, "  Sensor row " & r6 & " [" & ref6 & "]", _
+                    Elapsed(tSensor), _
+                    "FindPressureDataCol: " & Format(tFindCol, "0.000") & "s  " & _
+                    "NOT FOUND in Pressure Data — column skipped"
+            GoTo NextSensor
+        End If
+
+        ' ---- 6b: Read raw value column ----
+        Dim tReadVal As Double: tReadVal = Timer
+        Dim rawValArr As Variant
+        rawValArr = wsPres.Range(wsPres.Cells(DBG_PRES_DATA, rawCol), _
+                                 wsPres.Cells(pLastRow, rawCol)).Value
+        Dim tReadValDur As Double: tReadValDur = Elapsed(tReadVal)
+
+        ' ---- 6c: Build rawTS / rawVals arrays ----
+        Dim tBuild As Double: tBuild = Timer
+        Dim rawTSa()   As Double
+        Dim rawVals()  As Variant
+        ReDim rawTSa  (1 To rawN)
+        ReDim rawVals (1 To rawN)
+        Dim ii As Long
+        On Error Resume Next
+        For ii = 1 To rawN
+            rawTSa(ii)  = preTS(ii)     ' reuse pre-converted array
+            rawVals(ii) = rawValArr(ii, 1)
+        Next ii
+        On Error GoTo 0
+        Dim tBuildDur As Double: tBuildDur = Elapsed(tBuild)
+
+        ' ---- 6d: Timestamp matching + output build ----
+        Dim tMatch As Double: tMatch = Timer
+
+        If nRows > 0 Then
+            Dim offset6 As Double: offset6 = 0
+            Dim zElev6  As Double: zElev6  = 0
+            Dim vv As Variant
+            vv = wsTH.Cells(r6, DBG_TH_OFF).Value:  If IsNumeric(vv) Then offset6 = CDbl(vv)
+            vv = wsTH.Cells(r6, DBG_TH_ELEV).Value: If IsNumeric(vv) Then zElev6  = CDbl(vv)
+
+            Dim halfStep As Double: halfStep = (1# / 96) / 2   ' 7.5 min
+            Dim outArr6() As Variant
+            ReDim outArr6(1 To nRows, 1 To 1)
+            Dim tgt6  As Double
+            Dim best6 As Long: best6 = 0
+            Dim bDiff6 As Double
+            Dim diff6  As Double
+            Dim jj6    As Long
+            Dim jjCur6 As Long: jjCur6 = 1
+            Dim matchCount As Long: matchCount = 0
+
+            For i = 1 To nRows
+                On Error Resume Next
+                tgt6 = CDbl(dtTS(i, 1))
+                On Error GoTo 0
+                best6 = 0: bDiff6 = halfStep + 1#
+                For jj6 = jjCur6 To rawN
+                    diff6 = Abs(rawTSa(jj6) - tgt6)
+                    If diff6 < bDiff6 Then bDiff6 = diff6: best6 = jj6
+                    If rawTSa(jj6) > tgt6 + halfStep + 0.0001 Then Exit For
+                Next jj6
+                If best6 > 1 Then jjCur6 = best6 - 1
+                If best6 > 0 And bDiff6 <= halfStep Then
+                    Dim pVal6 As Variant: pVal6 = rawVals(best6)
+                    If IsNumeric(pVal6) Then
+                        Dim pd6 As Double: pd6 = CDbl(pVal6)
+                        If pd6 <> -999 Then
+                            outArr6(i, 1) = pd6 + offset6 + zElev6
+                            matchCount = matchCount + 1
+                        End If
+                    End If
+                End If
+            Next i
+
+            Dim tMatchDur As Double: tMatchDur = Elapsed(tMatch)
+
+            ' ---- 6e: Write output column ----
+            Dim tWrite As Double: tWrite = Timer
+            Dim dataCol6 As Long: dataCol6 = r6 - 7   ' TH_DataCol
+            wsTH.Cells(DBG_HDR_ROW, dataCol6).Value = ref6
+            wsTH.Range(wsTH.Cells(DBG_DATA_ROW, dataCol6), _
+                       wsTH.Cells(DBG_DATA_ROW + nRows - 1, dataCol6)).Value = outArr6
+            Dim tWriteDur As Double: tWriteDur = Elapsed(tWrite)
+
+            LogLine logLines, logCount, _
+                    "  Sensor row " & r6 & " [" & ref6 & "] col=" & rawCol, _
+                    Elapsed(tSensor), _
+                    "findCol=" & Format(tFindCol, "0.000") & "s" & _
+                    "  readVal=" & Format(tReadValDur, "0.000") & "s" & _
+                    "  buildArr=" & Format(tBuildDur, "0.000") & "s" & _
+                    "  match=" & Format(tMatchDur, "0.000") & "s  matched=" & matchCount & "/" & nRows & _
+                    "  write=" & Format(tWriteDur, "0.000") & "s"
+        Else
+            LogLine logLines, logCount, _
+                    "  Sensor row " & r6 & " [" & ref6 & "] col=" & rawCol, _
+                    Elapsed(tSensor), _
+                    "findCol=" & Format(tFindCol, "0.000") & "s  SKIPPED (nRows=0)"
+        End If
+
+NextSensor:
+    Next r6
+
+    ' ====================================================================
+    ' PHASE 7 — RefreshTotalHeadChart
+    ' ====================================================================
+SkipDataPhases:
+    tPhase = Timer
+    Application.StatusBar = "[TH Debug] Phase 7: Refreshing chart …"
+    DoEvents
+
+    ' Call the existing RefreshTotalHeadChart if it exists
+    On Error Resume Next
+    Application.Run "RefreshTotalHeadChart", wsTH
+    Dim chartErr As Long: chartErr = Err.Number
+    On Error GoTo 0
+
+    LogLine logLines, logCount, "Phase 7 – RefreshTotalHeadChart", _
+            Elapsed(tPhase), IIf(chartErr = 0, "OK", "error #" & chartErr)
+
+    ' ====================================================================
+    ' GRAND TOTAL
+    ' ====================================================================
+    LogLine logLines, logCount, "=== GRAND TOTAL ===", Elapsed(tAll), _
+            "All phases combined"
+
+    ' ====================================================================
+    ' WRITE LOG SHEET
+    ' ====================================================================
+WriteLog:
+    Application.StatusBar = "[TH Debug] Writing results …"
+    DoEvents
+
+    ' Delete old log sheet if present
+    Dim wsLog As Worksheet
+    Application.DisplayAlerts = False
+    On Error Resume Next
+    ThisWorkbook.Sheets(DBG_LOG_SHEET).Delete
+    On Error GoTo 0
+    Application.DisplayAlerts = True
+
+    Set wsLog = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+    wsLog.Name = DBG_LOG_SHEET
+
+    ' Header
+    wsLog.Cells(1, 1).Value = "Phase / Sensor"
+    wsLog.Cells(1, 2).Value = "Duration (s)"
+    wsLog.Cells(1, 3).Value = "Notes"
+    wsLog.Rows(1).Font.Bold = True
+
+    ' Data
+    Dim lg As Long
+    For lg = 0 To logCount - 1
+        Dim parts() As String
+        parts = Split(logLines(lg), Chr(9))
+        wsLog.Cells(lg + 2, 1).Value = parts(0)
+        If UBound(parts) >= 1 Then wsLog.Cells(lg + 2, 2).Value = CDbl(parts(1))
+        If UBound(parts) >= 2 Then wsLog.Cells(lg + 2, 3).Value = parts(2)
+    Next lg
+
+    ' Format duration column
+    wsLog.Columns(2).NumberFormat = "0.000"
+
+    ' Conditional highlighting: anything > 0.5s in orange, > 2s in red
+    Dim lRow As Long: lRow = logCount + 1
+    Dim fr As Long
+    For fr = 2 To lRow
+        Dim durVal As Double
+        On Error Resume Next
+        durVal = CDbl(wsLog.Cells(fr, 2).Value)
+        On Error GoTo 0
+        If durVal > 2 Then
+            wsLog.Cells(fr, 2).Interior.Color = RGB(255, 99, 71)    ' red
+        ElseIf durVal > 0.5 Then
+            wsLog.Cells(fr, 2).Interior.Color = RGB(255, 200, 80)   ' orange
+        End If
+    Next fr
+
+    ' Auto-fit columns
+    wsLog.Columns("A:C").AutoFit
+
+    ' Activate log sheet
+    wsLog.Activate
+    wsLog.Range("A1").Select
+
+    Application.StatusBar = False
+
+    MsgBox "TH Debug complete — results on the '" & DBG_LOG_SHEET & "' sheet." & vbLf & _
+           "Red cells = slow (>2 s), Orange = notable (>0.5 s)." & vbLf & vbLf & _
+           "Grand total: " & Format(Elapsed(tAll), "0.00") & " seconds.", _
+           vbInformation, "TH Debug Load Timer"
+
+End Sub
+
+' ---------------------------------------------------------------------------
+' Elapsed  — returns seconds since a Timer snapshot
+' ---------------------------------------------------------------------------
+Private Function Elapsed(startT As Double) As Double
+    Elapsed = Timer - startT
+    If Elapsed < 0 Then Elapsed = Elapsed + 86400   ' midnight rollover guard
+End Function
+
+' ---------------------------------------------------------------------------
+' LogLine  — appends a tab-delimited log entry
+' ---------------------------------------------------------------------------
+Private Sub LogLine(ByRef lines() As String, ByRef count As Long, _
+                    label As String, dur As Double, notes As String)
+    If count > UBound(lines) Then Exit Sub   ' guard against overflow
+    lines(count) = label & Chr(9) & Format(dur, "0.000") & Chr(9) & notes
+    count = count + 1
+End Sub
