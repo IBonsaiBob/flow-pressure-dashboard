@@ -1,5 +1,5 @@
 ' ============================================================
-' Total Head (New) Worksheet — Event Handlers  (v1.60)
+' Total Head (New) Worksheet — Event Handlers  (v1.61)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. In the Project pane, expand "Microsoft Excel Objects".
@@ -14,10 +14,11 @@
 '   B6  = "End Date:"     label      D6  = end date input    (merged D6:E6)
 '   J3  = "Driving Head:" label      L3  = driving head sensor  (merged L3:N4)
 '   I5  = "SAVE"  (click-button, merged I5:I6)
-'   K5  = "Load"    label  (not a button — use L5:N6 dropdown to load)
-'   L5  = archive load dropdown  (merged L5:N6; data-validation list of saved
-'         Zone Names; displays current Zone Name (D3) when no session loaded;
-'         selecting a name loads that session without the InputBox)
+'   D3  = Zone Name input AND archive load dropdown (merged D3:I4).
+'         Data-validation list of saved Zone Names is applied here.
+'         Selecting a saved name auto-loads that session; typing a new name
+'         starts a fresh session (chart title updates, Zone Notes cleared).
+'   K5/L5 = no longer used for loading (validation removed)
 '   J8  = "Zone Notes"    label
 '   J9  = zone notes input  (merged J9:N43)
 '   Row 8  : table header
@@ -90,32 +91,47 @@ Private Sub Worksheet_Change(ByVal Target As Range)
     Application.EnableEvents = False
     On Error Resume Next
 
-    ' ── L5 = archive load dropdown — load the selected session ───────────────
-    If Not Intersect(Target, Me.Range("L5")) Is Nothing Then
-        Dim selZone As String
-        selZone = Trim(CStr(Me.Range("L5").Value))
-        If selZone <> "" And selZone <> Trim(CStr(Me.Cells(3, 4).Value)) Then
-            LoadTotalHeadByName selZone
-            ' After loading, L5 should display the loaded zone name (D3 is now that name)
-            Me.Range("L5").Value = Trim(CStr(Me.Cells(3, 4).Value))
-        End If
-        GoTo Done
-    End If
-
-    ' ── D3 (Zone Name / Chart Title) changed → update chart title, L5 and reset Zone Notes ─────
+    ' ── D3 (Zone Name) changed → load from archive if match, else start new session ───────────
+    ' D3 has a data-validation dropdown listing all archived Zone Names (applied by
+    ' RefreshLoadDropdown).  Selecting a saved name auto-loads that session.
+    ' Typing a brand-new name (not in archive) just updates the chart title and
+    ' clears Zone Notes ready for a fresh session.
     If Not Intersect(Target, Me.Range("D3")) Is Nothing Then
         Dim newZone As String: newZone = Trim(CStr(Me.Cells(3, 4).Value))
-        Dim coTitle As ChartObject
-        For Each coTitle In Me.ChartObjects
-            If coTitle.Name = "TotalHeadChart" Then
-                coTitle.Chart.ChartTitle.Text = newZone
-                Exit For
+
+        ' Search Total Head Archive col C for a matching Zone Name
+        Dim wsArc  As Worksheet
+        Dim wsTA   As Worksheet
+        For Each wsTA In ThisWorkbook.Worksheets
+            If LCase(Trim(wsTA.Name)) = "total head archive" Then
+                Set wsArc = wsTA: Exit For
             End If
-        Next coTitle
-        ' Clear Zone Notes — user has changed the Zone Name, starting a new session
-        Me.Cells(9, 10).Value = ""
-        ' Keep L5 in sync: always reflect the current Zone Name for new sessions
-        Me.Range("L5").Value = IIf(newZone <> "", newZone, "Drop Down to load saved selections")
+        Next wsTA
+        Dim archFound As Boolean: archFound = False
+        If Not wsArc Is Nothing And newZone <> "" Then
+            Dim arcLast As Long: arcLast = wsArc.Cells(wsArc.Rows.Count, 3).End(xlUp).Row
+            Dim aii As Long
+            For aii = arcLast To 2 Step -1
+                If LCase(Trim(CStr(wsArc.Cells(aii, 3).Value))) = LCase(newZone) Then
+                    archFound = True: Exit For
+                End If
+            Next aii
+        End If
+
+        If archFound Then
+            ' Matched a saved session — restore it (handles chart, data table, offsets, etc.)
+            LoadTotalHeadByName newZone
+        Else
+            ' New zone name — update chart title and clear Zone Notes for a fresh session
+            Dim coTitle As ChartObject
+            For Each coTitle In Me.ChartObjects
+                If coTitle.Name = "TotalHeadChart" Then
+                    coTitle.Chart.ChartTitle.Text = newZone
+                    Exit For
+                End If
+            Next coTitle
+            Me.Cells(9, 10).Value = ""   ' clear Zone Notes for new session
+        End If
         GoTo Done
     End If
 

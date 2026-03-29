@@ -67,7 +67,7 @@ Sub InitTotalHeadSheet(ws As Worksheet)
     If Trim(CStr(ws.Range("A45").Value)) = "" Then
         ws.Range("A45").Value = "Timestamp"
     End If
-    RefreshLoadDropdown ws   ' populate / refresh the archive load dropdown (L5)
+    RefreshLoadDropdown ws   ' apply archive dropdown validation to D3 (Zone Name cell)
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -1025,16 +1025,15 @@ End Sub
 
 ' ---------------------------------------------------------------------------
 ' RefreshLoadDropdown
-' Applies an Excel data-validation list to cell L5 (the "load saved
-' selections" cell) using Zone Names from "Total Head Archive" col C.
-' This gives a click-dropdown so the user can reload a previous session
-' without the InputBox number-picker.
+' Applies an Excel data-validation list to cell D3 (the Zone Name cell) using
+' Zone Names from "Total Head Archive" col C.  This gives a click-dropdown so
+' the user can reload a previous session by simply selecting from D3.
+' ShowError=False so users can still type a brand-new zone name not yet in
+' the archive.
 ' Called automatically from InitTotalHeadSheet and after every archive save.
-' The displayed value is the current Zone Name (D3) for a new session, or the
-' loaded session name after picking one from the archive.
 ' ---------------------------------------------------------------------------
 Sub RefreshLoadDropdown(ws As Worksheet)
-    Const LOAD_CELL   As String = "L5"
+    Const LOAD_CELL As String = "D3"   ' Zone Name cell — also the archive load dropdown
 
     On Error Resume Next
     Dim cell As Range
@@ -1053,27 +1052,15 @@ Sub RefreshLoadDropdown(ws As Worksheet)
         End If
     Next wsT
 
-    ' Default display: Zone Name from D3 (or blank placeholder if D3 is empty).
-    Dim defaultDisplay As String
-    defaultDisplay = Trim(CStr(ws.Cells(3, 4).Value))
-    If defaultDisplay = "" Then defaultDisplay = "Drop Down to load saved selections"
-
-    If wsA Is Nothing Then
-        If Trim(CStr(cell.Value)) = "" Then cell.Value = defaultDisplay
-        On Error GoTo 0
-        Exit Sub
-    End If
+    If wsA Is Nothing Then On Error GoTo 0: Exit Sub
 
     ' Count non-blank Zone entries (col C, rows 2+).
     Dim lastRow As Long
     lastRow = wsA.Cells(wsA.Rows.Count, 3).End(xlUp).Row
-    If lastRow < 2 Then
-        If Trim(CStr(cell.Value)) = "" Then cell.Value = defaultDisplay
-        On Error GoTo 0
-        Exit Sub
-    End If
+    If lastRow < 2 Then On Error GoTo 0: Exit Sub
 
     ' Apply data-validation list pointing to archive Zone Names (col C).
+    ' ShowError=False allows typing a new zone name that is not yet archived.
     Dim formula As String
     formula = "='Total Head Archive'!$C$2:$C$" & lastRow
     cell.Validation.Add _
@@ -1083,21 +1070,14 @@ Sub RefreshLoadDropdown(ws As Worksheet)
         Formula1:=formula
     cell.Validation.ShowInput = False
     cell.Validation.ShowError = False
-
-    ' Set display to Zone Name (D3) if cell is currently empty or showing old placeholder.
-    Dim curVal As String: curVal = Trim(CStr(cell.Value))
-    If curVal = "" Or LCase(curVal) = "drop down to load saved selections" Then
-        cell.Value = defaultDisplay
-    End If
     On Error GoTo 0
 End Sub
 
 ' ---------------------------------------------------------------------------
 ' LoadTotalHeadByName
 ' Finds the most-recently archived session whose Zone Name matches zoneName
-' and restores it to the Total Head sheet.  Identical restore logic to
-' LoadTotalHead but driven by name (from the L5 dropdown) instead of the
-' InputBox number-picker.
+' and restores it to the Total Head sheet.  Called from the D3 Worksheet_Change
+' handler when the user picks a name from the Zone Name dropdown.
 ' ---------------------------------------------------------------------------
 Sub LoadTotalHeadByName(zoneName As String)
     Const ARCH_SHEET As String = "Total Head Archive"
@@ -1111,11 +1091,15 @@ Sub LoadTotalHeadByName(zoneName As String)
     On Error GoTo 0
     If ws Is Nothing Then Exit Sub
 
+    ' Show immediate status-bar feedback so the user knows loading has started.
+    Application.StatusBar = "Loading session: " & zoneName & " …"
+
     Dim wsA As Worksheet
     On Error Resume Next
     Set wsA = ThisWorkbook.Sheets(ARCH_SHEET)
     On Error GoTo 0
     If wsA Is Nothing Then
+        Application.StatusBar = False
         MsgBox "No saved sessions found — 'Total Head Archive' does not exist.", _
                vbInformation, "Nothing to Load"
         Exit Sub
@@ -1123,6 +1107,7 @@ Sub LoadTotalHeadByName(zoneName As String)
 
     ' Verify archive format.
     If Trim(CStr(wsA.Cells(1, 6).Value)) <> HDR_CHECK Then
+        Application.StatusBar = False
         MsgBox "The 'Total Head Archive' is in an old format and cannot be loaded. " & _
                "Please save a new session first to initialise the updated archive.", _
                vbExclamation, "Incompatible Archive Format"
@@ -1140,7 +1125,10 @@ Sub LoadTotalHeadByName(zoneName As String)
         End If
     Next i
 
-    If archRow = 0 Then Exit Sub   ' silently skip if not found (e.g. L5 showing D3 zone name not yet archived)
+    If archRow = 0 Then
+        Application.StatusBar = False
+        Exit Sub   ' silently skip if not found (zone name typed but not yet archived)
+    End If
 
     ' ── Restore (identical to LoadTotalHead restore block) ───────────────────
     Application.EnableEvents   = False
@@ -1167,8 +1155,8 @@ Sub LoadTotalHeadByName(zoneName As String)
     RefreshTotalHeadChart ws
     Application.ScreenUpdating = True
 
-    MsgBox "Session restored: " & CStr(wsA.Cells(archRow, 3).Value), _
-           vbInformation, "Session Loaded"
+    ' Clear status bar — the chart and D3 visually confirm the load succeeded.
+    Application.StatusBar = False
 End Sub
 
 ' ---------------------------------------------------------------------------
