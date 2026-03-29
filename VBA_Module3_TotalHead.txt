@@ -1,5 +1,5 @@
 ' ============================================================
-' Module3 — Total Head (New) Sheet Procedures  (v1.58)
+' Module3 — Total Head (New) Sheet Procedures  (v1.59)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. Insert → Module.
@@ -252,6 +252,41 @@ Sub PopulateAllElevationsTH(ws As Worksheet)
 End Sub
 
 ' ---------------------------------------------------------------------------
+' RepopulateOffsetsFromPressureData
+' For each config row with a non-empty Point Ref, reads the OFFSET value from
+' Pressure Data row 5 (PRES_OFFSET_ROW) and writes it to col B (TH_OFF) on
+' the Total Head sheet.  Clears the offset cell when the sensor is not found
+' in Pressure Data.
+' Called after loading a session from the archive so that offsets always
+' reflect the current state of Pressure Data rather than stale archive values.
+' ---------------------------------------------------------------------------
+Sub RepopulateOffsetsFromPressureData(ws As Worksheet)
+    Dim wsPres As Worksheet
+    Dim wsT    As Worksheet
+    For Each wsT In ThisWorkbook.Worksheets
+        If LCase(Trim(wsT.Name)) = "pressure data" Then
+            Set wsPres = wsT: Exit For
+        End If
+    Next wsT
+    If wsPres Is Nothing Then Exit Sub
+
+    Dim r   As Long
+    Dim ref As String
+    Dim pc  As Long
+    For r = TH_CONF_START To TH_CONF_END
+        ref = Trim(CStr(ws.Cells(r, TH_REF).Value))
+        If ref <> "" Then
+            pc = FindPressureDataCol(wsPres, ref)
+            If pc > 0 Then
+                ws.Cells(r, TH_OFF).Value = wsPres.Cells(PRES_OFFSET_ROW, pc).Value
+            Else
+                ws.Cells(r, TH_OFF).ClearContents
+            End If
+        End If
+    Next r
+End Sub
+
+' ---------------------------------------------------------------------------
 ' RebuildDataTable
 ' Clears the data table (rows 45+) and rebuilds it from scratch:
 '   1. Finds all Pressure Data timestamps between Start Date and End Date.
@@ -433,28 +468,34 @@ Sub PopulateOneSensor(ws As Worksheet, cfgRow As Long)
         rawVals(ii) = rawValArr(ii, 1)
     Next ii
 
-    ' Build output array applying Offset only (Δt time shift removed).
+    ' Build output array applying Offset and Z elevation.
     ' Use nearest-match within 7.5 minutes to handle irregular timestamps.
+    ' Both rawTS and dtTS are time-ordered, so a single forward cursor avoids the
+    ' O(n×m) restart-from-1 pattern — total work is O(n+m) instead of O(n×m).
     Dim halfStep As Double: halfStep = (1# / 96) / 2   ' 7.5 min as day fraction
 
     Dim outArr() As Variant
     ReDim outArr(1 To nRows, 1 To 1)
 
-    Dim tgt   As Double
-    Dim best  As Long
-    Dim bDiff As Double
-    Dim diff  As Double
-    Dim jj    As Long
+    Dim tgt      As Double
+    Dim best     As Long
+    Dim bDiff    As Double
+    Dim diff     As Double
+    Dim jj       As Long
+    Dim jjCursor As Long: jjCursor = 1   ' monotonically-advancing cursor: avoids restarting
+                                          ' the inner scan from 1 on every outer iteration,
+                                          ' reducing complexity from O(n×m) to O(n+m)
 
     For i = 1 To nRows
         On Error Resume Next
-        tgt = CDbl(dtTS(i, 1))   ' target timestamp (no shift)
+        tgt = CDbl(dtTS(i, 1))   ' target timestamp
         On Error GoTo 0
 
         best  = 0
         bDiff = halfStep + 1#
-        ' Raw timestamps are ordered → break early when walking past target
-        For jj = 1 To rawN
+        ' Walk forward from cursor; both arrays are time-ordered so we never
+        ' need to go back more than one step.
+        For jj = jjCursor To rawN
             diff = Abs(rawTS(jj) - tgt)
             If diff < bDiff Then
                 bDiff = diff
@@ -462,6 +503,10 @@ Sub PopulateOneSensor(ws As Worksheet, cfgRow As Long)
             End If
             If rawTS(jj) > tgt + halfStep + 0.0001 Then Exit For
         Next jj
+        ' Back up one so the next target (which may be only one step ahead)
+        ' is still caught — moving to exactly `best` would skip it if the
+        ' next dtTS timestamp coincides with rawTS(best).
+        If best > 1 Then jjCursor = best - 1
 
         If best > 0 And bDiff <= halfStep Then
             If IsNumeric(rawVals(best)) And CDbl(rawVals(best)) <> -999 Then
@@ -964,6 +1009,11 @@ Sub LoadTotalHead()
     Next r
 
     Application.EnableEvents = True
+    ' Repopulate Offsets (from Pressure Data row 5) and Z elevations (from Point
+    ' Index) so RebuildDataTable uses correct values — these are never stored in
+    ' the archive; they always come from the live source sheets.
+    RepopulateOffsetsFromPressureData ws
+    PopulateAllElevationsTH ws
     ' Rebuild data table with the restored configuration (fires Worksheet_Change)
     RebuildDataTable ws
     RefreshTotalHeadChart ws
@@ -1108,6 +1158,11 @@ Sub LoadTotalHeadByName(zoneName As String)
     Next r
 
     Application.EnableEvents = True
+    ' Repopulate Offsets (from Pressure Data row 5) and Z elevations (from Point
+    ' Index) so RebuildDataTable uses correct values — these are never stored in
+    ' the archive; they always come from the live source sheets.
+    RepopulateOffsetsFromPressureData ws
+    PopulateAllElevationsTH ws
     RebuildDataTable ws
     RefreshTotalHeadChart ws
     Application.ScreenUpdating = True
