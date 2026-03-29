@@ -57,6 +57,10 @@ Private mBatch_Active   As Boolean    ' True while RebuildDataTable batch is run
 Private mBatch_wsPres   As Worksheet  ' cached Pressure Data worksheet reference
 Private mBatch_pLastRow As Long       ' cached last data row in Pressure Data
 Private mBatch_rawTSArr As Variant    ' cached timestamp column array (PRES_DATA_ROW to pLastRow)
+Private mBatch_hdrArr   As Variant    ' header block (rows 1-PRES_HDR_ROW, all cols) for column lookup
+Private mBatch_pLastCol As Long       ' number of columns in mBatch_hdrArr
+Private mBatch_dtTSArr  As Variant    ' date-range timestamps already written to TH col A
+Private mBatch_nRows    As Long       ' number of rows in the current date range
 
 ' ---------------------------------------------------------------------------
 ' TH_DataCol
@@ -214,7 +218,49 @@ Private Function FindPressureDataCol(wsPres As Worksheet, _
 End Function
 
 ' ---------------------------------------------------------------------------
-' PopulateElevationTH
+' FindColInHdrArr
+' Batch-mode equivalent of FindPressureDataCol.  Scans the pre-loaded
+' mBatch_hdrArr (rows 1-PRES_HDR_ROW, all columns) entirely in memory —
+' zero worksheet reads.  Falls back to Logger ID lookup (FindLoggerID) if
+' no direct name match is found.  Returns 0 if not found.
+' ---------------------------------------------------------------------------
+Private Function FindColInHdrArr(pointRef As String) As Long
+    FindColInHdrArr = 0
+    If IsEmpty(mBatch_hdrArr) Or mBatch_pLastCol < 2 Then Exit Function
+
+    Dim lRef As String: lRef = LCase(pointRef)
+    Dim r As Long, c As Long
+
+    ' Direct name scan across all header rows
+    For r = 1 To PRES_HDR_ROW
+        If r <= UBound(mBatch_hdrArr, 1) Then
+            For c = 2 To mBatch_pLastCol
+                If LCase(Trim(CStr(mBatch_hdrArr(r, c)))) = lRef Then
+                    FindColInHdrArr = c
+                    Exit Function
+                End If
+            Next c
+        End If
+    Next r
+
+    ' Fallback: Logger ID lookup (reads Point Index once per sensor — fast
+    ' compared to the eliminated ~1001 Pressure Data cell reads)
+    Dim lgID As String: lgID = FindLoggerID(pointRef)
+    If lgID = "" Or LCase(lgID) = lRef Then Exit Function
+    Dim lLgID As String: lLgID = LCase(lgID)
+    For r = 1 To PRES_HDR_ROW
+        If r <= UBound(mBatch_hdrArr, 1) Then
+            For c = 2 To mBatch_pLastCol
+                If LCase(Trim(CStr(mBatch_hdrArr(r, c)))) = lLgID Then
+                    FindColInHdrArr = c
+                    Exit Function
+                End If
+            Next c
+        End If
+    Next r
+End Function
+
+
 ' Writes the FINAL Z / BWL elevation from Point Index into col D (Z (m))
 ' for the given sensor config row.  Clears the cell if no match is found.
 ' ---------------------------------------------------------------------------
@@ -436,10 +482,32 @@ Sub RebuildDataTable(ws As Worksheet)
     ' ── Populate each active sensor ───────────────────────────────────────
     ' Pre-load the Pressure Data cache so PopulateOneSensor can reuse the
     ' already-read timestamp array instead of re-reading it once per sensor.
+    ' Also cache the header block (rows 1-PRES_HDR_ROW) and the date-range
+    ' timestamp slice so PopulateOneSensor never re-reads the worksheet for
+    ' these during a batch rebuild.
     mBatch_Active   = True
     Set mBatch_wsPres   = wsPres
     mBatch_pLastRow = pLastRow
     mBatch_rawTSArr = allTS
+
+    ' Cache date-range timestamps: outTS is already built, reuse it directly.
+    mBatch_nRows   = nRows
+    mBatch_dtTSArr = outTS
+
+    ' Cache the header block for column lookup.
+    ' Scanning rows 1-PRES_HDR_ROW once here avoids FindPressureDataCol
+    ' reading ~1001 individual cells per sensor during the batch loop.
+    Dim hLastCol As Long: hLastCol = 0
+    Dim hhr As Long
+    For hhr = 1 To PRES_HDR_ROW
+        Dim htc As Long: htc = wsPres.Cells(hhr, wsPres.Columns.Count).End(xlToLeft).Column
+        If htc > hLastCol Then hLastCol = htc
+    Next hhr
+    mBatch_pLastCol = hLastCol
+    If hLastCol >= 2 Then
+        mBatch_hdrArr = wsPres.Range(wsPres.Cells(1, 1), _
+                                     wsPres.Cells(PRES_HDR_ROW, hLastCol)).Value
+    End If
 
     Dim r As Long
     For r = TH_CONF_START To TH_CONF_END
@@ -455,6 +523,10 @@ Sub RebuildDataTable(ws As Worksheet)
     mBatch_Active = False
     Set mBatch_wsPres = Nothing
     mBatch_rawTSArr = Empty
+    mBatch_hdrArr   = Empty
+    mBatch_dtTSArr  = Empty
+    mBatch_pLastCol = 0
+    mBatch_nRows    = 0
 
 Done:
     Application.ScreenUpdating = True
@@ -472,9 +544,15 @@ Sub PopulateOneSensor(ws As Worksheet, cfgRow As Long)
     Dim pointRef As String
     pointRef = Trim(CStr(ws.Cells(cfgRow, TH_REF).Value))
 
-    ' Clear existing data for this column
+    ' Clear existing data for this column.
+    ' During batch mode the data row count is known from the cache; outside
+    ' batch we scan the sheet to find the last used row in the timestamp column.
     Dim lastData As Long
-    lastData = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    If mBatch_Active Then
+        lastData = TH_DATA_ROW + mBatch_nRows - 1
+    Else
+        lastData = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    End If
     If lastData >= TH_DATA_ROW Then
         ws.Range(ws.Cells(TH_DATA_ROW, dataCol), _
                  ws.Cells(lastData, dataCol)).ClearContents
@@ -498,9 +576,15 @@ Sub PopulateOneSensor(ws As Worksheet, cfgRow As Long)
     End If
     If wsPres Is Nothing Then Exit Sub
 
-    ' Find the column in Pressure Data
+    ' Find the column in Pressure Data.
+    ' During batch mode use the pre-loaded header array (zero worksheet reads);
+    ' outside batch fall back to FindPressureDataCol (individual cell reads).
     Dim rawCol As Long
-    rawCol = FindPressureDataCol(wsPres, pointRef)
+    If mBatch_Active Then
+        rawCol = FindColInHdrArr(pointRef)
+    Else
+        rawCol = FindPressureDataCol(wsPres, pointRef)
+    End If
     If rawCol = 0 Then Exit Sub    ' sensor not in Pressure Data — leave blank
 
     ' Read Offset and Z elevation (Δt removed — no time shift)
@@ -512,15 +596,23 @@ Sub PopulateOneSensor(ws As Worksheet, cfgRow As Long)
     v = ws.Cells(cfgRow, TH_ELEV).Value
     If IsNumeric(v) Then zElev = CDbl(v)
 
-    ' How many rows are in the data table?
-    lastData = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
-    If lastData < TH_DATA_ROW Then Exit Sub
-    Dim nRows As Long: nRows = lastData - TH_DATA_ROW + 1
-
-    ' Load data table timestamps into an array
-    Dim dtTS As Variant
-    dtTS = ws.Range(ws.Cells(TH_DATA_ROW, 1), _
-                    ws.Cells(TH_DATA_ROW + nRows - 1, 1)).Value
+    ' How many rows are in the data table, and what are those timestamps?
+    ' During batch mode these are pre-cached by RebuildDataTable (outTS was
+    ' already built there — we reuse it directly, zero extra worksheet reads).
+    ' Outside batch we must read TH col A from the sheet.
+    Dim nRows As Long
+    Dim dtTS  As Variant
+    If mBatch_Active Then
+        nRows = mBatch_nRows
+        dtTS  = mBatch_dtTSArr
+    Else
+        lastData = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        If lastData < TH_DATA_ROW Then Exit Sub
+        nRows = lastData - TH_DATA_ROW + 1
+        dtTS = ws.Range(ws.Cells(TH_DATA_ROW, 1), _
+                        ws.Cells(TH_DATA_ROW + nRows - 1, 1)).Value
+    End If
+    If nRows = 0 Then Exit Sub
 
     ' Load raw pressure timestamps + values from Pressure Data.
     ' During a batch rebuild the timestamps are pre-cached by RebuildDataTable,
