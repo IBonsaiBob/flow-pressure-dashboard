@@ -1,0 +1,57 @@
+' ============================================================
+' Point Index Sheet — Event Handlers  (v1.60)
+' How to install:
+'   1. Alt+F11 to open the VBA editor.
+'   2. In the Project pane, expand "Microsoft Excel Objects".
+'   3. Double-click "Point Index".
+'   4. Paste this entire block, replacing any existing code.
+' ============================================================
+'
+' Depends on Module3 (SyncZToTotalHead) being installed.
+'
+' ── Point Index layout ────────────────────────────────────────────────────────
+'   Row 3  : headers  — "Point Ref" (col A), "FINAL Z / BWL" (col O), etc.
+'   Row 4+ : data rows
+'   The column positions are found dynamically by header name so the sheet can
+'   be re-arranged without breaking this code.
+' ──────────────────────────────────────────────────────────────────────────────
+
+Private Sub Worksheet_Change(ByVal Target As Range)
+    Application.EnableEvents = False
+    On Error Resume Next
+
+    Dim pCell As Range
+    For Each pCell In Target
+
+        ' Only react to data rows (row 4+) — skip header rows
+        If pCell.Row >= 4 Then
+
+            ' ── FINAL Z / BWL cell changed ───────────────────────────────────
+            ' Identify whether this cell is in the "FINAL Z / BWL" column by
+            ' scanning row 3 for that header, then sync the new value to the
+            ' matching sensor row in Total Head (col D).
+            ' SyncZToTotalHead also calls PopulateOneSensor + RefreshTotalHeadChart
+            ' on the Total Head sheet so the data column updates immediately.
+            Dim lastCol As Long
+            lastCol = Me.Cells(3, Me.Columns.Count).End(xlToLeft).Column
+            Dim zCol  As Long: zCol = 0
+            Dim c     As Long
+            For c = 1 To lastCol
+                If LCase(Trim(CStr(Me.Cells(3, c).Value))) = "final z / bwl" Then
+                    zCol = c
+                    Exit For
+                End If
+            Next c
+
+            If zCol > 0 And pCell.Column = zCol Then
+                SyncZToTotalHead Me, pCell.Row
+            End If
+
+        End If
+
+    Next pCell
+
+    ' Guaranteed restore: runs even if On Error Resume Next swallowed an error
+    Application.EnableEvents = True
+    On Error GoTo 0
+End Sub

@@ -1,5 +1,5 @@
 ' ============================================================
-' Module3 — Total Head (New) Sheet Procedures  (v1.59)
+' Module3 — Total Head (New) Sheet Procedures  (v1.60)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. Insert → Module.
@@ -1250,6 +1250,8 @@ End Sub
 ' WriteElevationToPointIndex
 ' Writes the Z (m) value from col D of the given config row back to the
 ' "FINAL Z / BWL" column in Point Index for the matching Point Ref.
+' Also appends a compact note to the Point Index "Point Notes" column so the
+' change history is visible alongside the sensor record.
 ' Called when the user manually edits col D so Point Index stays in sync.
 ' ---------------------------------------------------------------------------
 Sub WriteElevationToPointIndex(ws As Worksheet, cfgRow As Long)
@@ -1289,7 +1291,71 @@ Sub WriteElevationToPointIndex(ws As Worksheet, cfgRow As Long)
     For r = 4 To lastRow
         If LCase(Trim(CStr(wsIdx.Cells(r, ptCol).Value))) = LCase(pointRef) Then
             wsIdx.Cells(r, zCol).Value = CDbl(zVal)
+            ' Append a note recording this Z change (source: Total Head sheet)
+            Dim note As String
+            note = Format(Now, "dd/mm/yyyy HH:nn") & " | Z: " & Format(CDbl(zVal), "0.###") & " (from TH)"
+            WriteDataNoteToPointIndex pointRef, note
             Exit Sub
+        End If
+    Next r
+End Sub
+
+' ---------------------------------------------------------------------------
+' SyncZToTotalHead
+' Called when Point Index "FINAL Z / BWL" changes for a sensor row.
+' Finds the matching Point Ref in Total Head config rows, updates col D (Z(m)),
+' repopulates the sensor data column and refreshes the chart.
+' Also appends a note to the Point Index "Point Notes" column.
+' Events are already disabled by the PointIndex Worksheet_Change caller.
+' ---------------------------------------------------------------------------
+Sub SyncZToTotalHead(wsIdx As Worksheet, idxRow As Long)
+    Dim ptCol As Long: ptCol = 0
+    Dim zCol  As Long: zCol  = 0
+    Dim lastCol As Long
+    lastCol = wsIdx.Cells(3, wsIdx.Columns.Count).End(xlToLeft).Column
+    Dim c As Long
+    For c = 1 To lastCol
+        Select Case LCase(Trim(CStr(wsIdx.Cells(3, c).Value)))
+            Case "point ref":     ptCol = c
+            Case "final z / bwl": zCol  = c
+        End Select
+    Next c
+    If ptCol = 0 Or zCol = 0 Then Exit Sub
+
+    Dim pointRef As String
+    pointRef = Trim(CStr(wsIdx.Cells(idxRow, ptCol).Value))
+    If pointRef = "" Then Exit Sub
+
+    Dim zVal As Variant
+    zVal = wsIdx.Cells(idxRow, zCol).Value
+
+    Dim wsTH As Worksheet
+    Dim wsT  As Worksheet
+    For Each wsT In ThisWorkbook.Worksheets
+        If LCase(Trim(wsT.Name)) = "total head" Then
+            Set wsTH = wsT: Exit For
+        End If
+    Next wsT
+    If wsTH Is Nothing Then Exit Sub
+
+    Dim r As Long
+    For r = TH_CONF_START To TH_CONF_END
+        If LCase(Trim(CStr(wsTH.Cells(r, TH_REF).Value))) = LCase(pointRef) Then
+            ' Write Z to Total Head col D and repopulate the sensor data column
+            If Not IsEmpty(zVal) And IsNumeric(zVal) Then
+                wsTH.Cells(r, TH_ELEV).Value = CDbl(zVal)
+            Else
+                wsTH.Cells(r, TH_ELEV).ClearContents
+            End If
+            PopulateOneSensor wsTH, r
+            RefreshTotalHeadChart wsTH
+            ' Append a note recording this Z change (source: Point Index)
+            If Not IsEmpty(zVal) And IsNumeric(zVal) Then
+                Dim note As String
+                note = Format(Now, "dd/mm/yyyy HH:nn") & " | Z: " & Format(CDbl(zVal), "0.###") & " (from PI)"
+                WriteDataNoteToPointIndex pointRef, note
+            End If
+            Exit For
         End If
     Next r
 End Sub
