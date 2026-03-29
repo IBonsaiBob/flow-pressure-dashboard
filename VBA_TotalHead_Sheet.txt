@@ -1,5 +1,5 @@
 ' ============================================================
-' Total Head (New) Worksheet — Event Handlers  (v1.61)
+' Total Head (New) Worksheet — Event Handlers  (v1.62)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. In the Project pane, expand "Microsoft Excel Objects".

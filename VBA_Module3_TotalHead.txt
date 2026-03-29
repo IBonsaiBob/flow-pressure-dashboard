@@ -1,5 +1,5 @@
 ' ============================================================
-' Module3 — Total Head (New) Sheet Procedures  (v1.61)
+' Module3 — Total Head (New) Sheet Procedures  (v1.62)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. Insert → Module.
@@ -47,6 +47,16 @@ Private Const TH_REF   As Long = 1   ' col A: Point Ref
 Private Const TH_OFF   As Long = 2   ' col B: Offset
 Private Const TH_ELEV  As Long = 4   ' col D: Z (m)
 Private Const TH_NOTES As Long = 7   ' col G: Point Notes
+
+' ── Pressure Data read-cache (active during RebuildDataTable batch) ─────────────────────────
+' RebuildDataTable reads the Pressure Data timestamp column once and caches it here.
+' PopulateOneSensor reuses the cache instead of re-reading the same large array for
+' every sensor — reducing N+1 Pressure Data reads down to a single read per rebuild.
+' The cache is cleared immediately after the batch loop completes.
+Private mBatch_Active   As Boolean    ' True while RebuildDataTable batch is running
+Private mBatch_wsPres   As Worksheet  ' cached Pressure Data worksheet reference
+Private mBatch_pLastRow As Long       ' cached last data row in Pressure Data
+Private mBatch_rawTSArr As Variant    ' cached timestamp column array (PRES_DATA_ROW to pLastRow)
 
 ' ---------------------------------------------------------------------------
 ' TH_DataCol
@@ -270,20 +280,67 @@ Sub RepopulateOffsetsFromPressureData(ws As Worksheet)
     Next wsT
     If wsPres Is Nothing Then Exit Sub
 
-    Dim r   As Long
-    Dim ref As String
-    Dim pc  As Long
-    For r = TH_CONF_START To TH_CONF_END
-        ref = Trim(CStr(ws.Cells(r, TH_REF).Value))
+    ' Read the header rows + offset row into a single array (one I/O operation).
+    ' This avoids calling FindPressureDataCol — which scans cell-by-cell — once
+    ' per sensor; instead we search the pre-loaded array in memory.
+    Dim maxCol As Long
+    Dim hr As Long
+    Dim testCol As Long
+    For hr = 1 To PRES_OFFSET_ROW
+        testCol = wsPres.Cells(hr, wsPres.Columns.Count).End(xlToLeft).Column
+        If testCol > maxCol Then maxCol = testCol
+    Next hr
+    If maxCol < 2 Then Exit Sub
+
+    Dim metaArr As Variant
+    metaArr = wsPres.Range(wsPres.Cells(1, 1), _
+                           wsPres.Cells(PRES_OFFSET_ROW, maxCol)).Value
+
+    Dim row  As Long
+    Dim ref  As String
+    Dim pc   As Long
+    Dim c    As Long
+    Dim lRef As String
+    For row = TH_CONF_START To TH_CONF_END
+        ref = Trim(CStr(ws.Cells(row, TH_REF).Value))
         If ref <> "" Then
-            pc = FindPressureDataCol(wsPres, ref)
+            pc   = 0
+            lRef = LCase(ref)
+            ' Search header rows in the pre-loaded array
+            For hr = 1 To PRES_HDR_ROW
+                If hr <= UBound(metaArr, 1) Then
+                    For c = 2 To maxCol
+                        If LCase(Trim(CStr(metaArr(hr, c)))) = lRef Then
+                            pc = c: Exit For
+                        End If
+                    Next c
+                End If
+                If pc > 0 Then Exit For
+            Next hr
+            ' Fallback: Logger ID lookup
+            If pc = 0 Then
+                Dim lgID  As String: lgID  = FindLoggerID(ref)
+                Dim lLgID As String: lLgID = LCase(lgID)
+                If lgID <> "" And lLgID <> lRef Then
+                    For hr = 1 To PRES_HDR_ROW
+                        If hr <= UBound(metaArr, 1) Then
+                            For c = 2 To maxCol
+                                If LCase(Trim(CStr(metaArr(hr, c)))) = lLgID Then
+                                    pc = c: Exit For
+                                End If
+                            Next c
+                        End If
+                        If pc > 0 Then Exit For
+                    Next hr
+                End If
+            End If
             If pc > 0 Then
-                ws.Cells(r, TH_OFF).Value = wsPres.Cells(PRES_OFFSET_ROW, pc).Value
+                ws.Cells(row, TH_OFF).Value = metaArr(PRES_OFFSET_ROW, pc)
             Else
-                ws.Cells(r, TH_OFF).ClearContents
+                ws.Cells(row, TH_OFF).ClearContents
             End If
         End If
-    Next r
+    Next row
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -295,10 +352,15 @@ End Sub
 '   4. Does NOT rebuild the chart — caller must call RefreshTotalHeadChart.
 ' ---------------------------------------------------------------------------
 Sub RebuildDataTable(ws As Worksheet)
-    ' Guarantee cleanup (ScreenUpdating + Calculation) even on unexpected errors.
+    ' Guarantee ScreenUpdating restore even on unexpected errors.
     On Error GoTo Done
     Application.ScreenUpdating = False
-    Application.Calculation   = xlCalculationManual
+    ' NOTE: We deliberately do NOT set Application.Calculation = xlCalculationManual.
+    ' The data table cells (rows 45+) have no formula dependents, so there is no
+    ' recalculation overhead during the bulk writes.  More importantly, switching to
+    ' Manual and then restoring to Automatic at the end forces Excel to recalculate
+    ' every formula in the entire workbook (including VLOOKUPs on other sheets),
+    ' which is the primary reason archive loads are so much slower than manual entry.
 
     ' ── Clear existing data table ──────────────────────────────────────────
     Dim lastUsed As Long
@@ -372,6 +434,13 @@ Sub RebuildDataTable(ws As Worksheet)
     End With
 
     ' ── Populate each active sensor ───────────────────────────────────────
+    ' Pre-load the Pressure Data cache so PopulateOneSensor can reuse the
+    ' already-read timestamp array instead of re-reading it once per sensor.
+    mBatch_Active   = True
+    Set mBatch_wsPres   = wsPres
+    mBatch_pLastRow = pLastRow
+    mBatch_rawTSArr = allTS
+
     Dim r As Long
     For r = TH_CONF_START To TH_CONF_END
         Dim pointRef As String
@@ -382,8 +451,12 @@ Sub RebuildDataTable(ws As Worksheet)
         End If
     Next r
 
+    ' Clear cache immediately after the batch loop.
+    mBatch_Active = False
+    Set mBatch_wsPres = Nothing
+    mBatch_rawTSArr = Empty
+
 Done:
-    Application.Calculation   = xlCalculationAutomatic
     Application.ScreenUpdating = True
 End Sub
 
@@ -409,14 +482,20 @@ Sub PopulateOneSensor(ws As Worksheet, cfgRow As Long)
 
     If pointRef = "" Then Exit Sub
 
-    ' Find Pressure Data sheet
+    ' Use the cached Pressure Data sheet during a batch rebuild (called from
+    ' RebuildDataTable); otherwise find it fresh.  The cache avoids the
+    ' worksheet-loop overhead on every sensor in the batch.
     Dim wsPres As Worksheet
-    Dim wsT    As Worksheet
-    For Each wsT In ThisWorkbook.Worksheets
-        If LCase(Trim(wsT.Name)) = "pressure data" Then
-            Set wsPres = wsT: Exit For
-        End If
-    Next wsT
+    If mBatch_Active Then
+        Set wsPres = mBatch_wsPres
+    Else
+        Dim wsT As Worksheet
+        For Each wsT In ThisWorkbook.Worksheets
+            If LCase(Trim(wsT.Name)) = "pressure data" Then
+                Set wsPres = wsT: Exit For
+            End If
+        Next wsT
+    End If
     If wsPres Is Nothing Then Exit Sub
 
     ' Find the column in Pressure Data
@@ -443,16 +522,26 @@ Sub PopulateOneSensor(ws As Worksheet, cfgRow As Long)
     dtTS = ws.Range(ws.Cells(TH_DATA_ROW, 1), _
                     ws.Cells(TH_DATA_ROW + nRows - 1, 1)).Value
 
-    ' Load raw pressure timestamps + values from Pressure Data into arrays
-    Dim pLastRow As Long
-    pLastRow = wsPres.Cells(wsPres.Rows.Count, 1).End(xlUp).Row
-    If pLastRow < PRES_DATA_ROW Then Exit Sub
-
-    Dim rawN As Long: rawN = pLastRow - PRES_DATA_ROW + 1   ' number of data rows
+    ' Load raw pressure timestamps + values from Pressure Data.
+    ' During a batch rebuild the timestamps are pre-cached by RebuildDataTable,
+    ' so we reuse that array instead of re-reading the same large range.
+    Dim pLastRow  As Long
+    Dim rawN      As Long
     Dim rawTSArr  As Variant
     Dim rawValArr As Variant
-    rawTSArr  = wsPres.Range(wsPres.Cells(PRES_DATA_ROW, 1),      wsPres.Cells(pLastRow, 1)).Value
-    rawValArr = wsPres.Range(wsPres.Cells(PRES_DATA_ROW, rawCol),  wsPres.Cells(pLastRow, rawCol)).Value
+    If mBatch_Active Then
+        pLastRow  = mBatch_pLastRow
+        rawN      = pLastRow - PRES_DATA_ROW + 1
+        rawTSArr  = mBatch_rawTSArr
+    Else
+        pLastRow = wsPres.Cells(wsPres.Rows.Count, 1).End(xlUp).Row
+        rawN     = pLastRow - PRES_DATA_ROW + 1
+        rawTSArr = wsPres.Range(wsPres.Cells(PRES_DATA_ROW, 1), _
+                                wsPres.Cells(pLastRow, 1)).Value
+    End If
+    If pLastRow < PRES_DATA_ROW Then Exit Sub
+    rawValArr = wsPres.Range(wsPres.Cells(PRES_DATA_ROW, rawCol), _
+                             wsPres.Cells(pLastRow, rawCol)).Value
 
     Dim rawTS()   As Double
     Dim rawVals() As Variant
