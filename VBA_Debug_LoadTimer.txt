@@ -523,8 +523,31 @@ WriteLog:
     On Error GoTo 0
     Application.DisplayAlerts = True
 
+    ' Add new log sheet — may fail if workbook structure is protected
+    On Error Resume Next
     Set wsLog = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
-    wsLog.Name = DBG_LOG_SHEET
+    On Error GoTo 0
+
+    If wsLog Is Nothing Then
+        ' Workbook structure is protected (or Add failed for another reason).
+        ' Try to reuse an existing sheet with the target name, else bail out.
+        On Error Resume Next
+        Set wsLog = ThisWorkbook.Sheets(DBG_LOG_SHEET)
+        On Error GoTo 0
+        If wsLog Is Nothing Then
+            Application.StatusBar = False
+            MsgBox "Could not create the '" & DBG_LOG_SHEET & "' sheet." & vbLf & _
+                   "The workbook structure may be protected." & vbLf & _
+                   "Go to Review → Protect Workbook and remove the password, then run again.", _
+                   vbCritical, "TH Debug — cannot write log"
+            GoTo CleanUp
+        End If
+        wsLog.Cells.Clear     ' re-use the existing sheet
+    Else
+        On Error Resume Next
+        wsLog.Name = DBG_LOG_SHEET   ' harmless if rename clashes
+        On Error GoTo 0
+    End If
 
     ' Header
     wsLog.Cells(1, 1).Value = "Phase / Sensor"
@@ -538,7 +561,10 @@ WriteLog:
         Dim parts() As String
         parts = Split(logLines(lg), Chr(9))
         wsLog.Cells(lg + 2, 1).Value = parts(0)
-        If UBound(parts) >= 1 Then wsLog.Cells(lg + 2, 2).Value = CDbl(parts(1))
+        ' Use Val(Replace(...)) for locale-safe decimal conversion
+        ' (Format uses the VBA neutral "." but CDbl respects locale; Val always uses ".")
+        If UBound(parts) >= 1 Then _
+            wsLog.Cells(lg + 2, 2).Value = Val(Replace(parts(1), ",", "."))
         If UBound(parts) >= 2 Then wsLog.Cells(lg + 2, 3).Value = parts(2)
     Next lg
 
@@ -567,12 +593,13 @@ WriteLog:
     wsLog.Activate
     wsLog.Range("A1").Select
 
-    Application.StatusBar = False
-
     MsgBox "TH Debug complete — results on the '" & DBG_LOG_SHEET & "' sheet." & vbLf & _
            "Red cells = slow (>2 s), Orange = notable (>0.5 s)." & vbLf & vbLf & _
            "Grand total: " & Format(Elapsed(tAll), "0.00") & " seconds.", _
            vbInformation, "TH Debug Load Timer"
+
+CleanUp:
+    Application.StatusBar = False
 
 End Sub
 
