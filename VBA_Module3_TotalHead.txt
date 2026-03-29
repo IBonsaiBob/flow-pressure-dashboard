@@ -1,5 +1,5 @@
 ' ============================================================
-' Module3 — Total Head (New) Sheet Procedures  (v1.60)
+' Module3 — Total Head (New) Sheet Procedures  (v1.61)
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
 '   2. Insert → Module.
@@ -1033,7 +1033,7 @@ End Sub
 ' Called automatically from InitTotalHeadSheet and after every archive save.
 ' ---------------------------------------------------------------------------
 Sub RefreshLoadDropdown(ws As Worksheet)
-    Const LOAD_CELL As String = "D3"   ' Zone Name cell — also the archive load dropdown
+    Const LOAD_CELL As String = "D3"   ' Zone Name cell — archive load dropdown applied here
 
     On Error Resume Next
     Dim cell As Range
