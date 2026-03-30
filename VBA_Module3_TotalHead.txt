@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.63
+' v1.64
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -34,7 +34,7 @@
 '
 ' ARCHIVE LAYOUT (Total Head Archive)
 '   col  1 A   Archived  (timestamp)
-'   col  2 B   Date
+'   col  2 B   System name
 '   col  3 C   Chart Title / Zone Name  ← search key
 '   col  4 D   Driving Head
 '   col  5 E   Zone Notes
