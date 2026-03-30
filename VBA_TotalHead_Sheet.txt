@@ -26,6 +26,8 @@ Option Explicit
 Private mOrigZByRow(9 To 43)   As Variant  ' Z before Point Ref change
 Private mOrigRefByRow(9 To 43) As String   ' Point Ref before it is cleared
 
+Private Const LOAD_DROPDOWN_PLACEHOLDER As String = """Drop Down to load saved selections"""
+
 ' ============================================================
 ' Worksheet_Activate
 ' ============================================================
@@ -95,7 +97,7 @@ Private Sub Worksheet_Change(ByVal Target As Range)
     If r = 5 And c = 12 Then
         Dim selectedZone As String
         selectedZone = Trim(CStr(Me.Cells(5, 12).Value))
-        If selectedZone <> "" And selectedZone <> """Drop Down to load saved selections""" Then
+        If selectedZone <> "" And selectedZone <> LOAD_DROPDOWN_PLACEHOLDER Then
             Call LoadTotalHeadByName(selectedZone)
         End If
         Exit Sub
@@ -166,7 +168,7 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         ptD = Trim(CStr(Me.Cells(r, 1).Value))
         If ptD <> "" And IsNumeric(Me.Cells(r, 4).Value) Then
             Dim noteTimestamp As String
-            noteTimestamp = Format(Now(), "DD/MM/YYYY HH:MM") & " | Elevation Change"
+            noteTimestamp = Format(Now(), "dd/mm/yyyy hh:nn") & " | Elevation Change"
             Call WriteElevationToPointIndex(ptD, CDbl(Me.Cells(r, 4).Value), noteTimestamp)
         End If
         Exit Sub   ' Z change alone does not need a full rebuild

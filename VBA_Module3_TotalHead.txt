@@ -96,6 +96,13 @@ Private Const PI_COL_FINAL_Z    As Long = 13   ' M
 Private Const PI_COL_NOTES      As Long = 22   ' V
 Private Const PI_DATA_FIRST_ROW As Long = 4
 
+' ── Named tolerances and sentinel values ─────────────────────
+Private Const Z_TOLERANCE        As Double = 0.0001
+Private Const TIMESTAMP_TOLERANCE As Double = 0.000001
+Private Const PD_MISSING_VALUE   As Long   = -999   ' no-data sentinel in raw data
+Private Const ZPI_SUFFIX         As String = " | Z(PI):"
+Private Const DATE_FMT           As String = "dd/mm/yyyy hh:nn"
+
 ' ── Batch cache (populated by RebuildDataTable) ──────────────
 ' Caching the Pressure Data header + timestamp arrays means
 ' each subsequent PopulateOneSensor call costs only array
@@ -525,13 +532,13 @@ Sub RecordSensorNote(wsThis As Worksheet, cfgRow As Long, _
     noteCell = CStr(wsThis.Cells(cfgRow, 7).Value)
 
     Dim noteStr As String
-    noteStr = Format(Now(), "DD/MM/YYYY HH:MM") & " | Z: " & zStr & _
+    noteStr = Format(Now(), DATE_FMT) & " | Z: " & zStr & _
               ". | Offset: " & ofsStr & ". | Notes: " & noteCell
 
     ' Include old Z if it has changed
     If Not IsEmpty(origZ) And IsNumeric(origZ) And Not IsEmpty(zVal) And IsNumeric(zVal) Then
-        If Abs(CDbl(origZ) - CDbl(zVal)) > 0.0001 Then
-            noteStr = noteStr & " | Z(PI): " & CStr(CDbl(origZ))
+        If Abs(CDbl(origZ) - CDbl(zVal)) > Z_TOLERANCE Then
+            noteStr = noteStr & ZPI_SUFFIX & " " & CStr(CDbl(origZ))
         End If
     End If
 
@@ -588,9 +595,9 @@ Sub RestorePointNotesTH()
                 If pos > 0 Then
                     Dim fragment As String
                     fragment = Trim(Mid(lastLine, pos + 7))
-                    ' Strip any trailing " | Z(PI): …" (not a user note)
+                    ' Strip any trailing ZPI_SUFFIX (not a user note)
                     Dim zpPos As Long
-                    zpPos = InStr(LCase(fragment), " | z(p")
+                    zpPos = InStr(LCase(fragment), LCase(ZPI_SUFFIX))
                     If zpPos > 0 Then fragment = Left(fragment, zpPos - 1)
                     wsThis.Cells(cfg, 7).Value = fragment
                 End If
@@ -758,14 +765,14 @@ Sub PopulateOneSensor(wsThis As Worksheet, wsPD As Worksheet, _
         thTSd = CDbl(thTSv)
 
         ' Advance PD cursor to matching or later timestamp
-        Do While jj <= mBatch_pdLastRow And mBatch_pdTS(jj) < thTSd - 0.000001
+        Do While jj <= mBatch_pdLastRow And mBatch_pdTS(jj) < thTSd - TIMESTAMP_TOLERANCE
             jj = jj + 1
         Loop
 
-        If jj <= mBatch_pdLastRow And Abs(mBatch_pdTS(jj) - thTSd) < 0.000001 Then
+        If jj <= mBatch_pdLastRow And Abs(mBatch_pdTS(jj) - thTSd) < TIMESTAMP_TOLERANCE Then
             Dim v As Variant
             v = pdData(jj)
-            If IsNumeric(v) And CDbl(v) <> -999 Then
+            If IsNumeric(v) And CDbl(v) <> PD_MISSING_VALUE Then
                 outArr(thRow - DATA_FIRST_ROW + 1, 1) = CDbl(v) + offset
             End If
         End If
@@ -1161,7 +1168,7 @@ Sub ExportTotalHeadPRN()
     If zoneName = "" Then zoneName = "TotalHead"
 
     Dim filename As String
-    filename = exportPath & zoneName & "_" & Format(Now(), "YYYYMMDD_HHMMSS") & ".prn"
+    filename = exportPath & zoneName & "_" & Format(Now(), "yyyymmdd_hhnnss") & ".prn"
 
     Dim fn As Integer
     fn = FreeFile
@@ -1185,7 +1192,7 @@ Sub ExportTotalHeadPRN()
         Dim tsv As Variant
         tsv = wsThis.Cells(rr, 1).Value
         If IsEmpty(tsv) Then GoTo NextPRNRow
-        Print #fn, Format(CDate(tsv), "DD/MM/YYYY HH:MM") & vbTab;
+        Print #fn, Format(CDate(tsv), DATE_FMT) & vbTab;
         For cfg = CFG_FIRST To CFG_LAST
             If Trim(CStr(wsThis.Cells(cfg, 1).Value)) <> "" Then
                 Dim v As Variant
