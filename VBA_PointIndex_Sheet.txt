@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_PointIndex_Sheet.txt  -  Sheet module for "Point Index"
-' v1.65
+' v1.66
 '
 ' Paste this entire file into the Sheet module for the
 ' "Point Index" worksheet in the VBA editor (Alt+F11,
@@ -33,8 +33,13 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         If IsEmpty(newZ) Or Not IsNumeric(newZ) Then Exit Sub
 
         ' Update matching rows in Total Head
+        On Error GoTo EH
         Application.EnableEvents = False
         Call SyncZToTotalHead(ptRef, CDbl(newZ))
         Application.EnableEvents = True
     End If
+    Exit Sub
+
+EH:
+    Application.EnableEvents = True
 End Sub

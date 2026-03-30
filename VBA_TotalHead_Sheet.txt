@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_TotalHead_Sheet.txt  -  Sheet module for "Total Head"
-' v1.65
+' v1.66
 '
 ' Paste this entire file into the Sheet module for the
 ' "Total Head" worksheet in the VBA editor (Alt+F11,
@@ -32,6 +32,9 @@ Private Const LOAD_DROPDOWN_PLACEHOLDER As String = """Drop Down to load saved s
 ' Worksheet_Activate
 ' ============================================================
 Private Sub Worksheet_Activate()
+    ' Safety net: if a previous error left EnableEvents=False,
+    ' activating this sheet restores it so all handlers work again.
+    Application.EnableEvents = True
     Call InitTotalHeadSheet
     Call PopulateAllElevationsTH
     Call RebuildDataTable
@@ -43,6 +46,7 @@ End Sub
 ' Worksheet_Change
 ' ============================================================
 Private Sub Worksheet_Change(ByVal Target As Range)
+    On Error GoTo EH
     ' ── Multi-cell change (paste / fill-down / range-clear) ─────
     ' All multi-cell changes are ignored UNLESS they touch col A
     ' config rows 9-43.  In that case, re-sync all offsets and
@@ -91,7 +95,7 @@ Private Sub Worksheet_Change(ByVal Target As Range)
             cht.Chart.HasTitle = True
             cht.Chart.ChartTitle.Text = newZone
         End If
-        On Error GoTo 0
+        On Error GoTo EH
 
         ' Check archive – load if this zone name is saved
         If newZone <> "" Then
@@ -207,6 +211,12 @@ Private Sub Worksheet_Change(ByVal Target As Range)
 RebuildAndExit:
     Call RebuildDataTable
     Call RefreshTotalHeadChart
+    Exit Sub
+
+EH:
+    ' Any error while EnableEvents=False would leave it permanently
+    ' False for the session – guarantee it is always restored.
+    Application.EnableEvents = True
 End Sub
 
 ' ============================================================
@@ -216,6 +226,7 @@ End Sub
 '    can reference the old value after the user edits the cell.
 ' ============================================================
 Private Sub Worksheet_SelectionChange(ByVal Target As Range)
+    On Error GoTo EH
     ' ── Snapshot col A config cells ─────────────────────────
     Dim sc As Range
     For Each sc In Target.Cells
@@ -234,4 +245,8 @@ Private Sub Worksheet_SelectionChange(ByVal Target As Range)
         ' Move selection away so a second click still triggers
         Me.Cells(3, 4).Select
     End If
+    Exit Sub
+
+EH:
+    Application.EnableEvents = True
 End Sub

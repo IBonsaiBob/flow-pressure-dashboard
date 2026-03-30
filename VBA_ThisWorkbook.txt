@@ -1,0 +1,46 @@
+' ============================================================
+' VBA_ThisWorkbook.txt  -  ThisWorkbook module
+' v1.66
+'
+' Paste this entire file into the ThisWorkbook module in the
+' VBA editor (Alt+F11, double-click "ThisWorkbook" in the
+' project tree).
+'
+' PURPOSE
+'   Application.OnKey is APPLICATION-level, not workbook-level.
+'   Registering a shortcut in Workbook_Open means it stays active
+'   across every other open workbook until Excel is closed.
+'
+'   Instead we register on Workbook_Activate (this workbook
+'   becomes the active one) and unregister on Workbook_Deactivate
+'   (user switches away) and Workbook_BeforeClose (file closes).
+'   This scopes the custom shortcut to exactly when this
+'   workbook is in focus.
+'
+' SHORTCUT
+'   Ctrl+Shift+V  →  CopySelectionToPlotsHeaders
+'   (defined in Module2 / VBA_Module2_Plots.txt)
+' ============================================================
+Option Explicit
+
+Private Sub Workbook_Open()
+    ' Register on open (this workbook will be active at this point)
+    Application.OnKey "^+V", "CopySelectionToPlotsHeaders"
+End Sub
+
+Private Sub Workbook_Activate()
+    ' Re-register whenever the user switches back to this workbook
+    Application.OnKey "^+V", "CopySelectionToPlotsHeaders"
+End Sub
+
+Private Sub Workbook_Deactivate()
+    ' Unregister when user switches to another workbook —
+    ' restores Ctrl+Shift+V to Excel default in all other files.
+    Application.OnKey "^+V"
+End Sub
+
+Private Sub Workbook_BeforeClose(Cancel As Boolean)
+    ' Unregister before the file closes so the shortcut doesn't
+    ' linger if the user cancels the close and works elsewhere.
+    Application.OnKey "^+V"
+End Sub
