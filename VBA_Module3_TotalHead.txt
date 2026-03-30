@@ -101,7 +101,7 @@ Private Const Z_TOLERANCE        As Double = 0.0001
 Private Const TIMESTAMP_TOLERANCE As Double = 0.000001
 Private Const PD_MISSING_VALUE   As Long   = -999   ' no-data sentinel in raw data
 Private Const ZPI_SUFFIX         As String = " | Z(PI):"
-Private Const DATE_FMT           As String = "dd/mm/yyyy hh:nn"
+Public Const DATE_FMT           As String = "dd/mm/yyyy hh:nn"
 
 ' ── Batch cache (populated by RebuildDataTable) ──────────────
 ' Caching the Pressure Data header + timestamp arrays means
@@ -1055,12 +1055,12 @@ NextChSer:
     Dim ax As Axis
     Set ax = ch.Axes(xlCategory)
 
-    If Not IsEmpty(startD) And IsNumeric(CDbl(startD)) Then
+    If Not IsEmpty(startD) And IsNumeric(startD) Then
         ax.MinimumScale = Int(CDbl(startD))
     Else
         ax.MinimumScaleIsAuto = True
     End If
-    If Not IsEmpty(endD) And IsNumeric(CDbl(endD)) Then
+    If Not IsEmpty(endD) And IsNumeric(endD) Then
         ax.MaximumScale = Int(CDbl(endD)) + 1
     Else
         ax.MaximumScaleIsAuto = True

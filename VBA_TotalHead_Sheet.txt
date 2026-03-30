@@ -168,7 +168,7 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         ptD = Trim(CStr(Me.Cells(r, 1).Value))
         If ptD <> "" And IsNumeric(Me.Cells(r, 4).Value) Then
             Dim noteTimestamp As String
-            noteTimestamp = Format(Now(), "dd/mm/yyyy hh:nn") & " | Elevation Change"
+            noteTimestamp = Format(Now(), DATE_FMT) & " | Elevation Change"
             Call WriteElevationToPointIndex(ptD, CDbl(Me.Cells(r, 4).Value), noteTimestamp)
         End If
         Exit Sub   ' Z change alone does not need a full rebuild
