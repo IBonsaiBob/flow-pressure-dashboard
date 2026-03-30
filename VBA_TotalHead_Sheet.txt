@@ -44,9 +44,11 @@ End Sub
 ' ============================================================
 Private Sub Worksheet_Change(ByVal Target As Range)
     ' ── Multi-cell change (paste / fill-down / range-clear) ─────
-    ' Ignored for everything EXCEPT col A config rows 9-43.
-    ' If the paste touches any config Point Ref cell, re-sync all
-    ' offsets + elevations then rebuild – same as a single-cell entry.
+    ' All multi-cell changes are ignored UNLESS they touch col A
+    ' config rows 9-43.  In that case, re-sync all offsets and
+    ' elevations then rebuild – same effect as a single-cell entry.
+    ' When anyConfig is False the handler falls through to Exit Sub
+    ' and the change is silently ignored.
     If Target.Cells.Count > 1 Then
         Dim pc As Range
         Dim anyConfig As Boolean
