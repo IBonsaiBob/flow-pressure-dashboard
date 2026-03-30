@@ -1,0 +1,40 @@
+' ============================================================
+' VBA_PointIndex_Sheet.txt  -  Sheet module for "Point Index"
+' v1.63
+'
+' Paste this entire file into the Sheet module for the
+' "Point Index" worksheet in the VBA editor (Alt+F11,
+' double-click "Point Index" in the project tree).
+'
+' Handles bidirectional Z sync: when the user edits
+' FINAL Z / BWL (col M) in Point Index, the matching
+' Total Head config row(s) are updated automatically.
+' ============================================================
+Option Explicit
+
+' ============================================================
+' Worksheet_Change
+' ============================================================
+Private Sub Worksheet_Change(ByVal Target As Range)
+    If Target.Cells.Count > 1 Then Exit Sub
+
+    Dim r As Long, c As Long
+    r = Target.Row
+    c = Target.Column
+
+    ' ── Col M (FINAL Z / BWL) in data rows ─────────────────
+    If c = 13 And r >= 4 Then
+        Dim ptRef As String
+        ptRef = Trim(CStr(Me.Cells(r, 1).Value))
+        If ptRef = "" Then Exit Sub
+
+        Dim newZ As Variant
+        newZ = Me.Cells(r, 13).Value
+        If IsEmpty(newZ) Or Not IsNumeric(newZ) Then Exit Sub
+
+        ' Update matching rows in Total Head
+        Application.EnableEvents = False
+        Call SyncZToTotalHead(ptRef, CDbl(newZ))
+        Application.EnableEvents = True
+    End If
+End Sub

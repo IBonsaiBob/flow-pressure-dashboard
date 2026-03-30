@@ -1,0 +1,207 @@
+' ============================================================
+' VBA_TotalHead_Sheet.txt  -  Sheet module for "Total Head"
+' v1.63
+'
+' Paste this entire file into the Sheet module for the
+' "Total Head" worksheet in the VBA editor (Alt+F11,
+' double-click "Total Head" in the project tree).
+'
+' CHANGE HANDLERS
+'   D3  (Zone Name)   – auto-load from archive if name matches;
+'                       clear zone notes on new name; update chart
+'   D5:D6 (dates)     – rebuild data table + refresh chart
+'   Col A (Point Ref) – record old note, populate Z from PI,
+'                       sync offset from PD, rebuild data
+'   Col B (Offset)    – sync offset back to PD row 5, rebuild
+'   Col D (Z)         – write elevation back to Point Index
+'
+' SELECTION HANDLER
+'   I5  (Save button) – call ArchiveTotalHeadData
+'   L5  (Load drpdn)  – trigger handled via Worksheet_Change L5
+' ============================================================
+Option Explicit
+
+' Snapshots taken in SelectionChange so that Worksheet_Change
+' can report old values in Point Index notes.
+Private mOrigZByRow(9 To 43)   As Variant  ' Z before Point Ref change
+Private mOrigRefByRow(9 To 43) As String   ' Point Ref before it is cleared
+
+' ============================================================
+' Worksheet_Activate
+' ============================================================
+Private Sub Worksheet_Activate()
+    Call InitTotalHeadSheet
+    Call PopulateAllElevationsTH
+    Call RebuildDataTable
+    Call CreateTotalHeadChart
+    Call RefreshLoadDropdown
+End Sub
+
+' ============================================================
+' Worksheet_Change
+' ============================================================
+Private Sub Worksheet_Change(ByVal Target As Range)
+    If Target.Cells.Count > 1 Then Exit Sub   ' ignore multi-cell pastes
+
+    Dim r As Long, c As Long
+    r = Target.Row
+    c = Target.Column
+
+    ' ── D3: Zone Name ───────────────────────────────────────
+    If r = 3 And c = 4 Then
+        Dim newZone As String
+        newZone = Trim(CStr(Me.Cells(3, 4).Value))
+
+        ' Auto-clear zone notes when zone name changes
+        Application.EnableEvents = False
+        Me.Cells(9, 10).Value = ""
+        Application.EnableEvents = True
+
+        ' Update chart title immediately
+        On Error Resume Next
+        Dim cht As ChartObject
+        Set cht = Me.ChartObjects("TotalHeadChart")
+        If Not cht Is Nothing And newZone <> "" Then
+            cht.Chart.HasTitle = True
+            cht.Chart.ChartTitle.Text = newZone
+        End If
+        On Error GoTo 0
+
+        ' Check archive – load if this zone name is saved
+        If newZone <> "" Then
+            Dim wsArch As Worksheet
+            Set wsArch = ThisWorkbook.Sheets("Total Head Archive")
+            Dim lastArchRow As Long
+            lastArchRow = wsArch.Cells(wsArch.Rows.Count, 3).End(xlUp).Row
+            Dim rr As Long
+            For rr = 2 To lastArchRow
+                If Trim(CStr(wsArch.Cells(rr, 3).Value)) = newZone Then
+                    Call LoadTotalHeadByName(newZone)
+                    Exit Sub
+                End If
+            Next rr
+        End If
+        Exit Sub
+    End If
+
+    ' ── D5 / D6: Date range ─────────────────────────────────
+    If c = 4 And (r = 5 Or r = 6) Then
+        Call RebuildDataTable
+        Call RefreshTotalHeadChart
+        Exit Sub
+    End If
+
+    ' ── L5: Load dropdown ───────────────────────────────────
+    If r = 5 And c = 12 Then
+        Dim selectedZone As String
+        selectedZone = Trim(CStr(Me.Cells(5, 12).Value))
+        If selectedZone <> "" And selectedZone <> """Drop Down to load saved selections""" Then
+            Call LoadTotalHeadByName(selectedZone)
+        End If
+        Exit Sub
+    End If
+
+    ' ── Col A: Point Ref (config rows 9-43) ─────────────────
+    If c = 1 And r >= 9 And r <= 43 Then
+        Dim ptRef As String
+        ptRef = Trim(CStr(Me.Cells(r, 1).Value))
+
+        If ptRef = "" Then
+            ' Clearing a Point Ref: record note using the ref that was
+            ' there BEFORE the clear (captured in SelectionChange).
+            Call RecordSensorNote(Me, r, mOrigRefByRow(r), mOrigZByRow(r))
+
+            Application.EnableEvents = False
+            Me.Cells(r, 2).Value = 0    ' Offset
+            Me.Cells(r, 4).Value = ""   ' Z
+            Me.Cells(r, 7).Value = ""   ' Notes
+            ' Clear data column header and data
+            Dim dataCol As Long
+            dataCol = r - 7
+            Dim lastDataRow As Long
+            lastDataRow = Me.Cells(Me.Rows.Count, 1).End(xlUp).Row
+            If lastDataRow >= 46 Then
+                Me.Range(Me.Cells(45, dataCol), Me.Cells(lastDataRow, dataCol)).ClearContents
+            Else
+                Me.Cells(45, dataCol).ClearContents
+            End If
+            Application.EnableEvents = True
+            GoTo RebuildAndExit
+        End If
+
+        ' Snapshot current Z before it may be overwritten
+        mOrigZByRow(r) = Me.Cells(r, 4).Value
+
+        ' Record the current state in Point Index notes BEFORE
+        ' PopulateElevationTH overwrites col D.
+        Call RecordSensorNote(Me, r, ptRef, mOrigZByRow(r))
+
+        Application.EnableEvents = False
+
+        ' Populate Z from Point Index
+        Dim wsPI As Worksheet
+        Set wsPI = ThisWorkbook.Sheets("Point Index")
+        Call PopulateElevationTH(Me, wsPI, r)
+
+        ' Sync offset from Pressure Data row 5
+        Call SyncOffsetToTotalHead(ptRef, r)
+
+        Application.EnableEvents = True
+        GoTo RebuildAndExit
+    End If
+
+    ' ── Col B: Offset ────────────────────────────────────────
+    If c = 2 And r >= 9 And r <= 43 Then
+        Dim ptB As String
+        ptB = Trim(CStr(Me.Cells(r, 1).Value))
+        If ptB <> "" And IsNumeric(Me.Cells(r, 2).Value) Then
+            Call SyncOffsetToPressureData(ptB, CDbl(Me.Cells(r, 2).Value))
+        End If
+        GoTo RebuildAndExit
+    End If
+
+    ' ── Col D: Z (m) ─────────────────────────────────────────
+    If c = 4 And r >= 9 And r <= 43 Then
+        Dim ptD As String
+        ptD = Trim(CStr(Me.Cells(r, 1).Value))
+        If ptD <> "" And IsNumeric(Me.Cells(r, 4).Value) Then
+            Dim noteTimestamp As String
+            noteTimestamp = Format(Now(), "DD/MM/YYYY HH:MM") & " | Elevation Change"
+            Call WriteElevationToPointIndex(ptD, CDbl(Me.Cells(r, 4).Value), noteTimestamp)
+        End If
+        Exit Sub   ' Z change alone does not need a full rebuild
+    End If
+
+    Exit Sub
+
+RebuildAndExit:
+    Call RebuildDataTable
+    Call RefreshTotalHeadChart
+End Sub
+
+' ============================================================
+' Worksheet_SelectionChange
+' 1. Detects a click on I5 (Save button, col 9, row 5).
+' 2. Snapshots Point Ref + Z for config rows so Worksheet_Change
+'    can reference the old value after the user edits the cell.
+' ============================================================
+Private Sub Worksheet_SelectionChange(ByVal Target As Range)
+    ' ── Snapshot col A config cells ─────────────────────────
+    Dim sc As Range
+    For Each sc In Target.Cells
+        If sc.Column = 1 And sc.Row >= 9 And sc.Row <= 43 Then
+            mOrigRefByRow(sc.Row) = Trim(CStr(sc.Value))
+            mOrigZByRow(sc.Row)   = Me.Cells(sc.Row, 4).Value
+        End If
+    Next sc
+
+    ' ── Save button (I5) ────────────────────────────────────
+    If Target.Row = 5 And Target.Column = 9 Then
+        ' Save button clicked
+        Application.EnableEvents = False
+        Call ArchiveTotalHeadData
+        Application.EnableEvents = True
+        ' Move selection away so a second click still triggers
+        Me.Cells(3, 4).Select
+    End If
+End Sub

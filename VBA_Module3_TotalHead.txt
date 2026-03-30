@@ -1,0 +1,1202 @@
+' ============================================================
+' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
+' v1.63
+'
+' KEY FIXES vs. previous broken version:
+'   1. ArchiveTotalHeadData – rewrote to use the correct archive
+'      column layout and a reliable zone-name search so the save
+'      no longer clobbers unrelated rows or silently fails.
+'   2. LoadTotalHeadByName – optimised so each source tab is read
+'      exactly once (same cost as typing a single Point Ref, just
+'      spread across 3 tabs: Archive, Pressure Data, Point Index).
+'      Before the fix every sub called FindPressureDataCol / PI
+'      lookups individually, so 35 sensors meant 35 full scans
+'      of each sheet.
+'
+' SHEET LAYOUT (Total Head)
+'   D3  row 3, col 4   Zone Name   (merged D3:I4)
+'   L3  row 3, col 12  Driving Head (merged L3:N4)
+'   D5  row 5, col 4   Start Date  (merged D5:E5)
+'   D6  row 6, col 4   End Date    (merged D6:E6)
+'   F6  row 6, col 6   System name (merged)
+'   J9  row 9, col 10  Zone Notes  (merged J9:N43)
+'   I5  row 5, col 9   Save button
+'   L5  row 5, col 12  Load dropdown
+'   Config rows 9-43:
+'     col A = Point Ref
+'     col B = Offset
+'     col D = Z (m)
+'     col F = PRN note button
+'     col G = Point Notes
+'   Data table:
+'     row 45  headers  (col A = "Timestamp"; col (cfgRow-7) = sensor name)
+'     row 46+ data     (col A = timestamp;  col (cfgRow-7) = value)
+'
+' ARCHIVE LAYOUT (Total Head Archive)
+'   col  1 A   Archived  (timestamp)
+'   col  2 B   Date
+'   col  3 C   Chart Title / Zone Name  ← search key
+'   col  4 D   Driving Head
+'   col  5 E   Zone Notes
+'   col  6 F   Sensor 1  (Point Ref for config row 9)
+'   col  7 G   Sensor 2  (config row 10)
+'   ...
+'   col 40 AN  Sensor 35 (config row 43)
+'
+' PRESSURE DATA LAYOUT
+'   row 5  OFFSET
+'   row 6  FACTOR
+'   row 7  Sensor headers  (col A = "Date"; col B+ = sensor names)
+'   row 8+ Data
+'
+' POINT INDEX LAYOUT
+'   row 3  column headers
+'   row 4+ data
+'   col  1  A   Point Ref
+'   col 13  M   FINAL Z / BWL
+'   col 22  V   Point Notes
+' ============================================================
+Option Explicit
+
+' ── Layout constants ─────────────────────────────────────────
+Private Const CFG_FIRST         As Long = 9
+Private Const CFG_LAST          As Long = 43
+Private Const DATA_HDR_ROW      As Long = 45
+Private Const DATA_FIRST_ROW    As Long = 46
+Private Const ZONE_ROW          As Long = 3
+Private Const ZONE_COL          As Long = 4    ' D3
+Private Const DRV_HEAD_COL      As Long = 12   ' L3
+Private Const START_DATE_ROW    As Long = 5
+Private Const START_DATE_COL    As Long = 4    ' D5
+Private Const END_DATE_ROW      As Long = 6
+Private Const END_DATE_COL      As Long = 4    ' D6
+Private Const NOTES_ROW         As Long = 9
+Private Const NOTES_COL         As Long = 10   ' J9
+Private Const SAVE_ROW          As Long = 5
+Private Const SAVE_COL          As Long = 9    ' I5  (Save button)
+Private Const LOAD_COL          As Long = 12   ' L5  (Load dropdown)
+Private Const MAX_SENSORS       As Long = 35   ' config rows 9-43
+
+' ── Archive column indices ───────────────────────────────────
+Private Const ARCH_COL_ARCHIVED As Long = 1
+Private Const ARCH_COL_DATE     As Long = 2
+Private Const ARCH_COL_ZONE     As Long = 3    ' ← search key
+Private Const ARCH_COL_DRV_HEAD As Long = 4
+Private Const ARCH_COL_NOTES    As Long = 5
+Private Const ARCH_COL_SENSOR1  As Long = 6    ' Sensor 1 .. 35
+
+' ── Pressure Data row indices ────────────────────────────────
+Private Const PD_OFFSET_ROW     As Long = 5
+Private Const PD_HEADER_ROW     As Long = 7
+Private Const PD_FIRST_DATA_ROW As Long = 8
+
+' ── Point Index column indices ───────────────────────────────
+Private Const PI_COL_PTREF      As Long = 1    ' A
+Private Const PI_COL_FINAL_Z    As Long = 13   ' M
+Private Const PI_COL_NOTES      As Long = 22   ' V
+Private Const PI_DATA_FIRST_ROW As Long = 4
+
+' ── Batch cache (populated by RebuildDataTable) ──────────────
+' Caching the Pressure Data header + timestamp arrays means
+' each subsequent PopulateOneSensor call costs only array
+' lookups, not sheet reads.
+Private mBatch_pdHdr()       As String   ' PD header row  (1..lastCol)
+Private mBatch_pdOfs()       As Double   ' PD offset row  (1..lastCol)
+Private mBatch_pdTS()        As Double   ' PD timestamps  (firstRow..lastRow)
+Private mBatch_pdLastCol     As Long
+Private mBatch_pdFirstDataRow As Long
+Private mBatch_pdLastRow     As Long
+Private mBatch_Active        As Boolean
+
+' ============================================================
+' EnsureArchiveHeaders
+' ============================================================
+Private Sub EnsureArchiveHeaders(wsArch As Worksheet)
+    If wsArch.Cells(1, ARCH_COL_ARCHIVED).Value = "" Then _
+        wsArch.Cells(1, ARCH_COL_ARCHIVED).Value = "Archived"
+    If wsArch.Cells(1, ARCH_COL_DATE).Value = "" Then _
+        wsArch.Cells(1, ARCH_COL_DATE).Value = "Date"
+    If wsArch.Cells(1, ARCH_COL_ZONE).Value = "" Then _
+        wsArch.Cells(1, ARCH_COL_ZONE).Value = "Chart Title"
+    If wsArch.Cells(1, ARCH_COL_DRV_HEAD).Value = "" Then _
+        wsArch.Cells(1, ARCH_COL_DRV_HEAD).Value = "Driving Head"
+    If wsArch.Cells(1, ARCH_COL_NOTES).Value = "" Then _
+        wsArch.Cells(1, ARCH_COL_NOTES).Value = "Zone Notes"
+
+    Dim s As Long
+    For s = 1 To MAX_SENSORS
+        Dim ac As Long
+        ac = ARCH_COL_SENSOR1 + s - 1
+        If wsArch.Cells(1, ac).Value = "" Then
+            wsArch.Cells(1, ac).Value = "Sensor " & s
+        End If
+    Next s
+End Sub
+
+' ============================================================
+' InitTotalHeadSheet
+' ============================================================
+Sub InitTotalHeadSheet()
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.Sheets("Total Head")
+    If ws.Cells(DATA_HDR_ROW, 1).Value = "" Then
+        ws.Cells(DATA_HDR_ROW, 1).Value = "Timestamp"
+    End If
+End Sub
+
+' ============================================================
+' ArchiveTotalHeadData  (SAVE)
+'
+' FIX: previous optimisation attempt broke the zone-search by
+' reading the wrong column and miscounting sensor offsets.
+' This version:
+'   - searches archive col C (ARCH_COL_ZONE) for the current
+'     Zone Name; overwrites if found, appends if not
+'   - maps config rows 9..43 to archive sensor cols 6..40
+'     using the formula  archCol = cfgRow - CFG_FIRST + ARCH_COL_SENSOR1
+' ============================================================
+Sub ArchiveTotalHeadData()
+    Dim wsThis As Worksheet
+    Dim wsArch As Worksheet
+    On Error GoTo ErrOut
+
+    Set wsThis = ThisWorkbook.Sheets("Total Head")
+    Set wsArch = ThisWorkbook.Sheets("Total Head Archive")
+
+    Dim zoneName As String
+    zoneName = Trim(CStr(wsThis.Cells(ZONE_ROW, ZONE_COL).Value))
+    If zoneName = "" Then
+        MsgBox "Enter a Zone Name in cell D3 before saving.", vbExclamation
+        Exit Sub
+    End If
+
+    Call EnsureArchiveHeaders(wsArch)
+
+    ' ── Find existing row for this zone (search col C) ──────
+    Dim archRow As Long
+    archRow = 0
+    Dim lastRow As Long
+    lastRow = wsArch.Cells(wsArch.Rows.Count, ARCH_COL_ZONE).End(xlUp).Row
+
+    Dim r As Long
+    For r = 2 To lastRow
+        If Trim(CStr(wsArch.Cells(r, ARCH_COL_ZONE).Value)) = zoneName Then
+            archRow = r
+            Exit For
+        End If
+    Next r
+
+    If archRow = 0 Then
+        archRow = lastRow + 1
+        If archRow < 2 Then archRow = 2
+    End If
+
+    ' ── Write metadata ───────────────────────────────────────
+    wsArch.Cells(archRow, ARCH_COL_ARCHIVED).Value = Now()
+    wsArch.Cells(archRow, ARCH_COL_DATE).Value     = Now()
+    wsArch.Cells(archRow, ARCH_COL_ZONE).Value     = zoneName
+    wsArch.Cells(archRow, ARCH_COL_DRV_HEAD).Value = wsThis.Cells(ZONE_ROW, DRV_HEAD_COL).Value
+    wsArch.Cells(archRow, ARCH_COL_NOTES).Value    = wsThis.Cells(NOTES_ROW, NOTES_COL).Value
+
+    ' ── Write sensor Point Refs ──────────────────────────────
+    ' cfg row 9 → sensor 1 → archive col 6
+    ' cfg row 10 → sensor 2 → archive col 7
+    ' ...
+    ' cfg row 43 → sensor 35 → archive col 40
+    Dim cfg As Long
+    For cfg = CFG_FIRST To CFG_LAST
+        Dim archCol As Long
+        archCol = cfg - CFG_FIRST + ARCH_COL_SENSOR1
+        wsArch.Cells(archRow, archCol).Value = wsThis.Cells(cfg, 1).Value
+    Next cfg
+
+    Application.StatusBar = "Total Head saved: " & zoneName
+    Call RefreshLoadDropdown
+    Exit Sub
+
+ErrOut:
+    MsgBox "ArchiveTotalHeadData error: " & Err.Description, vbCritical
+    Application.StatusBar = False
+End Sub
+
+' ============================================================
+' RefreshLoadDropdown
+' Populates validation list on L5 from archive col C.
+' ============================================================
+Sub RefreshLoadDropdown()
+    Dim wsThis As Worksheet
+    Dim wsArch As Worksheet
+    Set wsThis = ThisWorkbook.Sheets("Total Head")
+    Set wsArch = ThisWorkbook.Sheets("Total Head Archive")
+
+    Dim lastRow As Long
+    lastRow = wsArch.Cells(wsArch.Rows.Count, ARCH_COL_ZONE).End(xlUp).Row
+
+    Dim dropCell As Range
+    Set dropCell = wsThis.Cells(SAVE_ROW, LOAD_COL)   ' L5
+
+    With dropCell.Validation
+        .Delete
+        If lastRow >= 2 Then
+            .Add Type:=xlValidateList, _
+                 Formula1:="='Total Head Archive'!$C$2:$C$" & lastRow
+            .ShowError = False
+        End If
+    End With
+End Sub
+
+' ============================================================
+' FindPressureDataCol
+' Returns the column index in Pressure Data whose row-7 header
+' equals ptRef.  Returns 0 if not found.
+' Uses the mBatch_pdHdr cache when RebuildDataTable is active,
+' otherwise reads from the sheet.
+' ============================================================
+Function FindPressureDataCol(ptRef As String) As Long
+    If mBatch_Active Then
+        Dim j As Long
+        For j = 2 To mBatch_pdLastCol
+            If mBatch_pdHdr(j) = ptRef Then
+                FindPressureDataCol = j
+                Exit Function
+            End If
+        Next j
+        FindPressureDataCol = 0
+        Exit Function
+    End If
+
+    Dim wsPD As Worksheet
+    Set wsPD = ThisWorkbook.Sheets("Pressure Data")
+    Dim lastCol As Long
+    lastCol = wsPD.Cells(PD_HEADER_ROW, wsPD.Columns.Count).End(xlToLeft).Column
+    Dim k As Long
+    For k = 2 To lastCol
+        If CStr(wsPD.Cells(PD_HEADER_ROW, k).Value) = ptRef Then
+            FindPressureDataCol = k
+            Exit Function
+        End If
+    Next k
+    FindPressureDataCol = 0
+End Function
+
+' ============================================================
+' SyncOffsetToPressureData
+' Writes TH col-B offset back to Pressure Data row 5.
+' ============================================================
+Sub SyncOffsetToPressureData(ptRef As String, offsetVal As Double)
+    Dim pdCol As Long
+    pdCol = FindPressureDataCol(ptRef)
+    If pdCol > 0 Then
+        ThisWorkbook.Sheets("Pressure Data").Cells(PD_OFFSET_ROW, pdCol).Value = offsetVal
+    End If
+End Sub
+
+' ============================================================
+' SyncOffsetToTotalHead
+' Reads offset from Pressure Data row 5 and writes to TH col B.
+' ============================================================
+Sub SyncOffsetToTotalHead(ptRef As String, cfgRow As Long)
+    Dim pdCol As Long
+    pdCol = FindPressureDataCol(ptRef)
+    Dim wsThis As Worksheet
+    Set wsThis = ThisWorkbook.Sheets("Total Head")
+
+    If pdCol > 0 Then
+        Dim ofs As Variant
+        If mBatch_Active Then
+            ofs = mBatch_pdOfs(pdCol)
+        Else
+            ofs = ThisWorkbook.Sheets("Pressure Data").Cells(PD_OFFSET_ROW, pdCol).Value
+        End If
+        wsThis.Cells(cfgRow, 2).Value = IIf(IsNumeric(ofs), CDbl(ofs), 0)
+    Else
+        wsThis.Cells(cfgRow, 2).Value = 0
+    End If
+End Sub
+
+' ============================================================
+' RepopulateOffsetsFromPressureData
+' Reads PD header row ONCE, then sets TH col B for all sensors.
+' (Old version called FindPressureDataCol 35 times separately.)
+' ============================================================
+Sub RepopulateOffsetsFromPressureData()
+    Dim wsThis As Worksheet
+    Dim wsPD As Worksheet
+    Set wsThis = ThisWorkbook.Sheets("Total Head")
+    Set wsPD   = ThisWorkbook.Sheets("Pressure Data")
+
+    ' Pre-load PD header + offset rows in a single pass
+    Dim lastPDCol As Long
+    lastPDCol = wsPD.Cells(PD_HEADER_ROW, wsPD.Columns.Count).End(xlToLeft).Column
+
+    Dim pdHdr() As String
+    Dim pdOfs() As Double
+    ReDim pdHdr(1 To lastPDCol)
+    ReDim pdOfs(1 To lastPDCol)
+
+    Dim c As Long
+    For c = 1 To lastPDCol
+        pdHdr(c) = CStr(wsPD.Cells(PD_HEADER_ROW, c).Value)
+        If IsNumeric(wsPD.Cells(PD_OFFSET_ROW, c).Value) Then
+            pdOfs(c) = CDbl(wsPD.Cells(PD_OFFSET_ROW, c).Value)
+        End If
+    Next c
+
+    ' Apply to each config row using array lookups
+    Dim cfg As Long
+    For cfg = CFG_FIRST To CFG_LAST
+        Dim ptRef As String
+        ptRef = Trim(CStr(wsThis.Cells(cfg, 1).Value))
+        If ptRef = "" Then GoTo NextCfgOfs
+
+        For c = 2 To lastPDCol
+            If pdHdr(c) = ptRef Then
+                wsThis.Cells(cfg, 2).Value = pdOfs(c)
+                Exit For
+            End If
+        Next c
+NextCfgOfs:
+    Next cfg
+End Sub
+
+' ============================================================
+' PopulateElevationTH
+' Sets TH col D (Z) from Point Index for one config row.
+' Does NOT overwrite an existing non-zero numeric Z.
+' Accepts optional pre-loaded PI arrays for batch use.
+' Pass piData as the array returned by BuildPILookup (Variant()).
+' ============================================================
+Sub PopulateElevationTH(wsThis As Worksheet, wsPI As Worksheet, _
+                         cfgRow As Long, _
+                         Optional piRefs As Variant = Empty, _
+                         Optional piZ As Variant = Empty, _
+                         Optional piCount As Long = 0)
+    Dim ptRef As String
+    ptRef = Trim(CStr(wsThis.Cells(cfgRow, 1).Value))
+    If ptRef = "" Then Exit Sub
+
+    Dim existZ As Variant
+    existZ = wsThis.Cells(cfgRow, 4).Value
+    If Not IsEmpty(existZ) And IsNumeric(existZ) Then
+        If CDbl(existZ) <> 0 Then Exit Sub
+    End If
+
+    If piCount > 0 Then
+        Dim i As Long
+        For i = 1 To piCount
+            If piRefs(i) = ptRef Then
+                Dim zv As Variant
+                zv = piZ(i)
+                If Not IsEmpty(zv) And IsNumeric(zv) Then
+                    wsThis.Cells(cfgRow, 4).Value = CDbl(zv)
+                End If
+                Exit Sub
+            End If
+        Next i
+    Else
+        Dim lr As Long
+        lr = wsPI.Cells(wsPI.Rows.Count, PI_COL_PTREF).End(xlUp).Row
+        Dim r As Long
+        For r = PI_DATA_FIRST_ROW To lr
+            If Trim(CStr(wsPI.Cells(r, PI_COL_PTREF).Value)) = ptRef Then
+                Dim zv2 As Variant
+                zv2 = wsPI.Cells(r, PI_COL_FINAL_Z).Value
+                If Not IsEmpty(zv2) And IsNumeric(zv2) Then
+                    wsThis.Cells(cfgRow, 4).Value = CDbl(zv2)
+                End If
+                Exit Sub
+            End If
+        Next r
+    End If
+End Sub
+
+' ============================================================
+' PopulateAllElevationsTH
+' Fills col D for all config rows with a Point Ref but no Z.
+' Pre-loads PI data once for all 35 sensors.
+' ============================================================
+Sub PopulateAllElevationsTH()
+    Dim wsThis As Worksheet
+    Dim wsPI As Worksheet
+    Set wsThis = ThisWorkbook.Sheets("Total Head")
+    Set wsPI   = ThisWorkbook.Sheets("Point Index")
+
+    ' Pre-load PI Point Ref + Z columns into Variant arrays
+    Dim piLastRow As Long
+    piLastRow = wsPI.Cells(wsPI.Rows.Count, PI_COL_PTREF).End(xlUp).Row
+
+    Dim piRefsV As Variant   ' (1..n) String
+    Dim piZV    As Variant   ' (1..n) Variant
+    ReDim piRefsV(1 To piLastRow - PI_DATA_FIRST_ROW + 1)
+    ReDim piZV(1 To piLastRow - PI_DATA_FIRST_ROW + 1)
+
+    Dim piCount As Long
+    Dim r As Long
+    For r = PI_DATA_FIRST_ROW To piLastRow
+        Dim pref As String
+        pref = Trim(CStr(wsPI.Cells(r, PI_COL_PTREF).Value))
+        If pref <> "" Then
+            piCount = piCount + 1
+            piRefsV(piCount) = pref
+            piZV(piCount) = wsPI.Cells(r, PI_COL_FINAL_Z).Value
+        End If
+    Next r
+
+    Dim cfg As Long
+    For cfg = CFG_FIRST To CFG_LAST
+        Call PopulateElevationTH(wsThis, wsPI, cfg, piRefsV, piZV, piCount)
+    Next cfg
+End Sub
+
+' ============================================================
+' WriteElevationToPointIndex
+' Writes a Z value back to PI col M and appends a note.
+' ============================================================
+Sub WriteElevationToPointIndex(ptRef As String, zVal As Double, _
+                                Optional noteText As String = "")
+    Dim wsPI As Worksheet
+    Set wsPI = ThisWorkbook.Sheets("Point Index")
+
+    Dim lr As Long
+    lr = wsPI.Cells(wsPI.Rows.Count, PI_COL_PTREF).End(xlUp).Row
+
+    Dim r As Long
+    For r = PI_DATA_FIRST_ROW To lr
+        If Trim(CStr(wsPI.Cells(r, PI_COL_PTREF).Value)) = ptRef Then
+            wsPI.Cells(r, PI_COL_FINAL_Z).Value = zVal
+            If noteText <> "" Then
+                Dim existing As String
+                existing = CStr(wsPI.Cells(r, PI_COL_NOTES).Value)
+                If existing <> "" Then existing = existing & Chr(10)
+                wsPI.Cells(r, PI_COL_NOTES).Value = existing & noteText & " (from TH)"
+            End If
+            Exit Sub
+        End If
+    Next r
+End Sub
+
+' ============================================================
+' SyncZToTotalHead
+' Called from Point Index Worksheet_Change when col M changes.
+' Updates every matching config row in Total Head.
+' ============================================================
+Sub SyncZToTotalHead(ptRef As String, newZ As Double)
+    Dim wsThis As Worksheet
+    Set wsThis = ThisWorkbook.Sheets("Total Head")
+
+    Dim cfg As Long
+    For cfg = CFG_FIRST To CFG_LAST
+        If Trim(CStr(wsThis.Cells(cfg, 1).Value)) = ptRef Then
+            wsThis.Cells(cfg, 4).Value = newZ
+            Dim existing As String
+            existing = CStr(wsThis.Cells(cfg, 7).Value)
+            If InStr(LCase(existing), "(from pi)") = 0 Then
+                If existing <> "" Then existing = existing & " | "
+                wsThis.Cells(cfg, 7).Value = existing & "(from PI)"
+            End If
+        End If
+    Next cfg
+End Sub
+
+' ============================================================
+' RecordSensorNote
+' Appends a timestamped note to Point Index col V.
+' Signature matches v1.48 expectations.
+' ============================================================
+Sub RecordSensorNote(wsThis As Worksheet, cfgRow As Long, _
+                     Optional forceRef As String = "", _
+                     Optional origZ As Variant = Empty)
+    Dim ptRef As String
+    ptRef = IIf(forceRef <> "", Trim(forceRef), _
+                Trim(CStr(wsThis.Cells(cfgRow, 1).Value)))
+    If ptRef = "" Then Exit Sub
+
+    Dim zVal  As Variant
+    Dim ofsVal As Variant
+    zVal   = wsThis.Cells(cfgRow, 4).Value
+    ofsVal = wsThis.Cells(cfgRow, 2).Value
+
+    Dim zStr  As String
+    Dim ofsStr As String
+    zStr   = IIf(Not IsEmpty(zVal)   And IsNumeric(zVal),   CStr(CDbl(zVal)), "")
+    ofsStr = IIf(Not IsEmpty(ofsVal) And IsNumeric(ofsVal), CStr(CDbl(ofsVal)), "0")
+
+    Dim noteCell As String
+    noteCell = CStr(wsThis.Cells(cfgRow, 7).Value)
+
+    Dim noteStr As String
+    noteStr = Format(Now(), "DD/MM/YYYY HH:MM") & " | Z: " & zStr & _
+              ". | Offset: " & ofsStr & ". | Notes: " & noteCell
+
+    ' Include old Z if it has changed
+    If Not IsEmpty(origZ) And IsNumeric(origZ) And Not IsEmpty(zVal) And IsNumeric(zVal) Then
+        If Abs(CDbl(origZ) - CDbl(zVal)) > 0.0001 Then
+            noteStr = noteStr & " | Z(PI): " & CStr(CDbl(origZ))
+        End If
+    End If
+
+    Dim wsPI As Worksheet
+    Set wsPI = ThisWorkbook.Sheets("Point Index")
+    Dim lr As Long
+    lr = wsPI.Cells(wsPI.Rows.Count, PI_COL_PTREF).End(xlUp).Row
+
+    Dim r As Long
+    For r = PI_DATA_FIRST_ROW To lr
+        If Trim(CStr(wsPI.Cells(r, PI_COL_PTREF).Value)) = ptRef Then
+            Dim existing As String
+            existing = CStr(wsPI.Cells(r, PI_COL_NOTES).Value)
+            If existing <> "" Then existing = existing & Chr(10)
+            wsPI.Cells(r, PI_COL_NOTES).Value = existing & noteStr
+            Exit Sub
+        End If
+    Next r
+End Sub
+
+' ============================================================
+' RestorePointNotesTH
+' Reads the most recent note line from PI col V and puts the
+' "Notes: …" fragment back into TH col G.
+' Safely skips "Z(PI): …" suffixes.
+' ============================================================
+Sub RestorePointNotesTH()
+    Dim wsThis As Worksheet
+    Dim wsPI   As Worksheet
+    Set wsThis = ThisWorkbook.Sheets("Total Head")
+    Set wsPI   = ThisWorkbook.Sheets("Point Index")
+
+    Dim piLR As Long
+    piLR = wsPI.Cells(wsPI.Rows.Count, PI_COL_PTREF).End(xlUp).Row
+
+    Dim cfg As Long
+    For cfg = CFG_FIRST To CFG_LAST
+        Dim ptRef As String
+        ptRef = Trim(CStr(wsThis.Cells(cfg, 1).Value))
+        If ptRef = "" Then GoTo NextCfgNote
+
+        Dim r As Long
+        For r = PI_DATA_FIRST_ROW To piLR
+            If Trim(CStr(wsPI.Cells(r, PI_COL_PTREF).Value)) = ptRef Then
+                Dim fullNote As String
+                fullNote = CStr(wsPI.Cells(r, PI_COL_NOTES).Value)
+                If fullNote = "" Then GoTo FoundPI
+                Dim lines() As String
+                lines = Split(fullNote, Chr(10))
+                Dim lastLine As String
+                lastLine = Trim(lines(UBound(lines)))
+                Dim pos As Long
+                pos = InStr(LCase(lastLine), "notes: ")
+                If pos > 0 Then
+                    Dim fragment As String
+                    fragment = Trim(Mid(lastLine, pos + 7))
+                    ' Strip any trailing " | Z(PI): …" (not a user note)
+                    Dim zpPos As Long
+                    zpPos = InStr(LCase(fragment), " | z(p")
+                    If zpPos > 0 Then fragment = Left(fragment, zpPos - 1)
+                    wsThis.Cells(cfg, 7).Value = fragment
+                End If
+FoundPI:
+                Exit For
+            End If
+        Next r
+NextCfgNote:
+    Next cfg
+End Sub
+
+' ============================================================
+' RebuildDataTable
+'
+' Clears the data table (row 46+) then repopulates every sensor
+' column for timestamps in [StartDate, EndDate].
+'
+' Performance: pre-loads PD header + offset rows and all PD
+' timestamps into module-level arrays (mBatch_*) so that
+' PopulateOneSensor uses array lookups, not cell reads.
+' Application.Calculation is left on Automatic throughout
+' (switching to Manual and back was the main slowdown identified
+'  in v1.62).
+' ============================================================
+Sub RebuildDataTable()
+    Dim wsThis As Worksheet
+    Dim wsPD   As Worksheet
+    On Error GoTo Done
+    Application.ScreenUpdating = False
+
+    Set wsThis = ThisWorkbook.Sheets("Total Head")
+    Set wsPD   = ThisWorkbook.Sheets("Pressure Data")
+
+    ' ── Date range ──────────────────────────────────────────
+    Dim rawStart As Variant, rawEnd As Variant
+    rawStart = wsThis.Cells(START_DATE_ROW, START_DATE_COL).Value
+    rawEnd   = wsThis.Cells(END_DATE_ROW,   END_DATE_COL).Value
+    If IsEmpty(rawStart) Or IsEmpty(rawEnd) Then GoTo Done
+    Dim startD As Double, endD As Double
+    startD = CDbl(rawStart)
+    endD   = CDbl(rawEnd)
+    If endD < startD Then GoTo Done
+
+    ' ── Pre-load PD header + offset (read each exactly once) ─
+    Dim pdLastCol As Long
+    pdLastCol = wsPD.Cells(PD_HEADER_ROW, wsPD.Columns.Count).End(xlToLeft).Column
+    ReDim mBatch_pdHdr(1 To pdLastCol)
+    ReDim mBatch_pdOfs(1 To pdLastCol)
+    Dim c As Long
+    For c = 1 To pdLastCol
+        mBatch_pdHdr(c) = CStr(wsPD.Cells(PD_HEADER_ROW, c).Value)
+        If IsNumeric(wsPD.Cells(PD_OFFSET_ROW, c).Value) Then
+            mBatch_pdOfs(c) = CDbl(wsPD.Cells(PD_OFFSET_ROW, c).Value)
+        End If
+    Next c
+    mBatch_pdLastCol = pdLastCol
+
+    ' ── Pre-load PD timestamp column ────────────────────────
+    Dim pdLastRow As Long
+    pdLastRow = wsPD.Cells(wsPD.Rows.Count, 1).End(xlUp).Row
+    ReDim mBatch_pdTS(PD_FIRST_DATA_ROW To pdLastRow)
+    Dim rr As Long
+    For rr = PD_FIRST_DATA_ROW To pdLastRow
+        Dim tv As Variant
+        tv = wsPD.Cells(rr, 1).Value
+        If Not IsEmpty(tv) Then mBatch_pdTS(rr) = CDbl(tv)
+    Next rr
+    mBatch_pdFirstDataRow = PD_FIRST_DATA_ROW
+    mBatch_pdLastRow      = pdLastRow
+    mBatch_Active         = True
+
+    ' ── Clear existing data area ─────────────────────────────
+    Dim lastTHRow As Long
+    lastTHRow = wsThis.Cells(wsThis.Rows.Count, 1).End(xlUp).Row
+    If lastTHRow >= DATA_HDR_ROW Then
+        wsThis.Range( _
+            wsThis.Cells(DATA_HDR_ROW, 1), _
+            wsThis.Cells(Application.Max(lastTHRow, DATA_HDR_ROW), CFG_LAST - 7 + 1) _
+        ).ClearContents
+    End If
+    wsThis.Cells(DATA_HDR_ROW, 1).Value = "Timestamp"
+
+    ' ── Build TH timestamp column from PD timestamps in range ─
+    Dim thRow As Long
+    thRow = DATA_FIRST_ROW
+    For rr = PD_FIRST_DATA_ROW To pdLastRow
+        Dim ts As Double
+        ts = mBatch_pdTS(rr)
+        If ts >= startD And ts <= endD + 1 Then
+            wsThis.Cells(thRow, 1).Value = wsPD.Cells(rr, 1).Value
+            thRow = thRow + 1
+        End If
+    Next rr
+    If thRow <= DATA_FIRST_ROW Then GoTo Done   ' no data in range
+
+    ' ── Populate each sensor column ─────────────────────────
+    Dim cfg As Long
+    For cfg = CFG_FIRST To CFG_LAST
+        Dim ptRef As String
+        ptRef = Trim(CStr(wsThis.Cells(cfg, 1).Value))
+        If ptRef = "" Then GoTo NextSensor
+
+        Dim dataCol As Long
+        dataCol = cfg - 7   ' row 9 → col 2 (B), row 10 → col 3 (C), …
+        wsThis.Cells(DATA_HDR_ROW, dataCol).Value = ptRef
+        Call PopulateOneSensor(wsThis, wsPD, cfg, dataCol, startD, endD)
+NextSensor:
+    Next cfg
+
+Done:
+    mBatch_Active = False
+    Application.ScreenUpdating = True
+    On Error GoTo 0
+End Sub
+
+' ============================================================
+' PopulateOneSensor
+' Fills one sensor data column using the mBatch_* cache.
+' Two-pointer (cursor) algorithm: O(n + m) timestamp matching.
+' ============================================================
+Sub PopulateOneSensor(wsThis As Worksheet, wsPD As Worksheet, _
+                      cfgRow As Long, dataCol As Long, _
+                      startD As Double, endD As Double)
+    Dim ptRef As String
+    ptRef = Trim(CStr(wsThis.Cells(cfgRow, 1).Value))
+    If ptRef = "" Then Exit Sub
+
+    Dim pdCol As Long
+    pdCol = FindPressureDataCol(ptRef)
+    If pdCol = 0 Then Exit Sub
+
+    Dim offset As Double
+    Dim thOfs As Variant
+    thOfs = wsThis.Cells(cfgRow, 2).Value
+    If IsNumeric(thOfs) Then offset = CDbl(thOfs)
+
+    ' Pre-load PD data column into a local array
+    Dim pdData() As Variant
+    ReDim pdData(mBatch_pdFirstDataRow To mBatch_pdLastRow)
+    Dim r As Long
+    For r = mBatch_pdFirstDataRow To mBatch_pdLastRow
+        pdData(r) = wsPD.Cells(r, pdCol).Value
+    Next r
+
+    ' Build output array (written in one block at the end)
+    Dim thLastRow As Long
+    thLastRow = wsThis.Cells(wsThis.Rows.Count, 1).End(xlUp).Row
+    If thLastRow < DATA_FIRST_ROW Then Exit Sub
+
+    Dim outCount As Long
+    outCount = thLastRow - DATA_FIRST_ROW + 1
+    Dim outArr() As Variant
+    ReDim outArr(1 To outCount, 1 To 1)
+
+    Dim jj As Long   ' cursor into PD (advances monotonically)
+    jj = mBatch_pdFirstDataRow
+
+    Dim thRow As Long
+    For thRow = DATA_FIRST_ROW To thLastRow
+        Dim thTSv As Variant
+        thTSv = wsThis.Cells(thRow, 1).Value
+        If IsEmpty(thTSv) Then GoTo NextThRow
+
+        Dim thTSd As Double
+        thTSd = CDbl(thTSv)
+
+        ' Advance PD cursor to matching or later timestamp
+        Do While jj <= mBatch_pdLastRow And mBatch_pdTS(jj) < thTSd - 0.000001
+            jj = jj + 1
+        Loop
+
+        If jj <= mBatch_pdLastRow And Abs(mBatch_pdTS(jj) - thTSd) < 0.000001 Then
+            Dim v As Variant
+            v = pdData(jj)
+            If IsNumeric(v) And CDbl(v) <> -999 Then
+                outArr(thRow - DATA_FIRST_ROW + 1, 1) = CDbl(v) + offset
+            End If
+        End If
+NextThRow:
+    Next thRow
+
+    wsThis.Cells(DATA_FIRST_ROW, dataCol).Resize(outCount, 1).Value = outArr
+End Sub
+
+' ============================================================
+' LoadTotalHeadByName  (RECALL)
+'
+' OPTIMISED: reads each source tab exactly once.
+'   1. Total Head Archive  – read sensor list (one row)
+'   2. Pressure Data       – pre-load header row + offset row
+'   3. Point Index         – pre-load all Point Ref + Z rows
+' Then restore config with array lookups (no per-sensor reads).
+' Finally, call RebuildDataTable which also uses array caching.
+'
+' Cost is the same as typing a single Point Ref into the config
+' (which scans PD headers once + PI once), just covering all
+' sensors from the 3 source tabs instead of 2.
+' ============================================================
+Sub LoadTotalHeadByName(zoneName As String)
+    Dim wsThis As Worksheet
+    Dim wsArch As Worksheet
+    Dim wsPD   As Worksheet
+    Dim wsPI   As Worksheet
+    On Error GoTo ErrOut
+
+    Set wsThis = ThisWorkbook.Sheets("Total Head")
+    Set wsArch = ThisWorkbook.Sheets("Total Head Archive")
+    Set wsPD   = ThisWorkbook.Sheets("Pressure Data")
+    Set wsPI   = ThisWorkbook.Sheets("Point Index")
+
+    Application.StatusBar = "Loading: " & zoneName & " ..."
+    Application.ScreenUpdating = False
+    Application.EnableEvents   = False
+
+    ' ── TAB 1: Find archive row ───────────────────────────
+    Dim lastArchRow As Long
+    lastArchRow = wsArch.Cells(wsArch.Rows.Count, ARCH_COL_ZONE).End(xlUp).Row
+
+    Dim archRow As Long
+    archRow = 0
+    Dim r As Long
+    For r = 2 To lastArchRow
+        If Trim(CStr(wsArch.Cells(r, ARCH_COL_ZONE).Value)) = Trim(zoneName) Then
+            archRow = r
+            Exit For
+        End If
+    Next r
+
+    If archRow = 0 Then
+        Application.EnableEvents   = True
+        Application.ScreenUpdating = True
+        MsgBox "Zone '" & zoneName & "' not found in archive.", vbExclamation
+        Exit Sub
+    End If
+
+    ' Read sensor list from archive row
+    Dim archSensors(1 To MAX_SENSORS) As String
+    Dim s As Long
+    For s = 1 To MAX_SENSORS
+        Dim av As Variant
+        av = wsArch.Cells(archRow, ARCH_COL_SENSOR1 + s - 1).Value
+        If Not IsEmpty(av) Then archSensors(s) = Trim(CStr(av))
+    Next s
+
+    ' ── TAB 2: Pre-load Pressure Data in one pass ─────────
+    Dim pdLastCol As Long
+    pdLastCol = wsPD.Cells(PD_HEADER_ROW, wsPD.Columns.Count).End(xlToLeft).Column
+
+    Dim pdHdr() As String
+    Dim pdOfs() As Double
+    ReDim pdHdr(1 To pdLastCol)
+    ReDim pdOfs(1 To pdLastCol)
+
+    Dim c As Long
+    For c = 1 To pdLastCol
+        pdHdr(c) = CStr(wsPD.Cells(PD_HEADER_ROW, c).Value)
+        If IsNumeric(wsPD.Cells(PD_OFFSET_ROW, c).Value) Then
+            pdOfs(c) = CDbl(wsPD.Cells(PD_OFFSET_ROW, c).Value)
+        End If
+    Next c
+
+    ' ── TAB 3: Pre-load Point Index in one pass ───────────
+    Dim piLastRow As Long
+    piLastRow = wsPI.Cells(wsPI.Rows.Count, PI_COL_PTREF).End(xlUp).Row
+
+    Dim piRefs As Variant
+    Dim piZArr As Variant
+    ReDim piRefs(1 To piLastRow - PI_DATA_FIRST_ROW + 1)
+    ReDim piZArr(1 To piLastRow - PI_DATA_FIRST_ROW + 1)
+
+    Dim piCount As Long
+    For r = PI_DATA_FIRST_ROW To piLastRow
+        Dim pref As String
+        pref = Trim(CStr(wsPI.Cells(r, PI_COL_PTREF).Value))
+        If pref <> "" Then
+            piCount = piCount + 1
+            piRefs(piCount) = pref
+            piZArr(piCount) = wsPI.Cells(r, PI_COL_FINAL_Z).Value
+        End If
+    Next r
+
+    ' ── Restore metadata ─────────────────────────────────
+    wsThis.Cells(ZONE_ROW,  ZONE_COL).Value    = wsArch.Cells(archRow, ARCH_COL_ZONE).Value
+    wsThis.Cells(ZONE_ROW,  DRV_HEAD_COL).Value = wsArch.Cells(archRow, ARCH_COL_DRV_HEAD).Value
+    wsThis.Cells(NOTES_ROW, NOTES_COL).Value   = wsArch.Cells(archRow, ARCH_COL_NOTES).Value
+
+    ' ── Clear config rows ─────────────────────────────────
+    Dim cfg As Long
+    For cfg = CFG_FIRST To CFG_LAST
+        wsThis.Cells(cfg, 1).Value = ""  ' Point Ref
+        wsThis.Cells(cfg, 2).Value = 0   ' Offset
+        wsThis.Cells(cfg, 4).Value = ""  ' Z
+        wsThis.Cells(cfg, 7).Value = ""  ' Notes
+    Next cfg
+
+    ' ── Restore sensors using pre-loaded arrays ───────────
+    ' For each sensor in the archive: array lookups only —
+    ' no per-sensor sheet reads.  This is the key optimisation:
+    ' total work is O(pdCols + piRows + 35*max(pdCols,piRows)/2)
+    ' vs the old O(35 * (pdCols + piRows)).
+    For s = 1 To MAX_SENSORS
+        Dim ptRef As String
+        ptRef = archSensors(s)
+        If ptRef = "" Then GoTo NextSensorLoad
+
+        cfg = CFG_FIRST + s - 1
+        wsThis.Cells(cfg, 1).Value = ptRef
+
+        ' Offset: scan pre-loaded PD header array
+        For c = 2 To pdLastCol
+            If pdHdr(c) = ptRef Then
+                wsThis.Cells(cfg, 2).Value = pdOfs(c)
+                Exit For
+            End If
+        Next c
+
+        ' Z: scan pre-loaded PI array
+        Dim pi As Long
+        For pi = 1 To piCount
+            If piRefs(pi) = ptRef Then
+                Dim zv As Variant
+                zv = piZArr(pi)
+                If Not IsEmpty(zv) And IsNumeric(zv) Then
+                    wsThis.Cells(cfg, 4).Value = CDbl(zv)
+                End If
+                Exit For
+            End If
+        Next pi
+NextSensorLoad:
+    Next s
+
+    Application.EnableEvents = True
+
+    ' ── Rebuild data table (uses its own mBatch_* cache) ──
+    Call RebuildDataTable
+    Call CreateTotalHeadChart
+
+    Application.StatusBar = "Loaded: " & zoneName
+    Exit Sub
+
+ErrOut:
+    Application.EnableEvents   = True
+    Application.ScreenUpdating = True
+    Application.StatusBar      = False
+    MsgBox "LoadTotalHeadByName error: " & Err.Description, vbCritical
+End Sub
+
+' ============================================================
+' CREATE / VERIFY TOTAL HEAD CHART
+' ============================================================
+Sub CreateTotalHeadChart()
+    Dim wsThis As Worksheet
+    Set wsThis = ThisWorkbook.Sheets("Total Head")
+
+    Const CHART_NAME As String  = "TotalHeadChart"
+    Const ANCHOR_COL As Long    = 15        ' Column O
+    Const ANCHOR_ROW As Long    = 3
+    Const CHART_W_CM As Double  = 37.17
+    Const CHART_H_CM As Double  = 22.28
+
+    Dim cht As ChartObject
+    On Error Resume Next
+    Set cht = wsThis.ChartObjects(CHART_NAME)
+    On Error GoTo 0
+
+    If cht Is Nothing Then
+        Dim co As ChartObject
+        For Each co In wsThis.ChartObjects
+            co.Delete
+        Next co
+        Set cht = wsThis.ChartObjects.Add( _
+            wsThis.Cells(ANCHOR_ROW, ANCHOR_COL).Left, _
+            wsThis.Cells(ANCHOR_ROW, ANCHOR_COL).Top, _
+            Application.CentimetersToPoints(CHART_W_CM), _
+            Application.CentimetersToPoints(CHART_H_CM))
+        cht.Name = CHART_NAME
+        cht.Chart.ChartType = xlXYScatterSmooth
+    End If
+
+    Call RefreshTotalHeadChart
+End Sub
+
+' ============================================================
+' REFRESH TOTAL HEAD CHART
+' ============================================================
+Sub RefreshTotalHeadChart()
+    Dim wsThis As Worksheet
+    Set wsThis = ThisWorkbook.Sheets("Total Head")
+
+    Dim cht As ChartObject
+    On Error Resume Next
+    Set cht = wsThis.ChartObjects("TotalHeadChart")
+    On Error GoTo 0
+    If cht Is Nothing Then Exit Sub
+
+    Dim ch As Chart
+    Set ch = cht.Chart
+
+    Do While ch.SeriesCollection.Count > 0
+        ch.SeriesCollection(1).Delete
+    Loop
+
+    Dim lastTHRow As Long
+    lastTHRow = wsThis.Cells(wsThis.Rows.Count, 1).End(xlUp).Row
+    If lastTHRow < DATA_FIRST_ROW Then Exit Sub
+
+    ' Add one series per active sensor
+    Dim cfg As Long
+    For cfg = CFG_FIRST To CFG_LAST
+        Dim ptRef As String
+        ptRef = Trim(CStr(wsThis.Cells(cfg, 1).Value))
+        If ptRef = "" Then GoTo NextChSer
+
+        Dim dataCol As Long
+        dataCol = cfg - 7
+
+        ' Only add if the column has at least one value
+        Dim hasData As Boolean
+        Dim rr As Long
+        For rr = DATA_FIRST_ROW To Application.Min(DATA_FIRST_ROW + 10, lastTHRow)
+            If Not IsEmpty(wsThis.Cells(rr, dataCol).Value) Then
+                hasData = True
+                Exit For
+            End If
+        Next rr
+        If Not hasData Then GoTo NextChSer
+
+        Dim ser As Series
+        Set ser = ch.SeriesCollection.NewSeries
+        ser.Name       = ptRef
+        ser.XValues    = wsThis.Range(wsThis.Cells(DATA_FIRST_ROW, 1), _
+                                      wsThis.Cells(lastTHRow, 1))
+        ser.Values     = wsThis.Range(wsThis.Cells(DATA_FIRST_ROW, dataCol), _
+                                      wsThis.Cells(lastTHRow, dataCol))
+        ser.MarkerStyle = xlMarkerStyleNone
+NextChSer:
+    Next cfg
+
+    ' Chart title
+    Dim titleStr As String
+    titleStr = Trim(CStr(wsThis.Cells(ZONE_ROW, ZONE_COL).Value))
+    On Error Resume Next
+    If titleStr <> "" Then
+        ch.HasTitle = True
+        ch.ChartTitle.Text = titleStr
+    End If
+    On Error GoTo 0
+
+    ' X-axis scale
+    Dim startD As Variant, endD As Variant
+    startD = wsThis.Cells(START_DATE_ROW, START_DATE_COL).Value
+    endD   = wsThis.Cells(END_DATE_ROW,   END_DATE_COL).Value
+
+    On Error Resume Next
+    Dim ax As Axis
+    Set ax = ch.Axes(xlCategory)
+
+    If Not IsEmpty(startD) And IsNumeric(CDbl(startD)) Then
+        ax.MinimumScale = Int(CDbl(startD))
+    Else
+        ax.MinimumScaleIsAuto = True
+    End If
+    If Not IsEmpty(endD) And IsNumeric(CDbl(endD)) Then
+        ax.MaximumScale = Int(CDbl(endD)) + 1
+    Else
+        ax.MaximumScaleIsAuto = True
+    End If
+
+    ' Tick intervals based on span
+    If Not IsEmpty(startD) And Not IsEmpty(endD) Then
+        Dim span As Double
+        span = CDbl(endD) - CDbl(startD)
+        If span <= 1 Then
+            ax.MajorUnit = 1 / 24 : ax.MinorUnit = 1 / 24
+        ElseIf span <= 3 Then
+            ax.MajorUnit = 6 / 24 : ax.MinorUnit = 1 / 24
+        ElseIf span <= 7 Then
+            ax.MajorUnit = 1      : ax.MinorUnit = 6 / 24
+        ElseIf span <= 31 Then
+            ax.MajorUnit = 7      : ax.MinorUnit = 1
+        Else
+            ax.MajorUnit = 14     : ax.MinorUnit = 7
+        End If
+        ax.MajorUnitScale = xlDays
+        ax.MinorUnitScale = xlDays
+    End If
+    On Error GoTo 0
+
+    ch.Axes(xlValue).MinimumScaleIsAuto = True
+    ch.Axes(xlValue).MaximumScaleIsAuto = True
+End Sub
+
+' ============================================================
+' FindInstallRetrievalDates
+' Scans PI row 2 for "INSTALL"/"RETRIEVAL" group headers,
+' then row 3 for "date" sub-headers (handles "retrival" typo).
+' ============================================================
+Function FindInstallRetrievalDates(ptRef As String, _
+                                    ByRef installDate As Variant, _
+                                    ByRef retrievalDate As Variant) As Boolean
+    Dim wsPI As Worksheet
+    Set wsPI = ThisWorkbook.Sheets("Point Index")
+    installDate   = Empty
+    retrievalDate = Empty
+    FindInstallRetrievalDates = False
+
+    Dim lastCol As Long
+    lastCol = wsPI.Cells(2, wsPI.Columns.Count).End(xlToLeft).Column
+
+    Dim installCol As Long, retrievalCol As Long
+    installCol   = 0
+    retrievalCol = 0
+
+    Dim c As Long, c2 As Long
+    For c = 1 To lastCol
+        Dim h2 As String
+        h2 = UCase(Trim(CStr(wsPI.Cells(2, c).Value)))
+        If h2 = "INSTALL" And installCol = 0 Then
+            For c2 = c To Application.Min(c + 5, lastCol)
+                If InStr(LCase(CStr(wsPI.Cells(3, c2).Value)), "date") > 0 Then
+                    installCol = c2 : Exit For
+                End If
+            Next c2
+        End If
+        If (h2 = "RETRIEVAL" Or h2 = "RETRIVAL") And retrievalCol = 0 Then
+            For c2 = c To Application.Min(c + 5, lastCol)
+                If InStr(LCase(CStr(wsPI.Cells(3, c2).Value)), "date") > 0 Then
+                    retrievalCol = c2 : Exit For
+                End If
+            Next c2
+        End If
+    Next c
+
+    If installCol = 0 Then Exit Function
+
+    Dim lr As Long
+    lr = wsPI.Cells(wsPI.Rows.Count, PI_COL_PTREF).End(xlUp).Row
+    For c = PI_DATA_FIRST_ROW To lr
+        If Trim(CStr(wsPI.Cells(c, PI_COL_PTREF).Value)) = ptRef Then
+            installDate = wsPI.Cells(c, installCol).Value
+            If retrievalCol > 0 Then retrievalDate = wsPI.Cells(c, retrievalCol).Value
+            FindInstallRetrievalDates = True
+            Exit Function
+        End If
+    Next c
+End Function
+
+' ============================================================
+' ExportTotalHeadPRN
+' Writes a tab-delimited text file to the path in Sheet2 B6.
+' ============================================================
+Sub ExportTotalHeadPRN()
+    Dim wsThis As Worksheet
+    Set wsThis = ThisWorkbook.Sheets("Total Head")
+
+    Dim exportPath As String
+    On Error Resume Next
+    exportPath = CStr(ThisWorkbook.Sheets("Sheet2").Cells(6, 2).Value)
+    On Error GoTo 0
+    If exportPath = "" Then
+        MsgBox "Set an export path in Sheet2 cell B6.", vbExclamation
+        Exit Sub
+    End If
+    If Right(exportPath, 1) <> "\" Then exportPath = exportPath & "\"
+
+    Dim zoneName As String
+    zoneName = Trim(CStr(wsThis.Cells(ZONE_ROW, ZONE_COL).Value))
+    If zoneName = "" Then zoneName = "TotalHead"
+
+    Dim filename As String
+    filename = exportPath & zoneName & "_" & Format(Now(), "YYYYMMDD_HHMMSS") & ".prn"
+
+    Dim fn As Integer
+    fn = FreeFile
+    Open filename For Output As #fn
+
+    ' Header row
+    Print #fn, "Timestamp" & vbTab;
+    Dim cfg As Long
+    For cfg = CFG_FIRST To CFG_LAST
+        If Trim(CStr(wsThis.Cells(cfg, 1).Value)) <> "" Then
+            Print #fn, wsThis.Cells(cfg, 1).Value & vbTab;
+        End If
+    Next cfg
+    Print #fn, ""
+
+    ' Data rows
+    Dim lastRow As Long
+    lastRow = wsThis.Cells(wsThis.Rows.Count, 1).End(xlUp).Row
+    Dim rr As Long
+    For rr = DATA_FIRST_ROW To lastRow
+        Dim tsv As Variant
+        tsv = wsThis.Cells(rr, 1).Value
+        If IsEmpty(tsv) Then GoTo NextPRNRow
+        Print #fn, Format(CDate(tsv), "DD/MM/YYYY HH:MM") & vbTab;
+        For cfg = CFG_FIRST To CFG_LAST
+            If Trim(CStr(wsThis.Cells(cfg, 1).Value)) <> "" Then
+                Dim v As Variant
+                v = wsThis.Cells(rr, cfg - 7).Value
+                Print #fn, IIf(IsEmpty(v), "", CStr(CDbl(v))) & vbTab;
+            End If
+        Next cfg
+        Print #fn, ""
+NextPRNRow:
+    Next rr
+
+    Close #fn
+    MsgBox "Exported to: " & filename, vbInformation
+End Sub
