@@ -109,9 +109,11 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         ptRef = Trim(CStr(Me.Cells(r, 1).Value))
 
         If ptRef = "" Then
-            ' Clearing a Point Ref: record note using the ref that was
-            ' there BEFORE the clear (captured in SelectionChange).
-            Call RecordSensorNote(Me, r, mOrigRefByRow(r), mOrigZByRow(r))
+            ' Clearing a Point Ref: only record note if there was actually a ref there.
+            ' (mOrigRefByRow snapshotted in SelectionChange before the edit)
+            If mOrigRefByRow(r) <> "" Then
+                Call RecordSensorNote(Me, r, mOrigRefByRow(r), mOrigZByRow(r))
+            End If
 
             Application.EnableEvents = False
             Me.Cells(r, 2).Value = 0    ' Offset
@@ -134,9 +136,11 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         ' Snapshot current Z before it may be overwritten
         mOrigZByRow(r) = Me.Cells(r, 4).Value
 
-        ' Record the current state in Point Index notes BEFORE
-        ' PopulateElevationTH overwrites col D.
-        Call RecordSensorNote(Me, r, ptRef, mOrigZByRow(r))
+        ' Record note ONLY when the Point Ref has actually changed
+        ' (avoids spurious notes when the user re-enters the same ref).
+        If ptRef <> mOrigRefByRow(r) Then
+            Call RecordSensorNote(Me, r, ptRef, mOrigZByRow(r))
+        End If
 
         Application.EnableEvents = False
 

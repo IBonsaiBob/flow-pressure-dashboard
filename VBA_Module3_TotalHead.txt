@@ -66,6 +66,8 @@ Private Const DATA_FIRST_ROW    As Long = 46
 Private Const ZONE_ROW          As Long = 3
 Private Const ZONE_COL          As Long = 4    ' D3
 Private Const DRV_HEAD_COL      As Long = 12   ' L3
+Private Const SYSTEM_ROW        As Long = 6
+Private Const SYSTEM_COL        As Long = 6    ' F6  (System name, merged)
 Private Const START_DATE_ROW    As Long = 5
 Private Const START_DATE_COL    As Long = 4    ' D5
 Private Const END_DATE_ROW      As Long = 6
@@ -79,7 +81,7 @@ Private Const MAX_SENSORS       As Long = 35   ' config rows 9-43
 
 ' ── Archive column indices ───────────────────────────────────
 Private Const ARCH_COL_ARCHIVED As Long = 1
-Private Const ARCH_COL_DATE     As Long = 2
+Private Const ARCH_COL_SYSTEM   As Long = 2    ' System name (col B)
 Private Const ARCH_COL_ZONE     As Long = 3    ' ← search key
 Private Const ARCH_COL_DRV_HEAD As Long = 4
 Private Const ARCH_COL_NOTES    As Long = 5
@@ -121,8 +123,8 @@ Private mBatch_Active        As Boolean
 Private Sub EnsureArchiveHeaders(wsArch As Worksheet)
     If wsArch.Cells(1, ARCH_COL_ARCHIVED).Value = "" Then _
         wsArch.Cells(1, ARCH_COL_ARCHIVED).Value = "Archived"
-    If wsArch.Cells(1, ARCH_COL_DATE).Value = "" Then _
-        wsArch.Cells(1, ARCH_COL_DATE).Value = "Date"
+    If wsArch.Cells(1, ARCH_COL_SYSTEM).Value = "" Then _
+        wsArch.Cells(1, ARCH_COL_SYSTEM).Value = "System"
     If wsArch.Cells(1, ARCH_COL_ZONE).Value = "" Then _
         wsArch.Cells(1, ARCH_COL_ZONE).Value = "Chart Title"
     If wsArch.Cells(1, ARCH_COL_DRV_HEAD).Value = "" Then _
@@ -200,7 +202,7 @@ Sub ArchiveTotalHeadData()
 
     ' ── Write metadata ───────────────────────────────────────
     wsArch.Cells(archRow, ARCH_COL_ARCHIVED).Value = Now()
-    wsArch.Cells(archRow, ARCH_COL_DATE).Value     = Now()
+    wsArch.Cells(archRow, ARCH_COL_SYSTEM).Value   = wsThis.Cells(SYSTEM_ROW, SYSTEM_COL).Value
     wsArch.Cells(archRow, ARCH_COL_ZONE).Value     = zoneName
     wsArch.Cells(archRow, ARCH_COL_DRV_HEAD).Value = wsThis.Cells(ZONE_ROW, DRV_HEAD_COL).Value
     wsArch.Cells(archRow, ARCH_COL_NOTES).Value    = wsThis.Cells(NOTES_ROW, NOTES_COL).Value
@@ -627,6 +629,7 @@ Sub RebuildDataTable()
     Dim wsPD   As Worksheet
     On Error GoTo Done
     Application.ScreenUpdating = False
+    Application.EnableEvents   = False    ' prevent any Worksheet_Change during data rebuild
 
     Set wsThis = ThisWorkbook.Sheets("Total Head")
     Set wsPD   = ThisWorkbook.Sheets("Pressure Data")
@@ -709,6 +712,7 @@ NextSensor:
 
 Done:
     mBatch_Active = False
+    Application.EnableEvents   = True
     Application.ScreenUpdating = True
     On Error GoTo 0
 End Sub
