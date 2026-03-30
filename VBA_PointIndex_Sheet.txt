@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_PointIndex_Sheet.txt  -  Sheet module for "Point Index"
-' v1.64
+' v1.65
 '
 ' Paste this entire file into the Sheet module for the
 ' "Point Index" worksheet in the VBA editor (Alt+F11,

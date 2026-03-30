@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.64
+' v1.65
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -629,7 +629,12 @@ Sub RebuildDataTable()
     Dim wsPD   As Worksheet
     On Error GoTo Done
     Application.ScreenUpdating = False
-    Application.EnableEvents   = False    ' prevent any Worksheet_Change during data rebuild
+    ' Note: EnableEvents is intentionally NOT disabled here.
+    ' All writes are either to rows 45+ (outside the 9-43 config
+    ' range checked by every handler) or are multi-cell Resize()
+    ' calls that Worksheet_Change exits on immediately.
+    ' Individual callers (clear, load, paste) guard their own
+    ' config-area writes with EnableEvents=False as needed.
 
     Set wsThis = ThisWorkbook.Sheets("Total Head")
     Set wsPD   = ThisWorkbook.Sheets("Pressure Data")
@@ -712,7 +717,6 @@ NextSensor:
 
 Done:
     mBatch_Active = False
-    Application.EnableEvents   = True
     Application.ScreenUpdating = True
     On Error GoTo 0
 End Sub

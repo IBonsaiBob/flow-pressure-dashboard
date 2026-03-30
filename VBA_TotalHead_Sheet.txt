@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_TotalHead_Sheet.txt  -  Sheet module for "Total Head"
-' v1.64
+' v1.65
 '
 ' Paste this entire file into the Sheet module for the
 ' "Total Head" worksheet in the VBA editor (Alt+F11,
@@ -43,7 +43,29 @@ End Sub
 ' Worksheet_Change
 ' ============================================================
 Private Sub Worksheet_Change(ByVal Target As Range)
-    If Target.Cells.Count > 1 Then Exit Sub   ' ignore multi-cell pastes
+    ' ── Multi-cell change (paste / fill-down / range-clear) ─────
+    ' Ignored for everything EXCEPT col A config rows 9-43.
+    ' If the paste touches any config Point Ref cell, re-sync all
+    ' offsets + elevations then rebuild – same as a single-cell entry.
+    If Target.Cells.Count > 1 Then
+        Dim pc As Range
+        Dim anyConfig As Boolean
+        For Each pc In Target.Cells
+            If pc.Column = 1 And pc.Row >= 9 And pc.Row <= 43 Then
+                anyConfig = True
+                Exit For
+            End If
+        Next pc
+        If anyConfig Then
+            Application.EnableEvents = False
+            Call RepopulateOffsetsFromPressureData
+            Call PopulateAllElevationsTH
+            Application.EnableEvents = True
+            Call RebuildDataTable
+            Call RefreshTotalHeadChart
+        End If
+        Exit Sub
+    End If
 
     Dim r As Long, c As Long
     r = Target.Row
