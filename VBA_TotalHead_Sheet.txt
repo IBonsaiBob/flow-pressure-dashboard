@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_TotalHead_Sheet.txt  -  Sheet module for "Total Head"
-' v1.66
+' v1.71
 '
 ' Paste this entire file into the Sheet module for the
 ' "Total Head" worksheet in the VBA editor (Alt+F11,
@@ -35,6 +35,14 @@ Private Sub Worksheet_Activate()
     ' Safety net: if a previous error left EnableEvents=False,
     ' activating this sheet restores it so all handlers work again.
     Application.EnableEvents = True
+
+    ' If the user has cells copied (marching ants), any VBA cell write
+    ' will silently cancel Excel copy mode.  Skip the rebuild so that
+    ' the user can switch to this sheet and paste without losing their
+    ' copy selection.  The data table was already built on the last
+    ' full activation and is still valid.
+    If Application.CutCopyMode <> False Then Exit Sub
+
     Call InitTotalHeadSheet
     Call PopulateAllElevationsTH
     Call RebuildDataTable
