@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.66
+' v1.67
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -116,6 +116,8 @@ Private mBatch_pdLastCol     As Long
 Private mBatch_pdFirstDataRow As Long
 Private mBatch_pdLastRow     As Long
 Private mBatch_Active        As Boolean
+Private mBatch_thTS()        As Double   ' TH timestamps  (DATA_FIRST_ROW..thLastRow)
+Private mBatch_thLastRow     As Long
 
 ' ============================================================
 ' EnsureArchiveHeaders
@@ -691,14 +693,17 @@ Sub RebuildDataTable()
     ' ── Build TH timestamp column from PD timestamps in range ─
     Dim thRow As Long
     thRow = DATA_FIRST_ROW
+    ReDim mBatch_thTS(DATA_FIRST_ROW To DATA_FIRST_ROW + mBatch_pdLastRow - PD_FIRST_DATA_ROW)
     For rr = PD_FIRST_DATA_ROW To pdLastRow
         Dim ts As Double
         ts = mBatch_pdTS(rr)
         If ts >= startD And ts <= endD + 1 Then
             wsThis.Cells(thRow, 1).Value = wsPD.Cells(rr, 1).Value
+            mBatch_thTS(thRow) = ts
             thRow = thRow + 1
         End If
     Next rr
+    mBatch_thLastRow = thRow - 1
     If thRow <= DATA_FIRST_ROW Then GoTo Done   ' no data in range
 
     ' ── Populate each sensor column ─────────────────────────
@@ -742,17 +747,27 @@ Sub PopulateOneSensor(wsThis As Worksheet, wsPD As Worksheet, _
     thOfs = wsThis.Cells(cfgRow, 2).Value
     If IsNumeric(thOfs) Then offset = CDbl(thOfs)
 
-    ' Pre-load PD data column into a local array
-    Dim pdData() As Variant
-    ReDim pdData(mBatch_pdFirstDataRow To mBatch_pdLastRow)
-    Dim r As Long
-    For r = mBatch_pdFirstDataRow To mBatch_pdLastRow
-        pdData(r) = wsPD.Cells(r, pdCol).Value
-    Next r
+    ' Pre-load PD data column in one bulk read (1 crossing vs ~3000)
+    Dim pdDataRaw As Variant
+    If mBatch_pdLastRow > mBatch_pdFirstDataRow Then
+        pdDataRaw = wsPD.Range( _
+            wsPD.Cells(mBatch_pdFirstDataRow, pdCol), _
+            wsPD.Cells(mBatch_pdLastRow, pdCol)).Value
+    Else
+        ' Single row (or empty) — build minimal 2D array manually
+        ReDim pdDataRaw(1 To 1, 1 To 1)
+        If mBatch_pdLastRow = mBatch_pdFirstDataRow Then
+            pdDataRaw(1, 1) = wsPD.Cells(mBatch_pdFirstDataRow, pdCol).Value
+        End If
+    End If
 
     ' Build output array (written in one block at the end)
     Dim thLastRow As Long
-    thLastRow = wsThis.Cells(wsThis.Rows.Count, 1).End(xlUp).Row
+    If mBatch_Active Then
+        thLastRow = mBatch_thLastRow
+    Else
+        thLastRow = wsThis.Cells(wsThis.Rows.Count, 1).End(xlUp).Row
+    End If
     If thLastRow < DATA_FIRST_ROW Then Exit Sub
 
     Dim outCount As Long
@@ -765,12 +780,16 @@ Sub PopulateOneSensor(wsThis As Worksheet, wsPD As Worksheet, _
 
     Dim thRow As Long
     For thRow = DATA_FIRST_ROW To thLastRow
-        Dim thTSv As Variant
-        thTSv = wsThis.Cells(thRow, 1).Value
-        If IsEmpty(thTSv) Then GoTo NextThRow
-
         Dim thTSd As Double
-        thTSd = CDbl(thTSv)
+        If mBatch_Active Then
+            thTSd = mBatch_thTS(thRow)
+            If thTSd = 0 Then GoTo NextThRow
+        Else
+            Dim thTSv As Variant
+            thTSv = wsThis.Cells(thRow, 1).Value
+            If IsEmpty(thTSv) Then GoTo NextThRow
+            thTSd = CDbl(thTSv)
+        End If
 
         ' Advance PD cursor to matching or later timestamp
         Do While jj <= mBatch_pdLastRow And mBatch_pdTS(jj) < thTSd - TIMESTAMP_TOLERANCE
@@ -779,7 +798,7 @@ Sub PopulateOneSensor(wsThis As Worksheet, wsPD As Worksheet, _
 
         If jj <= mBatch_pdLastRow And Abs(mBatch_pdTS(jj) - thTSd) < TIMESTAMP_TOLERANCE Then
             Dim v As Variant
-            v = pdData(jj)
+            v = pdDataRaw(jj - mBatch_pdFirstDataRow + 1, 1)
             If IsNumeric(v) And CDbl(v) <> PD_MISSING_VALUE Then
                 outArr(thRow - DATA_FIRST_ROW + 1, 1) = CDbl(v) + offset
             End If
@@ -841,13 +860,17 @@ Sub LoadTotalHeadByName(zoneName As String)
         Exit Sub
     End If
 
-    ' Read sensor list from archive row
+    ' Read sensor list from archive row – one bulk read (1 crossing vs 35)
     Dim archSensors(1 To MAX_SENSORS) As String
+    Dim archRaw As Variant
+    archRaw = wsArch.Range( _
+        wsArch.Cells(archRow, ARCH_COL_SENSOR1), _
+        wsArch.Cells(archRow, ARCH_COL_SENSOR1 + MAX_SENSORS - 1)).Value
     Dim s As Long
     For s = 1 To MAX_SENSORS
         Dim av As Variant
-        av = wsArch.Cells(archRow, ARCH_COL_SENSOR1 + s - 1).Value
-        If Not IsEmpty(av) Then archSensors(s) = Trim(CStr(av))
+        av = archRaw(1, s)
+        If Not IsEmpty(av) And CStr(av) <> "" Then archSensors(s) = Trim(CStr(av))
     Next s
 
     ' ── TAB 2: Pre-load Pressure Data in one pass ─────────
