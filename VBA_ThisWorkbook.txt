@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_ThisWorkbook.txt  -  ThisWorkbook module
-' v1.66
+' v1.69
 '
 ' Paste this entire file into the ThisWorkbook module in the
 ' VBA editor (Alt+F11, double-click "ThisWorkbook" in the
@@ -18,19 +18,21 @@
 '   workbook is in focus.
 '
 ' SHORTCUT
-'   Ctrl+Shift+V  →  CopySelectionToPlotsHeaders
-'   (defined in Module2 / VBA_Module2_Plots.txt)
+'   Ctrl+Shift+V  →  PasteValuesDispatch (defined in Module2)
+'     • On the Plots sheet: copies selected sensor codes into B6:K6
+'       (CopySelectionToPlotsHeaders).
+'     • On any other sheet: pastes clipboard as values only.
 ' ============================================================
 Option Explicit
 
 Private Sub Workbook_Open()
     ' Register on open (this workbook will be active at this point)
-    Application.OnKey "^+V", "CopySelectionToPlotsHeaders"
+    Application.OnKey "^+V", "PasteValuesDispatch"
 End Sub
 
 Private Sub Workbook_Activate()
     ' Re-register whenever the user switches back to this workbook
-    Application.OnKey "^+V", "CopySelectionToPlotsHeaders"
+    Application.OnKey "^+V", "PasteValuesDispatch"
 End Sub
 
 Private Sub Workbook_Deactivate()

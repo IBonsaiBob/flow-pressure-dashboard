@@ -531,8 +531,26 @@ Function FillColumnFromRawSheet(wsPlots As Worksheet, _
 End Function
 
 ' ---------------------------------------------------------------------------
+' PasteValuesDispatch
+' Bound to Ctrl+Shift+V (registered in ThisWorkbook).
+' Context-sensitive dispatcher:
+'   • On the Plots sheet  → calls CopySelectionToPlotsHeaders (copies selected
+'     sensor codes into B6:K6 and refreshes the chart).
+'   • On any other sheet  → pastes the clipboard as values only, equivalent to
+'     Home > Paste > Paste Values (xlPasteValues).
+' ---------------------------------------------------------------------------
+Sub PasteValuesDispatch()
+    If ActiveSheet.Name = "Plots" Then
+        CopySelectionToPlotsHeaders
+    Else
+        On Error Resume Next
+        Selection.PasteSpecial Paste:=xlPasteValues
+        On Error GoTo 0
+    End If
+End Sub
+
 ' CopySelectionToPlotsHeaders
-' Bound to Ctrl+Shift+V (registered in ThisWorkbook.Workbook_Open).
+' Called by PasteValuesDispatch when on the Plots sheet.
 ' Takes the currently selected cells (from any sheet), extracts up to 10
 ' non-empty text values, writes them sequentially into B6:K6 on the Plots
 ' sheet, then triggers a data lookup for each column and refreshes the chart.
