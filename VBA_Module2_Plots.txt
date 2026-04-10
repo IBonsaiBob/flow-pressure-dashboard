@@ -538,15 +538,63 @@ End Function
 '     sensor codes into B6:K6 and refreshes the chart).
 '   • On any other sheet  → pastes the clipboard as values only, equivalent to
 '     Home > Paste > Paste Values (xlPasteValues).
+'
+' WHY THE FALLBACK IS NEEDED
+'   Excel automatically clears "copy mode" (marching ants) whenever any VBA
+'   code writes to a cell.  Switching to the Total Head tab triggers
+'   Worksheet_Activate → RebuildDataTable, which writes cells and kills copy
+'   mode.  After that, PasteSpecial raises error 1004 silently.
+'   The fallback reads tab-delimited text straight from the Windows OS
+'   clipboard (the same source Win+V uses) so the paste always works,
+'   regardless of which sheet the data was copied from.
 ' ---------------------------------------------------------------------------
 Sub PasteValuesDispatch()
     If ActiveSheet.Name = "Plots" Then
         CopySelectionToPlotsHeaders
-    Else
-        On Error Resume Next
-        Selection.PasteSpecial Paste:=xlPasteValues
-        On Error GoTo 0
+        Exit Sub
     End If
+
+    ' ── Try native paste-values first ──────────────────────────────────────
+    ' Works when cells are still in copy-mode (marching ants present), e.g.
+    ' when the user copies and pastes on the same sheet without activating
+    ' another sheet in between.
+    On Error Resume Next
+    Selection.PasteSpecial Paste:=xlPasteValues
+    Dim pasteErr As Long: pasteErr = Err.Number
+    On Error GoTo 0
+    If pasteErr = 0 Then Exit Sub
+
+    ' ── Fallback: read raw text from the Windows OS clipboard ──────────────
+    ' PasteSpecial raised error 1004 — copy mode was cleared (most likely by
+    ' Worksheet_Activate writing cells).  Read the clipboard text directly,
+    ' parse it as tab-delimited rows, and write values into the selection,
+    ' coercing numeric strings to numbers where possible.
+    Dim clipText As String
+    On Error Resume Next
+    clipText = CreateObject("htmlfile").ParentWindow.ClipboardData.GetData("text")
+    On Error GoTo 0
+    If Len(Trim(clipText)) = 0 Then Exit Sub
+
+    ' Normalise line endings and strip any trailing newline.
+    clipText = Replace(clipText, vbCrLf, vbLf)
+    clipText = Replace(clipText, vbCr, vbLf)
+    If Right(clipText, 1) = vbLf Then _
+        clipText = Left(clipText, Len(clipText) - 1)
+
+    Dim rowArr() As String: rowArr = Split(clipText, vbLf)
+    Dim startCell As Range: Set startCell = Selection.Cells(1, 1)
+    Dim i As Long, j As Long, colArr() As String, cv As String
+    For i = 0 To UBound(rowArr)
+        colArr = Split(rowArr(i), vbTab)
+        For j = 0 To UBound(colArr)
+            cv = colArr(j)
+            If IsNumeric(cv) And Len(Trim(cv)) > 0 Then
+                startCell.Offset(i, j).Value = CDbl(cv)
+            Else
+                startCell.Offset(i, j).Value = cv
+            End If
+        Next j
+    Next i
 End Sub
 
 ' CopySelectionToPlotsHeaders
