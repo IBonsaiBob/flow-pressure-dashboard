@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.68
+' v1.71
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -233,12 +233,20 @@ End Sub
 ' ============================================================
 ' RefreshLoadDropdown
 ' Populates validation list on L5 from archive col C.
+' Non-critical: if the archive sheet is missing or the cross-sheet
+' validation formula is rejected by this Excel version, the sub
+' exits silently so that Worksheet_Activate is not interrupted.
 ' ============================================================
 Sub RefreshLoadDropdown()
     Dim wsThis As Worksheet
-    Dim wsArch As Worksheet
     Set wsThis = ThisWorkbook.Sheets("Total Head")
+
+    ' Guard: archive sheet may not exist yet on a fresh workbook.
+    Dim wsArch As Worksheet
+    On Error Resume Next
     Set wsArch = ThisWorkbook.Sheets("Total Head Archive")
+    On Error GoTo 0
+    If wsArch Is Nothing Then Exit Sub
 
     Dim lastRow As Long
     lastRow = wsArch.Cells(wsArch.Rows.Count, ARCH_COL_ZONE).End(xlUp).Row
@@ -249,9 +257,13 @@ Sub RefreshLoadDropdown()
     With dropCell.Validation
         .Delete
         If lastRow >= 2 Then
+            ' Cross-sheet Formula1 references are unsupported in some
+            ' Excel versions; suppress any resulting error gracefully.
+            On Error Resume Next
             .Add Type:=xlValidateList, _
                  Formula1:="='Total Head Archive'!$C$2:$C$" & lastRow
             .ShowError = False
+            On Error GoTo 0
         End If
     End With
 End Sub
