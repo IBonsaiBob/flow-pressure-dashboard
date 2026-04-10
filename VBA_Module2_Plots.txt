@@ -1,0 +1,585 @@
+' ============================================================
+' Module2 — Plots Tab Procedures
+' How to install:
+'   1. Alt+F11 to open the VBA editor.
+'   2. Insert ? Module.
+'   3. Paste this entire block into the new module.
+' ============================================================
+
+' ---------------------------------------------------------------------------
+' FillTimestamps
+' Fills A7:A102 with 15-minute interval times for the day entered in B2.
+' The column is formatted as HH:MM so only the time portion is shown.
+' ---------------------------------------------------------------------------
+Sub FillTimestamps()
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Plots")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    Dim dateStr As String
+    dateStr = Trim(CStr(ws.Range("B2").Value))
+    If dateStr = "" Then Exit Sub
+
+    Dim baseDate As Date
+    On Error Resume Next
+    baseDate = CDate(dateStr)
+    On Error GoTo 0
+    If baseDate = 0 Then
+        MsgBox "Invalid date in B2. Please use DD/MM/YY format.", _
+               vbExclamation, "Date Error"
+        Exit Sub
+    End If
+
+    ' Write 96 timestamps: 00:00, 00:15, ... 23:45
+    ' Strip any time component so slots always start at exactly midnight.
+    Dim baseMidnight As Double: baseMidnight = Int(CDbl(baseDate))
+    Dim i As Long
+    For i = 0 To 95
+        ws.Cells(7 + i, 1).Value = baseMidnight + CDbl(i * 15) / 1440
+        ws.Cells(7 + i, 1).NumberFormat = "HH:MM"
+    Next i
+End Sub
+
+' ---------------------------------------------------------------------------
+' CreatePlotsChart
+' Creates a line chart to the right of the data table, sized for an A4
+' landscape document (18 cm wide x 11 cm tall — report-ready proportions).
+'
+' Builds ONE series per non-empty sensor header in B6:K6.
+' Column A (timestamps) is used ONLY as the X-axis; it never appears as a
+' series or in the legend.
+' ---------------------------------------------------------------------------
+Sub CreatePlotsChart()
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Plots")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    ' Remove any existing chart named PlotsChart.
+    Dim chtObj As ChartObject
+    For Each chtObj In ws.ChartObjects
+        If chtObj.Name = "PlotsChart" Then chtObj.Delete: Exit For
+    Next chtObj
+
+    ' Position: left edge at column L (column 12), top at row 2 (no blank space above).
+    Dim L As Double: L = ws.Columns("L").Left
+    Dim T As Double: T = ws.Rows(2).Top
+
+    ' 18 cm x 11 cm — report-quality landscape proportions.
+    ' 1 cm = 28.3465 pt.
+    Dim W As Double: W = 18 * 28.3465
+    Dim h As Double: h = 11 * 28.3465
+
+    Set chtObj = ws.ChartObjects.Add(L, T, W, h)
+    chtObj.Name = "PlotsChart"
+
+    With chtObj.Chart
+        .ChartType = xlLine
+
+        ' Build series manually — one per non-empty sensor header (B6:K6).
+        ' Column A is the X-axis only; it must NOT appear as a series.
+        Do While .SeriesCollection.count > 0
+            .SeriesCollection(1).Delete
+        Loop
+
+        Dim c As Long
+        For c = 2 To 11   ' columns B(2) to K(11)
+            Dim hdr As String
+            hdr = Trim(CStr(ws.Cells(6, c).Value))
+            If hdr <> "" Then
+                Dim sr As Series
+                Set sr = .SeriesCollection.NewSeries
+                sr.Name = hdr
+                sr.XValues = ws.Range("A7:A102")
+                sr.Values = ws.Range(ws.Cells(7, c), ws.Cells(102, c))
+            End If
+        Next c
+
+        ' Title from the input cell.
+        .HasTitle = True
+        .chartTitle.Text = Trim(CStr(ws.Range("E2").Value))
+
+        ' Category (time) axis: HH:MM label every hour (every 4th of 96 fifteen-min steps).
+        With .Axes(xlCategory)
+            .TickLabels.NumberFormat = "HH:MM"
+            .TickLabelSpacing = 4
+            .TickLabelPosition = xlTickLabelPositionLow
+        End With
+
+        ' Value (Y) axis: title from I2 if provided.
+        Dim yLabel As String
+        yLabel = Trim(CStr(ws.Range("I2").Value))
+        With .Axes(xlValue)
+            .HasTitle = (yLabel <> "")
+            If yLabel <> "" Then .AxisTitle.Text = yLabel
+        End With
+
+        ' Legend at the bottom.
+        .HasLegend = True
+        .Legend.Position = xlLegendPositionBottom
+
+        ' Clean white chart area.
+        .PlotArea.Interior.Color = RGB(255, 255, 255)
+        .ChartArea.Interior.Color = RGB(255, 255, 255)
+        .ChartArea.Border.LineStyle = xlContinuous
+        .ChartArea.Border.Weight = xlThin
+        .ChartArea.Border.Color = RGB(180, 180, 180)
+    End With
+
+    ' Paste area: a dashed-border box BELOW the chart, same width × height.
+    ' The user pastes their software plot into this zone — matching sizes makes
+    ' it easy to align both images for the report.
+    Dim pasteTop As Double: pasteTop = T + h + 6   ' 6pt gap below chart
+
+    ' Remove any stale paste shape from a previous run.
+    On Error Resume Next
+    ws.Shapes("PastePlotLabel").Delete
+    On Error GoTo 0
+
+    Dim txtBox As Shape
+    Set txtBox = ws.Shapes.AddTextbox(msoTextOrientationHorizontal, _
+        L, pasteTop, W, h)
+    txtBox.Name = "PastePlotLabel"
+    With txtBox.TextFrame2
+        .TextRange.Text = "PASTE SOFTWARE PLOT IMAGE HERE" & Chr(13) & "(Ctrl+V)"
+        .TextRange.Font.Size = 10
+        .TextRange.Font.Bold = msoTrue
+        .TextRange.Font.Fill.ForeColor.RGB = RGB(160, 160, 160)
+        .TextRange.ParagraphFormat.Alignment = msoAlignCenter
+        .VerticalAnchor = msoAnchorMiddle
+    End With
+    With txtBox.Fill
+        .Visible = msoTrue
+        .ForeColor.RGB = RGB(252, 252, 240)   ' very light cream — visually distinct
+    End With
+    With txtBox.Line
+        .Visible = msoTrue
+        .DashStyle = msoLineDash
+        .ForeColor.RGB = RGB(180, 180, 180)
+        .Weight = 1.5
+    End With
+End Sub
+
+' ---------------------------------------------------------------------------
+' RefreshPlotsChart
+' Rebuilds the series collection of the existing PlotsChart without
+' recreating the whole chart object.  Called when sensor headers (B6:K6)
+' change or after an auto-fill.  If no chart exists yet, delegates to
+' CreatePlotsChart.
+' ---------------------------------------------------------------------------
+Sub RefreshPlotsChart()
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Plots")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    ' If no chart exists yet, do a full create.
+    If ws.ChartObjects.count = 0 Then
+        Call CreatePlotsChart
+        Exit Sub
+    End If
+
+    Dim cht As Chart
+    Set cht = ws.ChartObjects(1).Chart
+
+    With cht
+        ' --- Rebuild series from current headers (B6:K6) ---
+        Do While .SeriesCollection.count > 0
+            .SeriesCollection(1).Delete
+        Loop
+
+        Dim c As Long
+        For c = 2 To 11   ' columns B(2) to K(11)
+            Dim hdr As String
+            hdr = Trim(CStr(ws.Cells(6, c).Value))
+            If hdr <> "" Then
+                Dim sr As Series
+                Set sr = .SeriesCollection.NewSeries
+                sr.Name = hdr
+                sr.XValues = ws.Range("A7:A102")
+                sr.Values = ws.Range(ws.Cells(7, c), ws.Cells(102, c))
+            End If
+        Next c
+
+        ' --- Sync title and Y-axis label from control panel ---
+        Dim chartTitle As String
+        chartTitle = Trim(CStr(ws.Range("E2").Value))
+        .HasTitle = True
+        .chartTitle.Text = chartTitle
+
+        Dim yLabel As String
+        yLabel = Trim(CStr(ws.Range("I2").Value))
+        With .Axes(xlValue)
+            .HasTitle = (yLabel <> "")
+            If yLabel <> "" Then .AxisTitle.Text = yLabel
+        End With
+    End With
+End Sub
+
+' ---------------------------------------------------------------------------
+' SavePlots
+' 1. Exports the Excel chart as  {date}_{title}_Chart.png
+' 2. Exports the paste area L21:U41 as  {date}_{title}_SoftwarePlot.png
+'    Uses Range.CopyPicture xlScreen, xlBitmap — captures screen pixels of
+'    the pre-merged L21:U41 range, which is reliable for any image type
+'    (GIS exports, screenshots, browser pastes).
+' 3. Archives data + metadata to the "Plot Archive" sheet.
+' 4. Archives the session note to the Plot Archive sheet.
+' ---------------------------------------------------------------------------
+Sub SavePlots()
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Plots")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    ' -- Read control-panel values -----------------------------------------
+    Dim exportPath As String
+    exportPath = Trim(CStr(ws.Range("B3").Value))
+    If exportPath = "" Then
+        MsgBox "Please enter an export folder path in cell B3.", _
+               vbExclamation, "Missing Export Path"
+        Exit Sub
+    End If
+    If Right(exportPath, 1) <> "\" Then exportPath = exportPath & "\"
+
+
+    Dim chartTitle As String
+    chartTitle = Trim(CStr(ws.Range("E2").Value))
+    If chartTitle = "" Then chartTitle = "Plot"
+
+    Dim dateStr As String
+    dateStr = Trim(CStr(ws.Range("B2").Value))
+
+    ' Convert DD/MM/YY (or DD/MM/YYYY) ? YYYYMMDD for filenames.
+    Dim fileDate As String
+    Dim dp() As String
+    dp = Split(Replace(dateStr, "-", "/"), "/")
+    If UBound(dp) = 2 Then
+        Dim yr As String: yr = Trim(dp(2))
+        If Len(yr) = 2 Then yr = "20" & yr
+        fileDate = yr & Format(CInt(Trim(dp(1))), "00") & _
+                        Format(CInt(Trim(dp(0))), "00")
+    Else
+        fileDate = Format(Now, "YYYYMMDD")
+    End If
+
+    ' Remove characters that are illegal in Windows filenames.
+    Dim safeTitle As String
+    safeTitle = chartTitle
+    Dim badChar As Variant
+    For Each badChar In Array("/", "\", ":", "*", "?", Chr(34), "<", ">", "|")
+        safeTitle = Replace(safeTitle, CStr(badChar), "-")
+    Next badChar
+    safeTitle = Replace(safeTitle, " ", "_")
+
+    Dim saved As String: saved = ""
+
+    ' -- 1. Export the Excel chart as PNG ----------------------------------
+    Dim chartFile As String
+    chartFile = exportPath & fileDate & "_" & safeTitle & "_Chart.png"
+    If ws.ChartObjects.count > 0 Then
+        ws.ChartObjects(1).Chart.Export filename:=chartFile, FilterName:="PNG"
+        saved = saved & "  Chart:  " & chartFile & vbNewLine
+    Else
+        saved = saved & "  (No chart found — open the Plots sheet first to auto-create it)" & vbNewLine
+    End If
+
+    ' -- 2. Export pasted software-plot image as PNG -----------------------
+    ' Captures the pre-merged paste area L21:U41 as a screen bitmap.
+    ' Range.CopyPicture xlScreen, xlBitmap is reliable for all image types
+    ' (GIS exports, screenshots, browser pastes) regardless of how the image
+    ' was originally pasted — no need to hunt for a floating shape.
+    Dim imgFile As String
+    imgFile = exportPath & fileDate & "_" & safeTitle & "_SoftwarePlot.png"
+    Dim pasteRng As Range
+    Set pasteRng = ws.Range("L21:U41")
+    DoEvents
+    pasteRng.CopyPicture xlScreen, xlBitmap
+    Dim tmpC As ChartObject
+    Set tmpC = ws.ChartObjects.Add(0, 0, pasteRng.Width, pasteRng.Height)
+    tmpC.Chart.Paste
+    DoEvents
+    tmpC.Chart.Export filename:=imgFile, FilterName:="PNG"
+    tmpC.Delete
+    saved = saved & "  Image:  " & imgFile & vbNewLine
+
+    ' -- 3. Archive data and note ------------------------------------------
+    Call ArchivePlotData(ws, chartTitle, dateStr)
+    saved = saved & "  Data archived to 'Plot Archive' sheet." & vbNewLine
+
+    MsgBox "Save complete:" & vbNewLine & vbNewLine & saved, _
+           vbInformation, "Plots Saved"
+End Sub
+
+' ---------------------------------------------------------------------------
+' ArchivePlotData
+' Appends ONE summary row to the "Plot Archive" sheet per save.
+' Columns: Archived | Chart Title | Notes | Sensor Ref 1 … Sensor Ref 10
+' The sensor refs are the header names currently in B6:K6 on the Plots sheet
+' (NOT raw data values).  One row per save keeps the log concise.
+' Also archives the session note to the Plot Archive sheet.
+' ---------------------------------------------------------------------------
+Sub ArchivePlotData(ws As Worksheet, chartTitle As String, dateStr As String)
+    Const ARCH_SHEET As String = "Plot Archive"
+    Const SEN_COLS   As Long = 10     ' sensor columns B(2) through K(11)
+
+    ' -- Get or create the Plot Archive sheet ------------------------------
+    Dim wsA As Worksheet
+    On Error Resume Next
+    Set wsA = ThisWorkbook.Sheets(ARCH_SHEET)
+    On Error GoTo 0
+
+    If wsA Is Nothing Then
+        Set wsA = ThisWorkbook.Sheets.Add( _
+            After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.count))
+        wsA.Name = ARCH_SHEET
+        ' Header row
+        wsA.Cells(1, 1).Value = "Archived"
+        wsA.Cells(1, 2).Value = "Chart Title"
+        wsA.Cells(1, 3).Value = "Notes"
+        Dim h As Long
+        For h = 1 To SEN_COLS
+            wsA.Cells(1, 3 + h).Value = "Sensor Ref " & h
+        Next h
+        wsA.Rows(1).Font.Bold = True
+    End If
+
+    ' Get session notes from B4.
+    Dim notes As String
+    notes = Trim(CStr(ws.Range("B4").Value))
+
+    ' Find the first empty row in the archive.
+    Dim nxtRow As Long
+    nxtRow = wsA.Cells(wsA.Rows.count, 1).End(xlUp).row + 1
+    If nxtRow < 2 Then nxtRow = 2
+
+    ' Write ONE summary row: timestamp, title, notes, then sensor names from B6:K6.
+    wsA.Cells(nxtRow, 1).Value = Format(Now, "DD/MM/YYYY HH:MM")
+    wsA.Cells(nxtRow, 2).Value = chartTitle
+    wsA.Cells(nxtRow, 3).Value = notes
+    Dim j As Long
+    For j = 1 To SEN_COLS
+        wsA.Cells(nxtRow, 3 + j).Value = ws.Cells(6, 1 + j).Value   ' name from B6:K6
+    Next j
+
+End Sub
+
+
+' ---------------------------------------------------------------------------
+' LookupAndFillSensorColumn
+' Called when the user types a sensor code into a cell in B6:K6, or when
+' the date in B2 changes.  Searches rows 1-7 of "Pressure Data" then
+' "Flow Data" for a column whose name matches the typed code
+' (case-insensitive).  If found and B2 contains a valid date,
+' fills the corresponding data column (rows 7-102) with the matched values.
+' Clears the data column first; leaves it blank if no match or no date.
+' ---------------------------------------------------------------------------
+Sub LookupAndFillSensorColumn(colNum As Long)
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Plots")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    Dim sensorCode As String
+    sensorCode = Trim(CStr(ws.Cells(6, colNum).Value))
+
+    ' Clear the data column first.
+    ws.Range(ws.Cells(7, colNum), ws.Cells(102, colNum)).ClearContents
+
+    ' If the header was cleared, nothing more to do.
+    If sensorCode = "" Then Exit Sub
+
+    ' If no date is set, leave data empty.
+    Dim baseDate As Date
+    On Error Resume Next
+    baseDate = CDate(Trim(CStr(ws.Range("B2").Value)))
+    On Error GoTo 0
+    If CDbl(baseDate) = 0 Then Exit Sub
+
+    ' Try Pressure Data first, then Flow Data.
+    Dim rawSheets(1) As String
+    rawSheets(0) = "Pressure Data"
+    rawSheets(1) = "Flow Data"
+
+    Dim wsRaw As Worksheet
+    Dim si As Integer
+    For si = 0 To 1
+        Set wsRaw = Nothing
+        On Error Resume Next
+        Set wsRaw = ThisWorkbook.Sheets(rawSheets(si))
+        On Error GoTo 0
+        If Not wsRaw Is Nothing Then
+            If FillColumnFromRawSheet(ws, wsRaw, sensorCode, colNum, baseDate) Then Exit For
+        End If
+    Next si
+End Sub
+
+' ---------------------------------------------------------------------------
+' FillColumnFromRawSheet  (helper for LookupAndFillSensorColumn)
+' Finds the column in wsRaw whose header (scanned in rows 1-7) matches
+' sensorCode (case-insensitive), then fills wsPlots data column colNum
+' (rows 7-102) for baseDate using nearest-timestamp matching within +/-7.5 min.
+' Returns True if at least one value was written.
+' ---------------------------------------------------------------------------
+Function FillColumnFromRawSheet(wsPlots As Worksheet, _
+                                wsRaw As Worksheet, _
+                                sensorCode As String, _
+                                colNum As Long, _
+                                baseDate As Date) As Boolean
+    FillColumnFromRawSheet = False
+
+    ' Scan rows 1-7 for the sensor code — handles both simple format (row 1
+    ' headers) and any number of metadata rows prepended to the data (e.g.
+    ' v1.45 layout where install/retrieval/offset rows push headers to row 7).
+    Dim rawCol As Long: rawCol = 0
+    Dim c As Long
+    Dim r As Long
+    Dim lastCol As Long
+    For r = 1 To 7
+        lastCol = wsRaw.Cells(r, wsRaw.Columns.count).End(xlToLeft).Column
+        If lastCol >= 2 Then
+            For c = 2 To lastCol
+                If LCase(Trim(CStr(wsRaw.Cells(r, c).Value))) = LCase(sensorCode) Then
+                    rawCol = c
+                    Exit For
+                End If
+            Next c
+        End If
+        If rawCol <> 0 Then Exit For
+    Next r
+    If rawCol = 0 Then Exit Function
+
+    Dim lastRow As Long
+    lastRow = wsRaw.Cells(wsRaw.Rows.count, 1).End(xlUp).row
+    If lastRow < 2 Then Exit Function
+
+    ' Strip any time component so slot 0 is always exactly midnight (00:00).
+    Dim baseDbl As Double: baseDbl = Int(CDbl(baseDate))
+
+    ' Find the first row whose date portion equals baseDate.
+    Dim startRow As Long: startRow = 0
+    Dim tsDbl As Double
+    For r = 2 To lastRow
+        On Error Resume Next
+        tsDbl = CDbl(wsRaw.Cells(r, 1).Value)
+        On Error GoTo 0
+        If Int(tsDbl) = Int(baseDbl) Then
+            startRow = r
+            Exit For
+        End If
+    Next r
+    If startRow = 0 Then Exit Function
+
+    ' Count consecutive rows for this date.
+    Dim dayCount As Long: dayCount = 0
+    For r = startRow To lastRow
+        On Error Resume Next
+        tsDbl = CDbl(wsRaw.Cells(r, 1).Value)
+        On Error GoTo 0
+        If Int(tsDbl) = Int(baseDbl) Then
+            dayCount = dayCount + 1
+        Else
+            Exit For
+        End If
+    Next r
+    If dayCount = 0 Then Exit Function
+
+    ' Load timestamps and values into arrays for fast per-slot lookup.
+    Dim rawTS()   As Double
+    Dim rawVals() As Variant
+    ReDim rawTS(1 To dayCount)
+    ReDim rawVals(1 To dayCount)
+    Dim di As Long: di = 1
+    For r = startRow To startRow + dayCount - 1
+        On Error Resume Next
+        rawTS(di) = CDbl(wsRaw.Cells(r, 1).Value)
+        On Error GoTo 0
+        rawVals(di) = wsRaw.Cells(r, rawCol).Value
+        di = di + 1
+    Next r
+
+    ' For each 15-min slot find the nearest raw row (within +/-7.5 min).
+    Dim halfStep As Double: halfStep = 7.5 / 1440
+    Dim i As Long
+    Dim slotDbl  As Double
+    Dim bestIdx  As Long
+    Dim bestDiff As Double
+    Dim dIdx     As Long
+    Dim diff     As Double
+    For i = 0 To 95
+        slotDbl = baseDbl + CDbl(i * 15) / 1440
+        bestIdx = 0
+        bestDiff = halfStep + 1
+        For dIdx = 1 To dayCount
+            diff = Abs(rawTS(dIdx) - slotDbl)
+            If diff < bestDiff Then
+                bestDiff = diff
+                bestIdx = dIdx
+            End If
+        Next dIdx
+        If bestIdx > 0 And bestDiff <= halfStep Then
+            wsPlots.Cells(7 + i, colNum).Value = rawVals(bestIdx)
+            FillColumnFromRawSheet = True
+        End If
+    Next i
+End Function
+
+' ---------------------------------------------------------------------------
+' CopySelectionToPlotsHeaders
+' Bound to Ctrl+Shift+V (registered in ThisWorkbook.Workbook_Open).
+' Takes the currently selected cells (from any sheet), extracts up to 10
+' non-empty text values, writes them sequentially into B6:K6 on the Plots
+' sheet, then triggers a data lookup for each column and refreshes the chart.
+' This lets the user select sensor codes in Point Index (or anywhere else)
+' and paste them straight into the Plots header row in one keystroke.
+' ---------------------------------------------------------------------------
+Sub CopySelectionToPlotsHeaders()
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Plots")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    ' Capture the current selection before potentially activating another sheet.
+    Dim sel As Range
+    On Error Resume Next
+    Set sel = Application.Selection
+    On Error GoTo 0
+    If sel Is Nothing Then Exit Sub
+
+    ' Collect up to 10 non-empty string values from the selected cells.
+    Dim vals(0 To 9) As String
+    Dim count As Integer: count = 0
+    Dim cel As Range
+    For Each cel In sel.Cells
+        If count >= 10 Then Exit For
+        Dim v As String: v = Trim(CStr(cel.Value))
+        If v <> "" Then
+            vals(count) = v
+            count = count + 1
+        End If
+    Next cel
+    If count = 0 Then Exit Sub
+
+    ' Write codes into B6:K6 and trigger lookup + chart refresh.
+    Application.EnableEvents = False
+    Dim col As Long
+    For col = 0 To count - 1
+        ws.Cells(6, 2 + col).Value = vals(col)
+    Next col
+    Application.EnableEvents = True
+
+    For col = 0 To count - 1
+        Call LookupAndFillSensorColumn(2 + col)
+    Next col
+    Call RefreshPlotsChart
+
+    ' Switch to the Plots sheet so the user sees the result immediately.
+    ws.Activate
+End Sub
