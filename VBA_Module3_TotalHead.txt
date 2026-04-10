@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.67
+' v1.68
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -54,7 +54,7 @@
 '   row 4+ data
 '   col  1  A   Point Ref
 '   col 13  M   FINAL Z / BWL
-'   col 22  V   Point Notes
+'   col 21  U   Point Notes
 ' ============================================================
 Option Explicit
 
@@ -95,7 +95,7 @@ Private Const PD_FIRST_DATA_ROW As Long = 8
 ' ── Point Index column indices ───────────────────────────────
 Private Const PI_COL_PTREF      As Long = 1    ' A
 Private Const PI_COL_FINAL_Z    As Long = 13   ' M
-Private Const PI_COL_NOTES      As Long = 22   ' V
+Private Const PI_COL_NOTES      As Long = 21   ' U
 Private Const PI_DATA_FIRST_ROW As Long = 4
 
 ' ── Named tolerances and sentinel values ─────────────────────
@@ -1178,7 +1178,7 @@ End Function
 
 ' ============================================================
 ' ExportTotalHeadPRN
-' Writes a tab-delimited text file to the path in Sheet2 B6.
+' Writes a tab-delimited text file to the path in Front Page B6.
 ' ============================================================
 Sub ExportTotalHeadPRN()
     Dim wsThis As Worksheet
@@ -1186,10 +1186,10 @@ Sub ExportTotalHeadPRN()
 
     Dim exportPath As String
     On Error Resume Next
-    exportPath = CStr(ThisWorkbook.Sheets("Sheet2").Cells(6, 2).Value)
+    exportPath = CStr(ThisWorkbook.Sheets("Front Page").Cells(6, 2).Value)
     On Error GoTo 0
     If exportPath = "" Then
-        MsgBox "Set an export path in Sheet2 cell B6.", vbExclamation
+        MsgBox "Set an export path in Front Page cell B6.", vbExclamation
         Exit Sub
     End If
     If Right(exportPath, 1) <> "\" Then exportPath = exportPath & "\"
