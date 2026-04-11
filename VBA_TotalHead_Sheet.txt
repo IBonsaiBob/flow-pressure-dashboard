@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_TotalHead_Sheet.txt  -  Sheet module for "Total Head"
-' v1.81
+' v1.82
 '
 ' Paste this entire file into the Sheet module for the
 ' "Total Head" worksheet in the VBA editor (Alt+F11,
@@ -236,8 +236,12 @@ Private Sub Worksheet_Change(ByVal Target As Range)
 
         ' Record note ONLY when the Point Ref has actually changed
         ' (avoids spurious notes when the user re-enters the same ref).
+        ' Wrapped in On Error Resume Next so a note-recording failure
+        ' (e.g. Point Index write-protected) NEVER skips population.
         If ptRef <> mOrigRefByRow(r) Then
+            On Error Resume Next
             Call RecordSensorNote(Me, r, ptRef, mOrigZByRow(r))
+            On Error GoTo EH
         End If
 
         Application.EnableEvents = False

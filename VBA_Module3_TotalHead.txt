@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.81
+' v1.82
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -80,6 +80,13 @@
 '      correctly routed to the zone-name handler.
 '      Also added clearing of System (F6) alongside Driving Head and
 '      Zone Notes so the sheet is fully blank after a zone reset.
+'  12. (v1.82) Fixed "nothing populates" when entering a Point Ref:
+'      RecordSensorNote in the enter-ref branch (col A, non-empty ref)
+'      was not wrapped in On Error Resume Next.  Any error there
+'      (e.g. Point Index write-protected) jumped straight to EH:,
+'      silently skipping PopulateElevationTH / PopulateGpsDipDumpyOneTH
+'      / SyncOffsetToTotalHead — leaving GPS, Z, Dip, Dumpy all blank.
+'      Wrapped to match the already-fixed clear-ref branch (v1.78).
 '
 ' SHEET LAYOUT (Total Head)
 '   D3  row 3, col 4   Zone Name   (merged D3:I4)
@@ -133,7 +140,7 @@
 Option Explicit
 
 ' ── Module version (checked by ThisWorkbook.Workbook_Open) ───
-Public Const MODULE3_VERSION As String = "1.81"
+Public Const MODULE3_VERSION As String = "1.82"
 
 ' ── Layout constants ─────────────────────────────────────────
 Private Const CFG_FIRST         As Long = 9
