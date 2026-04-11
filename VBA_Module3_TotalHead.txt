@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.75
+' v1.76
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -30,6 +30,10 @@
 '      Workbook_Open (ThisWorkbook v1.75) can verify on startup that
 '      the in-workbook Module3 matches the expected repository
 '      version, alerting the user if stale code is detected.
+'   6. (v1.76) Fixed PI_COL_LOGGER_ID: was 18 (col R) but Logger ID
+'      is actually at col O = 15 in the Point Index.  The v1.73
+'      Logger ID fallback therefore always read empty cells and never
+'      matched anything — corrected to 15.
 '
 ' SHEET LAYOUT (Total Head)
 '   D3  row 3, col 4   Zone Name   (merged D3:I4)
@@ -77,7 +81,7 @@
 Option Explicit
 
 ' ── Module version (checked by ThisWorkbook.Workbook_Open) ───
-Public Const MODULE3_VERSION As String = "1.75"
+Public Const MODULE3_VERSION As String = "1.76"
 
 ' ── Layout constants ─────────────────────────────────────────
 Private Const CFG_FIRST         As Long = 9
@@ -117,7 +121,7 @@ Private Const PD_FIRST_DATA_ROW As Long = 8
 Private Const PI_COL_PTREF      As Long = 1    ' A
 Private Const PI_COL_FINAL_Z    As Long = 13   ' M
 Private Const PI_COL_NOTES      As Long = 21   ' U
-Private Const PI_COL_LOGGER_ID  As Long = 18   ' R  (Logger / device ID)
+Private Const PI_COL_LOGGER_ID  As Long = 15   ' O  (Logger / device ID)
 Private Const PI_DATA_FIRST_ROW As Long = 4
 
 ' ── Named tolerances and sentinel values ─────────────────────
