@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.71
+' v1.73
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -12,6 +12,14 @@
 '      Before the fix every sub called FindPressureDataCol / PI
 '      lookups individually, so 35 sensors meant 35 full scans
 '      of each sheet.
+'   3. (v1.73) FindPressureDataCol – changed to case-insensitive
+'      comparison and added Logger ID fallback.  Previously an
+'      exact case mismatch (e.g. PD header "prv06-ds" vs config
+'      "PRV06-DS") or a PD sheet indexed by Logger ID instead of
+'      Point Ref caused every sensor to return pdCol=0 silently,
+'      producing headers in the data table but empty data columns.
+'      Also added a status-bar message after RebuildDataTable
+'      reporting how many sensors were matched vs missed.
 '
 ' SHEET LAYOUT (Total Head)
 '   D3  row 3, col 4   Zone Name   (merged D3:I4)
@@ -96,6 +104,7 @@ Private Const PD_FIRST_DATA_ROW As Long = 8
 Private Const PI_COL_PTREF      As Long = 1    ' A
 Private Const PI_COL_FINAL_Z    As Long = 13   ' M
 Private Const PI_COL_NOTES      As Long = 21   ' U
+Private Const PI_COL_LOGGER_ID  As Long = 18   ' R  (Logger / device ID)
 Private Const PI_DATA_FIRST_ROW As Long = 4
 
 ' ── Named tolerances and sentinel values ─────────────────────
@@ -118,6 +127,13 @@ Private mBatch_pdLastRow     As Long
 Private mBatch_Active        As Boolean
 Private mBatch_thTS()        As Double   ' TH timestamps  (DATA_FIRST_ROW..thLastRow)
 Private mBatch_thLastRow     As Long
+
+' Logger ID cache (populated by RebuildDataTable alongside PD headers).
+' Enables FindPressureDataCol to fall back to PI Logger ID if a Point Ref
+' is not found by name in the Pressure Data header row.
+Private mBatch_piRef()       As String   ' PI Point Refs  (1..mBatch_piCount)
+Private mBatch_piLogger()    As String   ' PI Logger IDs  (1..mBatch_piCount)
+Private mBatch_piCount       As Long
 
 ' ============================================================
 ' EnsureArchiveHeaders
@@ -271,30 +287,59 @@ End Sub
 ' ============================================================
 ' FindPressureDataCol
 ' Returns the column index in Pressure Data whose row-7 header
-' equals ptRef.  Returns 0 if not found.
-' Uses the mBatch_pdHdr cache when RebuildDataTable is active,
-' otherwise reads from the sheet.
+' matches ptRef (case-insensitive).  If no exact match is found
+' and the mBatch PI cache is loaded, tries the Logger ID from
+' Point Index col R as a fallback so that PD sheets indexed by
+' Logger ID rather than Point Ref name still work.
+' Returns 0 if not found.
 ' ============================================================
 Function FindPressureDataCol(ptRef As String) As Long
+    Dim ptRefLC As String
+    ptRefLC = LCase(Trim(ptRef))
+
     If mBatch_Active Then
         Dim j As Long
+        ' Pass 1: case-insensitive match on Point Ref name
         For j = 2 To mBatch_pdLastCol
-            If mBatch_pdHdr(j) = ptRef Then
+            If LCase(mBatch_pdHdr(j)) = ptRefLC Then
                 FindPressureDataCol = j
                 Exit Function
             End If
         Next j
+
+        ' Pass 2: Logger ID fallback — look up this sensor's Logger ID
+        ' from the PI cache and try matching that against PD headers.
+        If mBatch_piCount > 0 Then
+            Dim pi As Long
+            For pi = 1 To mBatch_piCount
+                If LCase(mBatch_piRef(pi)) = ptRefLC Then
+                    Dim lgID As String
+                    lgID = LCase(mBatch_piLogger(pi))
+                    If lgID <> "" Then
+                        For j = 2 To mBatch_pdLastCol
+                            If LCase(mBatch_pdHdr(j)) = lgID Then
+                                FindPressureDataCol = j
+                                Exit Function
+                            End If
+                        Next j
+                    End If
+                    Exit For   ' found the PI entry; logger scan above exhausted
+                End If
+            Next pi
+        End If
+
         FindPressureDataCol = 0
         Exit Function
     End If
 
+    ' Non-batch path (called outside RebuildDataTable): case-insensitive scan.
     Dim wsPD As Worksheet
     Set wsPD = ThisWorkbook.Sheets("Pressure Data")
     Dim lastCol As Long
     lastCol = wsPD.Cells(PD_HEADER_ROW, wsPD.Columns.Count).End(xlToLeft).Column
     Dim k As Long
     For k = 2 To lastCol
-        If CStr(wsPD.Cells(PD_HEADER_ROW, k).Value) = ptRef Then
+        If LCase(CStr(wsPD.Cells(PD_HEADER_ROW, k).Value)) = ptRefLC Then
             FindPressureDataCol = k
             Exit Function
         End If
@@ -373,7 +418,7 @@ Sub RepopulateOffsetsFromPressureData()
         If ptRef = "" Then GoTo NextCfgOfs
 
         For c = 2 To lastPDCol
-            If pdHdr(c) = ptRef Then
+            If LCase(pdHdr(c)) = LCase(ptRef) Then
                 wsThis.Cells(cfg, 2).Value = pdOfs(c)
                 Exit For
             End If
@@ -691,6 +736,33 @@ Sub RebuildDataTable()
     mBatch_pdLastRow      = pdLastRow
     mBatch_Active         = True
 
+    ' ── Pre-load PI Logger ID mapping (for FindPressureDataCol fallback) ─
+    ' Loads PI Point Ref + Logger ID (col R) so that sensors whose PD
+    ' column header is a Logger ID rather than a Point Ref are still found.
+    mBatch_piCount = 0
+    Dim wsPI As Worksheet
+    On Error Resume Next
+    Set wsPI = ThisWorkbook.Sheets("Point Index")
+    On Error GoTo Done
+    If Not wsPI Is Nothing Then
+        Dim piLR As Long
+        piLR = wsPI.Cells(wsPI.Rows.Count, PI_COL_PTREF).End(xlUp).Row
+        Dim piMax As Long
+        piMax = Application.Max(1, piLR - PI_DATA_FIRST_ROW + 1)
+        ReDim mBatch_piRef(1 To piMax)
+        ReDim mBatch_piLogger(1 To piMax)
+        Dim piIdx As Long
+        For piIdx = PI_DATA_FIRST_ROW To piLR
+            Dim piRefStr As String
+            piRefStr = Trim(CStr(wsPI.Cells(piIdx, PI_COL_PTREF).Value))
+            If piRefStr <> "" Then
+                mBatch_piCount = mBatch_piCount + 1
+                mBatch_piRef(mBatch_piCount)    = piRefStr
+                mBatch_piLogger(mBatch_piCount) = Trim(CStr(wsPI.Cells(piIdx, PI_COL_LOGGER_ID).Value))
+            End If
+        Next piIdx
+    End If
+
     ' ── Clear existing data area ─────────────────────────────
     Dim lastTHRow As Long
     lastTHRow = wsThis.Cells(wsThis.Rows.Count, 1).End(xlUp).Row
@@ -720,20 +792,37 @@ Sub RebuildDataTable()
 
     ' ── Populate each sensor column ─────────────────────────
     Dim cfg As Long
+    Dim sensorsTotal As Long
+    Dim sensorsFound As Long
     For cfg = CFG_FIRST To CFG_LAST
         Dim ptRef As String
         ptRef = Trim(CStr(wsThis.Cells(cfg, 1).Value))
         If ptRef = "" Then GoTo NextSensor
 
+        sensorsTotal = sensorsTotal + 1
         Dim dataCol As Long
         dataCol = cfg - 7   ' row 9 → col 2 (B), row 10 → col 3 (C), …
         wsThis.Cells(DATA_HDR_ROW, dataCol).Value = ptRef
+        If FindPressureDataCol(ptRef) > 0 Then sensorsFound = sensorsFound + 1
         Call PopulateOneSensor(wsThis, wsPD, cfg, dataCol, startD, endD)
 NextSensor:
     Next cfg
 
+    ' ── Status bar: tell user how many sensors were matched ──
+    If sensorsTotal > 0 Then
+        If sensorsFound < sensorsTotal Then
+            Application.StatusBar = "Total Head: " & sensorsFound & "/" & sensorsTotal & _
+                " sensor(s) matched in Pressure Data." & _
+                IIf(sensorsFound = 0, " Check PD header row has correct sensor names.", "")
+        Else
+            Application.StatusBar = "Total Head: " & sensorsFound & "/" & sensorsTotal & _
+                " sensor(s) populated."
+        End If
+    End If
+
 Done:
-    mBatch_Active = False
+    mBatch_Active   = False
+    mBatch_piCount  = 0
     Application.ScreenUpdating = True
     On Error GoTo 0
 End Sub
@@ -951,7 +1040,7 @@ Sub LoadTotalHeadByName(zoneName As String)
 
         ' Offset: scan pre-loaded PD header array
         For c = 2 To pdLastCol
-            If pdHdr(c) = ptRef Then
+            If LCase(pdHdr(c)) = LCase(ptRef) Then
                 wsThis.Cells(cfg, 2).Value = pdOfs(c)
                 Exit For
             End If
