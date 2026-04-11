@@ -1,6 +1,6 @@
 ' ============================================================
 ' Module2 — Plots Tab Procedures
-' v1.72 — PasteValuesDispatch stub added back here so that
+' v1.73 — no changes from v1.72; version bumped for consistency.
 '         Application.OnKey can resolve the procedure name.
 '         Application.OnKey only searches standard modules
 '         (the global namespace); it cannot find Public Subs

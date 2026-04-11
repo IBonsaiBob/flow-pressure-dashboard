@@ -747,20 +747,22 @@ Sub RebuildDataTable()
     If Not wsPI Is Nothing Then
         Dim piLR As Long
         piLR = wsPI.Cells(wsPI.Rows.Count, PI_COL_PTREF).End(xlUp).Row
-        Dim piMax As Long
-        piMax = Application.Max(1, piLR - PI_DATA_FIRST_ROW + 1)
-        ReDim mBatch_piRef(1 To piMax)
-        ReDim mBatch_piLogger(1 To piMax)
-        Dim piIdx As Long
-        For piIdx = PI_DATA_FIRST_ROW To piLR
-            Dim piRefStr As String
-            piRefStr = Trim(CStr(wsPI.Cells(piIdx, PI_COL_PTREF).Value))
-            If piRefStr <> "" Then
-                mBatch_piCount = mBatch_piCount + 1
-                mBatch_piRef(mBatch_piCount)    = piRefStr
-                mBatch_piLogger(mBatch_piCount) = Trim(CStr(wsPI.Cells(piIdx, PI_COL_LOGGER_ID).Value))
-            End If
-        Next piIdx
+        If piLR >= PI_DATA_FIRST_ROW Then
+            Dim piMax As Long
+            piMax = piLR - PI_DATA_FIRST_ROW + 1
+            ReDim mBatch_piRef(1 To piMax)
+            ReDim mBatch_piLogger(1 To piMax)
+            Dim piIdx As Long
+            For piIdx = PI_DATA_FIRST_ROW To piLR
+                Dim piRefStr As String
+                piRefStr = Trim(CStr(wsPI.Cells(piIdx, PI_COL_PTREF).Value))
+                If piRefStr <> "" Then
+                    mBatch_piCount = mBatch_piCount + 1
+                    mBatch_piRef(mBatch_piCount)    = piRefStr
+                    mBatch_piLogger(mBatch_piCount) = Trim(CStr(wsPI.Cells(piIdx, PI_COL_LOGGER_ID).Value))
+                End If
+            Next piIdx
+        End If
     End If
 
     ' ── Clear existing data area ─────────────────────────────

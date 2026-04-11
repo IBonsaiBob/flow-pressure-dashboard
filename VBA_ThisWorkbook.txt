@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_ThisWorkbook.txt  -  ThisWorkbook module
-' v1.72
+' v1.73
 '
 ' Paste this entire file into the ThisWorkbook module in the
 ' VBA editor (Alt+F11, double-click "ThisWorkbook" in the
