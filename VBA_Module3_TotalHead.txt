@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.77
+' v1.78
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -36,10 +36,20 @@
 '      matched anything — corrected to 15.
 '   7. (v1.77) Added GPS / Dip / Dumpy bidirectional sync between
 '      TH cols C/E/F and Point Index cols L/J/K (same logic as the
-'      existing Final Z / col D ↔ col M sync).  PopulateOneSensor
-'      now multiplies raw pressure values by the Final Z factor to
-'      produce Total Head.  Fixed Notes column reference (col G→H,
-'      i.e. 7→8) after a new GPS column was inserted in TH.
+'      existing Final Z / col D ↔ col M sync).  Fixed Notes column
+'      reference (col G→H, i.e. 7→8) after a new GPS column was
+'      inserted in TH.
+'   8. (v1.78) Fixed three bugs:
+'      a) PopulateOneSensor now uses addition (pressure + offset +
+'         Final Z) not multiplication.  Default finalZ changed from
+'         1 → 0 so sensors with no elevation give pressure+offset.
+'      b) Clear-ref block now clears GPS/Dip/Dumpy/Z/Offset BEFORE
+'         calling RecordSensorNote so they are always wiped even if
+'         note-recording fails.
+'      c) mOrigRefByRow / mOrigZByRow are snapshotted in
+'         Worksheet_Activate so clearing a ref after a zone-load
+'         (before the user has clicked the cell) still saves the
+'         note to Point Index.
 '
 ' SHEET LAYOUT (Total Head)
 '   D3  row 3, col 4   Zone Name   (merged D3:I4)
@@ -93,7 +103,7 @@
 Option Explicit
 
 ' ── Module version (checked by ThisWorkbook.Workbook_Open) ───
-Public Const MODULE3_VERSION As String = "1.77"
+Public Const MODULE3_VERSION As String = "1.78"
 
 ' ── Layout constants ─────────────────────────────────────────
 Private Const CFG_FIRST         As Long = 9
@@ -1075,11 +1085,11 @@ End Sub
 ' Fills one sensor data column using the mBatch_* cache.
 ' Two-pointer (cursor) algorithm: O(n + m) timestamp matching.
 '
-' Output formula:  Total Head = (pressure + offset) × Final Z
+' Output formula:  Total Head = pressure + offset + Final Z
 '   where pressure = raw value from Pressure Data sheet,
 '         offset   = TH col B (calibration zero correction),
-'         Final Z  = TH col D (elevation / scaling factor).
-' If Final Z is 0 or empty, scaling defaults to 1 (no change).
+'         Final Z  = TH col D (elevation above datum).
+' If Final Z is 0 or empty, it contributes 0 (no elevation component).
 ' ============================================================
 Sub PopulateOneSensor(wsThis As Worksheet, wsPD As Worksheet, _
                       cfgRow As Long, dataCol As Long, _
@@ -1097,9 +1107,9 @@ Sub PopulateOneSensor(wsThis As Worksheet, wsPD As Worksheet, _
     thOfs = wsThis.Cells(cfgRow, TH_COL_OFFSET).Value
     If IsNumeric(thOfs) Then offset = CDbl(thOfs)
 
-    ' Final Z scaling factor: converts raw pressure to Total Head
+    ' Final Z elevation component: added to pressure + offset for Total Head
     Dim finalZ As Double
-    finalZ = 1  ' default: no scaling if Z is missing or zero
+    finalZ = 0  ' default: no elevation component if Z is missing or zero
     Dim thZRaw As Variant
     thZRaw = wsThis.Cells(cfgRow, TH_COL_FINAL_Z).Value
     If IsNumeric(thZRaw) Then
@@ -1160,7 +1170,7 @@ Sub PopulateOneSensor(wsThis As Worksheet, wsPD As Worksheet, _
             Dim v As Variant
             v = pdDataRaw(jj - mBatch_pdFirstDataRow + 1, 1)
             If IsNumeric(v) And CDbl(v) <> PD_MISSING_VALUE Then
-                outArr(thRow - DATA_FIRST_ROW + 1, 1) = (CDbl(v) + offset) * finalZ
+                outArr(thRow - DATA_FIRST_ROW + 1, 1) = CDbl(v) + offset + finalZ
             End If
         End If
 NextThRow:

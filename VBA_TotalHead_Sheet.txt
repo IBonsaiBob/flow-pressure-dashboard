@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_TotalHead_Sheet.txt  -  Sheet module for "Total Head"
-' v1.77
+' v1.78
 '
 ' Paste this entire file into the Sheet module for the
 ' "Total Head" worksheet in the VBA editor (Alt+F11,
@@ -45,6 +45,15 @@ Private Sub Worksheet_Activate()
     ' copy selection.  The data table was already built on the last
     ' full activation and is still valid.
     If Application.CutCopyMode <> False Then Exit Sub
+
+    ' Snapshot current Point Refs + Z values so that Worksheet_Change
+    ' can record the old ref in PI notes even when the user clears a
+    ' ref without first clicking on the cell (e.g. after a zone load).
+    Dim i As Long
+    For i = 9 To 43
+        mOrigRefByRow(i) = Trim(CStr(Me.Cells(i, 1).Value))
+        mOrigZByRow(i)   = Me.Cells(i, 4).Value
+    Next i
 
     Call InitTotalHeadSheet
     Call PopulateAllElevationsTH
@@ -148,12 +157,17 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         ptRef = Trim(CStr(Me.Cells(r, 1).Value))
 
         If ptRef = "" Then
-            ' Clearing a Point Ref: only record note if there was actually a ref there.
-            ' (mOrigRefByRow snapshotted in SelectionChange before the edit)
+            ' Clearing a Point Ref:
+            ' 1. Record note to PI first (while Z / Notes cells still have values).
+            '    Wrapped in its own On Error Resume Next so a failure here NEVER
+            '    prevents the cells from being cleared in step 2.
             If mOrigRefByRow(r) <> "" Then
+                On Error Resume Next
                 Call RecordSensorNote(Me, r, mOrigRefByRow(r), mOrigZByRow(r))
+                On Error GoTo EH
             End If
 
+            ' 2. Clear all associated cells (always runs, even if note recording failed).
             Application.EnableEvents = False
             Me.Cells(r, 2).Value = 0    ' Offset
             Me.Cells(r, 3).Value = ""   ' GPS

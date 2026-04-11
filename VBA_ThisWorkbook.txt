@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_ThisWorkbook.txt  -  ThisWorkbook module
-' v1.77
+' v1.78
 '
 ' Paste this entire file into the ThisWorkbook module in the
 ' VBA editor (Alt+F11, double-click "ThisWorkbook" in the
@@ -28,7 +28,7 @@
 '   Excel default to clear any stale OnKey binding that may have
 '   been left by an older version of this file.
 '
-' VERSION CHECK (v1.77)
+' VERSION CHECK (v1.78)
 '   Workbook_Open now compares MODULE3_VERSION (declared in Module3)
 '   against EXPECTED_MODULE3_VERSION declared here.  If they differ
 '   — or if Module3 has no version constant at all (old code) —
@@ -39,7 +39,7 @@ Option Explicit
 
 ' Expected Module3 version — update this constant whenever Module3
 ' is updated so users with stale code are warned on workbook open.
-Private Const EXPECTED_MODULE3_VERSION As String = "1.77"
+Private Const EXPECTED_MODULE3_VERSION As String = "1.78"
 
 Private Sub Workbook_Open()
     ' Reset any stale Ctrl+V binding from older versions, then register
