@@ -145,7 +145,7 @@ Private Const TH_COL_GPS        As Long = 3    ' C  GPS
 Private Const TH_COL_FINAL_Z    As Long = 4    ' D  Final Z
 Private Const TH_COL_DIP        As Long = 5    ' E  Dip
 Private Const TH_COL_DUMPY      As Long = 6    ' F  Dumpy
-Private Const TH_COL_NOTES      As Long = 8    ' H  Point Notes
+Private Const TH_COL_NOTES      As Long = 8    ' H  (Point Notes)
 
 ' ── Named tolerances and sentinel values ─────────────────────
 Private Const Z_TOLERANCE        As Double = 0.0001
@@ -1074,6 +1074,12 @@ End Sub
 ' PopulateOneSensor
 ' Fills one sensor data column using the mBatch_* cache.
 ' Two-pointer (cursor) algorithm: O(n + m) timestamp matching.
+'
+' Output formula:  Total Head = (pressure + offset) × Final Z
+'   where pressure = raw value from Pressure Data sheet,
+'         offset   = TH col B (calibration zero correction),
+'         Final Z  = TH col D (elevation / scaling factor).
+' If Final Z is 0 or empty, scaling defaults to 1 (no change).
 ' ============================================================
 Sub PopulateOneSensor(wsThis As Worksheet, wsPD As Worksheet, _
                       cfgRow As Long, dataCol As Long, _
