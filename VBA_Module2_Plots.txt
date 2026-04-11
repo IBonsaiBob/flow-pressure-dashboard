@@ -1,7 +1,13 @@
 ' ============================================================
 ' Module2 — Plots Tab Procedures
-' v1.70 — PasteValuesDispatch / CopySelectionToPlotsHeaders
-'         moved to ThisWorkbook module.
+' v1.72 — PasteValuesDispatch stub added back here so that
+'         Application.OnKey can resolve the procedure name.
+'         Application.OnKey only searches standard modules
+'         (the global namespace); it cannot find Public Subs
+'         in class modules such as ThisWorkbook by bare name.
+'         The stub simply forwards the call to
+'         ThisWorkbook.PasteValuesDispatch where the real
+'         logic lives.
 '
 ' How to install:
 '   1. Alt+F11 to open the VBA editor.
@@ -9,6 +15,16 @@
 '   3. Select all (Ctrl+A) and paste this entire block.
 '      (Do NOT paste into Sheet5 (Plots) — that is a different module.)
 ' ============================================================
+
+' ---------------------------------------------------------------------------
+' PasteValuesDispatch  — stub for Application.OnKey
+' Application.OnKey "^+V" is registered in ThisWorkbook but the resolver
+' only looks in the global (standard-module) namespace.  This one-liner
+' forwards the call to the full implementation in ThisWorkbook.
+' ---------------------------------------------------------------------------
+Public Sub PasteValuesDispatch()
+    ThisWorkbook.PasteValuesDispatch
+End Sub
 
 ' ---------------------------------------------------------------------------
 ' FillTimestamps
