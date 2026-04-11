@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.80
+' v1.81
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -71,6 +71,15 @@
 '         the mOrigZoneName snapshot), then clears Driving Head (L3),
 '         Zone Notes (J9), and all sensor config rows A9:H43.
 '         Start Date / End Date are intentionally preserved.
+'  11. (v1.81) Fixed clearing when Zone Name is erased:
+'      Zone Name (D3) is a merged cell spanning D3:I4.  When cleared,
+'      Target.Cells.Count = 12 so the multi-cell guard in
+'      Worksheet_Change exited before the D3 handler was reached —
+'      nothing cleared.  Fixed by checking Intersect(Target, D3)
+'      before the multi-cell guard so merged-cell changes are
+'      correctly routed to the zone-name handler.
+'      Also added clearing of System (F6) alongside Driving Head and
+'      Zone Notes so the sheet is fully blank after a zone reset.
 '
 ' SHEET LAYOUT (Total Head)
 '   D3  row 3, col 4   Zone Name   (merged D3:I4)
@@ -124,7 +133,7 @@
 Option Explicit
 
 ' ── Module version (checked by ThisWorkbook.Workbook_Open) ───
-Public Const MODULE3_VERSION As String = "1.80"
+Public Const MODULE3_VERSION As String = "1.81"
 
 ' ── Layout constants ─────────────────────────────────────────
 Private Const CFG_FIRST         As Long = 9

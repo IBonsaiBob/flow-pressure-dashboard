@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_TotalHead_Sheet.txt  -  Sheet module for "Total Head"
-' v1.80
+' v1.81
 '
 ' Paste this entire file into the Sheet module for the
 ' "Total Head" worksheet in the VBA editor (Alt+F11,
@@ -8,7 +8,10 @@
 '
 ' CHANGE HANDLERS
 '   D3  (Zone Name)   – auto-load from archive if name matches;
-'                       clear zone notes on new name; update chart
+'                       clear zone notes on new name; update chart;
+'                       clearing D3 auto-archives then wipes session
+'                       (Driving Head, System, Zone Notes, sensor rows)
+'                       while preserving Start/End dates.
 '   D5:D6 (dates)     – rebuild data table + refresh chart
 '   Col A (Point Ref) – record old note, populate Z/GPS/Dip/Dumpy
 '                       from PI, sync offset from PD, rebuild data
@@ -19,7 +22,7 @@
 '   Col F (Dumpy)     – write Dumpy back to Point Index, record note
 '
 ' SELECTION HANDLER
-'   I5  (Save button) – call ArchiveTotalHeadData
+'   I5  (Save button) – export TotalHeadChart as PNG (SaveTotalHeadChartAsPNG)
 '   L5  (Load drpdn)  – trigger handled via Worksheet_Change L5
 ' ============================================================
 Option Explicit
@@ -69,13 +72,23 @@ End Sub
 ' ============================================================
 Private Sub Worksheet_Change(ByVal Target As Range)
     On Error GoTo EH
+
+    ' ── D3 Zone Name intercept (must come before multi-cell guard) ──
+    ' Zone Name (D3) is a merged cell spanning D3:I4 — when the user
+    ' clears it, Target.Cells.Count = 12 (> 1), so the multi-cell
+    ' guard below would Exit Sub before the zone-name handler is
+    ' reached.  Use Intersect to catch it first regardless of merge size.
+    Dim r As Long, c As Long
+    If Not Intersect(Target, Me.Cells(3, 4)) Is Nothing Then
+        r = 3
+        c = 4
     ' ── Multi-cell change (paste / fill-down / range-clear) ─────
     ' All multi-cell changes are ignored UNLESS they touch col A
     ' config rows 9-43.  In that case, re-sync all offsets and
     ' elevations then rebuild – same effect as a single-cell entry.
     ' When anyConfig is False the handler falls through to Exit Sub
     ' and the change is silently ignored.
-    If Target.Cells.Count > 1 Then
+    ElseIf Target.Cells.Count > 1 Then
         Dim pc As Range
         Dim anyConfig As Boolean
         For Each pc In Target.Cells
@@ -93,11 +106,10 @@ Private Sub Worksheet_Change(ByVal Target As Range)
             Call RefreshTotalHeadChart
         End If
         Exit Sub
+    Else
+        r = Target.Row
+        c = Target.Column
     End If
-
-    Dim r As Long, c As Long
-    r = Target.Row
-    c = Target.Column
 
     ' ── D3: Zone Name ───────────────────────────────────────
     If r = 3 And c = 4 Then
@@ -112,6 +124,7 @@ Private Sub Worksheet_Change(ByVal Target As Range)
             End If
             Application.EnableEvents = False
             Me.Cells(3, 12).Value = ""   ' Driving Head  (L3)
+            Me.Cells(6, 6).Value  = ""   ' System        (F6)
             Me.Cells(9, 10).Value = ""   ' Zone Notes    (J9)
             ' Clear all sensor config rows 9-43 (keep col 7 = PRN button)
             Dim cr As Long
