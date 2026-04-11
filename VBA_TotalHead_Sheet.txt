@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_TotalHead_Sheet.txt  -  Sheet module for "Total Head"
-' v1.79
+' v1.80
 '
 ' Paste this entire file into the Sheet module for the
 ' "Total Head" worksheet in the VBA editor (Alt+F11,
@@ -28,6 +28,7 @@ Option Explicit
 ' can report old values in Point Index notes.
 Private mOrigZByRow(9 To 43)   As Variant  ' Z before Point Ref change
 Private mOrigRefByRow(9 To 43) As String   ' Point Ref before it is cleared
+Private mOrigZoneName          As String   ' Zone Name before D3 is changed
 
 Private Const LOAD_DROPDOWN_PLACEHOLDER As String = """Drop Down to load saved selections"""
 
@@ -54,6 +55,7 @@ Private Sub Worksheet_Activate()
         mOrigRefByRow(i) = Trim(CStr(Me.Cells(i, 1).Value))
         mOrigZByRow(i)   = Me.Cells(i, 4).Value
     Next i
+    mOrigZoneName = Trim(CStr(Me.Cells(3, 4).Value))
 
     Call InitTotalHeadSheet
     Call PopulateAllElevationsTH
@@ -101,6 +103,33 @@ Private Sub Worksheet_Change(ByVal Target As Range)
     If r = 3 And c = 4 Then
         Dim newZone As String
         newZone = Trim(CStr(Me.Cells(3, 4).Value))
+
+        ' ── Zone Name cleared → auto-archive then wipe session ─
+        If newZone = "" Then
+            ' Archive current data first (so nothing is lost)
+            If mOrigZoneName <> "" Then
+                Call ArchiveTotalHeadData(mOrigZoneName)
+            End If
+            Application.EnableEvents = False
+            Me.Cells(3, 12).Value = ""   ' Driving Head  (L3)
+            Me.Cells(9, 10).Value = ""   ' Zone Notes    (J9)
+            ' Clear all sensor config rows 9-43 (keep col 7 = PRN button)
+            Dim cr As Long
+            For cr = 9 To 43
+                Me.Cells(cr, 1).Value = ""  ' Point Ref
+                Me.Cells(cr, 2).Value = ""  ' Offset
+                Me.Cells(cr, 3).Value = ""  ' GPS
+                Me.Cells(cr, 4).Value = ""  ' Z
+                Me.Cells(cr, 5).Value = ""  ' Dip
+                Me.Cells(cr, 6).Value = ""  ' Dumpy
+                Me.Cells(cr, 8).Value = ""  ' Notes
+            Next cr
+            Application.EnableEvents = True
+            mOrigZoneName = ""
+            Call RebuildDataTable
+            Call RefreshTotalHeadChart
+            Exit Sub
+        End If
 
         ' Auto-clear zone notes when zone name changes
         Application.EnableEvents = False
@@ -301,14 +330,16 @@ Private Sub Worksheet_SelectionChange(ByVal Target As Range)
             mOrigRefByRow(sc.Row) = Trim(CStr(sc.Value))
             mOrigZByRow(sc.Row)   = Me.Cells(sc.Row, 4).Value
         End If
+        ' Snapshot Zone Name so that clearing D3 can archive with the old name
+        If sc.Row = 3 And sc.Column = 4 Then
+            mOrigZoneName = Trim(CStr(Me.Cells(3, 4).Value))
+        End If
     Next sc
 
     ' ── Save button (I5) ────────────────────────────────────
     If Target.Row = 5 And Target.Column = 9 Then
-        ' Save button clicked
-        Application.EnableEvents = False
-        Call ArchiveTotalHeadData
-        Application.EnableEvents = True
+        ' Save button: export chart as PNG
+        Call SaveTotalHeadChartAsPNG
         ' Move selection away so a second click still triggers
         Me.Cells(3, 4).Select
     End If

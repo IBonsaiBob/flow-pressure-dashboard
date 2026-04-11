@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.79
+' v1.80
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -60,6 +60,17 @@
 '         eliminating any stale data left from a previous session.
 '      c) Worksheet_Change clear-ref block: Offset was also set to 0
 '         instead of "" — fixed for consistency.
+'  10. (v1.80) Clear-on-zone-name and PNG export:
+'      a) ArchiveTotalHeadData accepts optional overrideZoneName so
+'         the sheet can auto-archive with the old name when D3 is
+'         cleared (D3 is already empty when Worksheet_Change fires).
+'      b) Added SaveTotalHeadChartAsPNG — exports TotalHeadChart as
+'         a PNG file; user is prompted for save path.  This is now
+'         the only action wired to the I5 save button.
+'      c) When D3 is cleared, the sheet module auto-archives (using
+'         the mOrigZoneName snapshot), then clears Driving Head (L3),
+'         Zone Notes (J9), and all sensor config rows A9:H43.
+'         Start Date / End Date are intentionally preserved.
 '
 ' SHEET LAYOUT (Total Head)
 '   D3  row 3, col 4   Zone Name   (merged D3:I4)
@@ -113,7 +124,7 @@
 Option Explicit
 
 ' ── Module version (checked by ThisWorkbook.Workbook_Open) ───
-Public Const MODULE3_VERSION As String = "1.79"
+Public Const MODULE3_VERSION As String = "1.80"
 
 ' ── Layout constants ─────────────────────────────────────────
 Private Const CFG_FIRST         As Long = 9
@@ -242,7 +253,7 @@ End Sub
 '   - maps config rows 9..43 to archive sensor cols 6..40
 '     using the formula  archCol = cfgRow - CFG_FIRST + ARCH_COL_SENSOR1
 ' ============================================================
-Sub ArchiveTotalHeadData()
+Sub ArchiveTotalHeadData(Optional overrideZoneName As String = "")
     Dim wsThis As Worksheet
     Dim wsArch As Worksheet
     On Error GoTo ErrOut
@@ -251,7 +262,11 @@ Sub ArchiveTotalHeadData()
     Set wsArch = ThisWorkbook.Sheets("Total Head Archive")
 
     Dim zoneName As String
-    zoneName = Trim(CStr(wsThis.Cells(ZONE_ROW, ZONE_COL).Value))
+    If overrideZoneName <> "" Then
+        zoneName = overrideZoneName
+    Else
+        zoneName = Trim(CStr(wsThis.Cells(ZONE_ROW, ZONE_COL).Value))
+    End If
     If zoneName = "" Then
         MsgBox "Enter a Zone Name in cell D3 before saving.", vbExclamation
         Exit Sub
@@ -1386,6 +1401,47 @@ ErrOut:
     Application.ScreenUpdating = True
     Application.StatusBar      = False
     MsgBox "LoadTotalHeadByName error: " & Err.Description, vbCritical
+End Sub
+
+' ============================================================
+' SaveTotalHeadChartAsPNG
+' Exports the TotalHeadChart embedded in the Total Head sheet
+' as a PNG image.  The user is prompted for a save path.
+' This is the only action wired to the I5 save button.
+' ============================================================
+Sub SaveTotalHeadChartAsPNG()
+    Dim wsThis As Worksheet
+    Set wsThis = ThisWorkbook.Sheets("Total Head")
+
+    Dim cht As ChartObject
+    On Error Resume Next
+    Set cht = wsThis.ChartObjects("TotalHeadChart")
+    On Error GoTo 0
+
+    If cht Is Nothing Then
+        MsgBox "No chart found to export.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim zoneName As String
+    zoneName = Trim(CStr(wsThis.Cells(ZONE_ROW, ZONE_COL).Value))
+    Dim defaultName As String
+    If zoneName <> "" Then
+        defaultName = zoneName & " - " & Format(Now(), "yyyy-mm-dd")
+    Else
+        defaultName = "Total Head Chart - " & Format(Now(), "yyyy-mm-dd")
+    End If
+
+    Dim savePath As Variant
+    savePath = Application.GetSaveAsFilename( _
+        defaultName, "PNG Image (*.png), *.png", , "Save Chart as PNG")
+    If savePath = False Then Exit Sub
+
+    If LCase(Right(CStr(savePath), 4)) <> ".png" Then _
+        savePath = CStr(savePath) & ".png"
+
+    cht.Chart.Export CStr(savePath), "PNG"
+    Application.StatusBar = "Chart saved: " & savePath
 End Sub
 
 ' ============================================================
