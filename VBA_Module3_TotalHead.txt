@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.78
+' v1.79
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -50,6 +50,16 @@
 '         Worksheet_Activate so clearing a ref after a zone-load
 '         (before the user has clicked the cell) still saves the
 '         note to Point Index.
+'   9. (v1.79) Fixed cells B9:F43 not clearing after a zone load:
+'      a) LoadTotalHeadByName clear loop set Offset to 0 instead of
+'         "" so rows without a Point Ref showed "0.000" in col B.
+'         Changed to "".
+'      b) Added a safety pass after the restore loop that explicitly
+'         clears cols B-F (Offset/GPS/Z/Dip/Dumpy/Notes) for every
+'         config row whose Point Ref is still empty after loading,
+'         eliminating any stale data left from a previous session.
+'      c) Worksheet_Change clear-ref block: Offset was also set to 0
+'         instead of "" — fixed for consistency.
 '
 ' SHEET LAYOUT (Total Head)
 '   D3  row 3, col 4   Zone Name   (merged D3:I4)
@@ -103,7 +113,7 @@
 Option Explicit
 
 ' ── Module version (checked by ThisWorkbook.Workbook_Open) ───
-Public Const MODULE3_VERSION As String = "1.78"
+Public Const MODULE3_VERSION As String = "1.79"
 
 ' ── Layout constants ─────────────────────────────────────────
 Private Const CFG_FIRST         As Long = 9
@@ -1298,7 +1308,7 @@ Sub LoadTotalHeadByName(zoneName As String)
     Dim cfg As Long
     For cfg = CFG_FIRST To CFG_LAST
         wsThis.Cells(cfg, 1).Value = ""  ' Point Ref
-        wsThis.Cells(cfg, TH_COL_OFFSET).Value = 0   ' Offset
+        wsThis.Cells(cfg, TH_COL_OFFSET).Value = ""  ' Offset
         wsThis.Cells(cfg, TH_COL_GPS).Value   = ""   ' GPS
         wsThis.Cells(cfg, TH_COL_FINAL_Z).Value = "" ' Z
         wsThis.Cells(cfg, TH_COL_DIP).Value   = ""   ' Dip
@@ -1347,6 +1357,20 @@ Sub LoadTotalHeadByName(zoneName As String)
         Next pi
 NextSensorLoad:
     Next s
+
+    ' ── Safety pass: clear B-F for any row still without a Point Ref ─
+    ' Ensures stale GPS/Z/Dip/Dumpy/Offset data from a previous
+    ' session is never left visible when the new zone has fewer sensors.
+    For cfg = CFG_FIRST To CFG_LAST
+        If Trim(CStr(wsThis.Cells(cfg, 1).Value)) = "" Then
+            wsThis.Cells(cfg, TH_COL_OFFSET).Value  = ""
+            wsThis.Cells(cfg, TH_COL_GPS).Value     = ""
+            wsThis.Cells(cfg, TH_COL_FINAL_Z).Value = ""
+            wsThis.Cells(cfg, TH_COL_DIP).Value     = ""
+            wsThis.Cells(cfg, TH_COL_DUMPY).Value   = ""
+            wsThis.Cells(cfg, TH_COL_NOTES).Value   = ""
+        End If
+    Next cfg
 
     Application.EnableEvents = True
 

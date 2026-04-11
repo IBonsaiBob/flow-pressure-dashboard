@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_TotalHead_Sheet.txt  -  Sheet module for "Total Head"
-' v1.78
+' v1.79
 '
 ' Paste this entire file into the Sheet module for the
 ' "Total Head" worksheet in the VBA editor (Alt+F11,
@@ -169,7 +169,7 @@ Private Sub Worksheet_Change(ByVal Target As Range)
 
             ' 2. Clear all associated cells (always runs, even if note recording failed).
             Application.EnableEvents = False
-            Me.Cells(r, 2).Value = 0    ' Offset
+            Me.Cells(r, 2).Value = ""   ' Offset
             Me.Cells(r, 3).Value = ""   ' GPS
             Me.Cells(r, 4).Value = ""   ' Z
             Me.Cells(r, 5).Value = ""   ' Dip
