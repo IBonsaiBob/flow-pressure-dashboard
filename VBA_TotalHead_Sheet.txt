@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_TotalHead_Sheet.txt  -  Sheet module for "Total Head"
-' v1.82
+' v1.83
 '
 ' Paste this entire file into the Sheet module for the
 ' "Total Head" worksheet in the VBA editor (Alt+F11,
@@ -9,9 +9,10 @@
 ' CHANGE HANDLERS
 '   D3  (Zone Name)   – auto-load from archive if name matches;
 '                       clear zone notes on new name; update chart;
-'                       clearing D3 auto-archives then wipes session
-'                       (Driving Head, System, Zone Notes, sensor rows)
-'                       while preserving Start/End dates.
+'                       clearing D3 auto-archives then wipes ONLY the
+'                       pink cells: Driving Head (L3) and Zone Notes
+'                       (J9).  Sensor config rows are NOT cleared.
+'                       Start/End dates and System are also preserved.
 '   D5:D6 (dates)     – rebuild data table + refresh chart
 '   Col A (Point Ref) – record old note, populate Z/GPS/Dip/Dumpy
 '                       from PI, sync offset from PD, rebuild data
@@ -116,27 +117,22 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         Dim newZone As String
         newZone = Trim(CStr(Me.Cells(3, 4).Value))
 
-        ' ── Zone Name cleared → auto-archive then wipe session ─
+        ' ── Zone Name cleared → auto-archive then wipe pink cells ─
+        ' Only the "pink" zone-level cells are cleared:
+        '   L3  – Driving Head
+        '   J9  – Zone Notes
+        ' Sensor config rows (Point Refs and their associated data)
+        ' are intentionally preserved so they can be cleared
+        ' individually by removing each Point Ref (which clears the
+        ' "green" cells: Offset/GPS/Z/Dip/Dumpy/Notes for that row).
         If newZone = "" Then
             ' Archive current data first (so nothing is lost)
             If mOrigZoneName <> "" Then
                 Call ArchiveTotalHeadData(mOrigZoneName)
             End If
             Application.EnableEvents = False
-            Me.Cells(3, 12).Value = ""   ' Driving Head  (L3)
-            Me.Cells(6, 6).Value  = ""   ' System        (F6)
-            Me.Cells(9, 10).Value = ""   ' Zone Notes    (J9)
-            ' Clear all sensor config rows 9-43 (keep col 7 = PRN button)
-            Dim cr As Long
-            For cr = 9 To 43
-                Me.Cells(cr, 1).Value = ""  ' Point Ref
-                Me.Cells(cr, 2).Value = ""  ' Offset
-                Me.Cells(cr, 3).Value = ""  ' GPS
-                Me.Cells(cr, 4).Value = ""  ' Z
-                Me.Cells(cr, 5).Value = ""  ' Dip
-                Me.Cells(cr, 6).Value = ""  ' Dumpy
-                Me.Cells(cr, 8).Value = ""  ' Notes
-            Next cr
+            Me.Cells(3, 12).Value = ""   ' Driving Head  (L3)  ← pink
+            Me.Cells(9, 10).Value = ""   ' Zone Notes    (J9)  ← pink
             Application.EnableEvents = True
             mOrigZoneName = ""
             Call RebuildDataTable

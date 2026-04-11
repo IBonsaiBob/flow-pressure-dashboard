@@ -39,7 +39,7 @@ Option Explicit
 
 ' Expected Module3 version — update this constant whenever Module3
 ' is updated so users with stale code are warned on workbook open.
-Private Const EXPECTED_MODULE3_VERSION As String = "1.82"
+Private Const EXPECTED_MODULE3_VERSION As String = "1.83"
 
 Private Sub Workbook_Open()
     ' Reset any stale Ctrl+V binding from older versions, then register

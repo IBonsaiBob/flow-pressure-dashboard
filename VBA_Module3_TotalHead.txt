@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.82
+' v1.83
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -87,6 +87,16 @@
 '      silently skipping PopulateElevationTH / PopulateGpsDipDumpyOneTH
 '      / SyncOffsetToTotalHead — leaving GPS, Z, Dip, Dumpy all blank.
 '      Wrapped to match the already-fixed clear-ref branch (v1.78).
+'  13. (v1.83) Changed Zone Name clear (D3) to wipe only the two
+'      "pink" zone-level cells:
+'        L3  – Driving Head
+'        J9  – Zone Notes
+'      The sensor config rows (Point Refs + Offset/GPS/Z/Dip/Dumpy/
+'      Notes) are NO LONGER cleared when Zone Name is erased.  Each
+'      sensor row is cleared individually when its Point Ref (col A)
+'      is removed, which clears the "green" cells for that row
+'      (cols B/C/D/E/F/H).  System (F6) and Start/End dates are
+'      also preserved.
 '
 ' SHEET LAYOUT (Total Head)
 '   D3  row 3, col 4   Zone Name   (merged D3:I4)
@@ -140,7 +150,7 @@
 Option Explicit
 
 ' ── Module version (checked by ThisWorkbook.Workbook_Open) ───
-Public Const MODULE3_VERSION As String = "1.82"
+Public Const MODULE3_VERSION As String = "1.83"
 
 ' ── Layout constants ─────────────────────────────────────────
 Private Const CFG_FIRST         As Long = 9
