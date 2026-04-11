@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.74
+' v1.75
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -26,6 +26,10 @@
 '      row 7.  This replaces the silent status-bar-only feedback
 '      that was easy to miss, making the mismatch immediately
 '      obvious so the user can fix the PD headers or Point Refs.
+'   5. (v1.75) Added Public Const MODULE3_VERSION = "1.75" so that
+'      Workbook_Open (ThisWorkbook v1.75) can verify on startup that
+'      the in-workbook Module3 matches the expected repository
+'      version, alerting the user if stale code is detected.
 '
 ' SHEET LAYOUT (Total Head)
 '   D3  row 3, col 4   Zone Name   (merged D3:I4)
@@ -71,6 +75,9 @@
 '   col 21  U   Point Notes
 ' ============================================================
 Option Explicit
+
+' ── Module version (checked by ThisWorkbook.Workbook_Open) ───
+Public Const MODULE3_VERSION As String = "1.75"
 
 ' ── Layout constants ─────────────────────────────────────────
 Private Const CFG_FIRST         As Long = 9
