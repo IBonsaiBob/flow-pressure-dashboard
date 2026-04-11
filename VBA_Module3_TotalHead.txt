@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.76
+' v1.77
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -34,6 +34,12 @@
 '      is actually at col O = 15 in the Point Index.  The v1.73
 '      Logger ID fallback therefore always read empty cells and never
 '      matched anything — corrected to 15.
+'   7. (v1.77) Added GPS / Dip / Dumpy bidirectional sync between
+'      TH cols C/E/F and Point Index cols L/J/K (same logic as the
+'      existing Final Z / col D ↔ col M sync).  PopulateOneSensor
+'      now multiplies raw pressure values by the Final Z factor to
+'      produce Total Head.  Fixed Notes column reference (col G→H,
+'      i.e. 7→8) after a new GPS column was inserted in TH.
 '
 ' SHEET LAYOUT (Total Head)
 '   D3  row 3, col 4   Zone Name   (merged D3:I4)
@@ -47,9 +53,12 @@
 '   Config rows 9-43:
 '     col A = Point Ref
 '     col B = Offset
+'     col C = GPS
 '     col D = Z (m)
-'     col F = PRN note button
-'     col G = Point Notes
+'     col E = Dip
+'     col F = Dumpy
+'     col G = PRN note button
+'     col H = Point Notes
 '   Data table:
 '     row 45  headers  (col A = "Timestamp"; col (cfgRow-7) = sensor name)
 '     row 46+ data     (col A = timestamp;  col (cfgRow-7) = value)
@@ -75,13 +84,16 @@
 '   row 3  column headers
 '   row 4+ data
 '   col  1  A   Point Ref
+'   col 10  J   DIP / TOTAL DEPTH
+'   col 11  K   DUMPY
+'   col 12  L   GPS
 '   col 13  M   FINAL Z / BWL
 '   col 21  U   Point Notes
 ' ============================================================
 Option Explicit
 
 ' ── Module version (checked by ThisWorkbook.Workbook_Open) ───
-Public Const MODULE3_VERSION As String = "1.76"
+Public Const MODULE3_VERSION As String = "1.77"
 
 ' ── Layout constants ─────────────────────────────────────────
 Private Const CFG_FIRST         As Long = 9
@@ -119,10 +131,21 @@ Private Const PD_FIRST_DATA_ROW As Long = 8
 
 ' ── Point Index column indices ───────────────────────────────
 Private Const PI_COL_PTREF      As Long = 1    ' A
+Private Const PI_COL_DIP        As Long = 10   ' J  DIP / TOTAL DEPTH
+Private Const PI_COL_DUMPY      As Long = 11   ' K  DUMPY
+Private Const PI_COL_GPS        As Long = 12   ' L  GPS
 Private Const PI_COL_FINAL_Z    As Long = 13   ' M
 Private Const PI_COL_NOTES      As Long = 21   ' U
 Private Const PI_COL_LOGGER_ID  As Long = 15   ' O  (Logger / device ID)
 Private Const PI_DATA_FIRST_ROW As Long = 4
+
+' ── Total Head config column indices ─────────────────────────
+Private Const TH_COL_OFFSET     As Long = 2    ' B
+Private Const TH_COL_GPS        As Long = 3    ' C  GPS
+Private Const TH_COL_FINAL_Z    As Long = 4    ' D  Final Z
+Private Const TH_COL_DIP        As Long = 5    ' E  Dip
+Private Const TH_COL_DUMPY      As Long = 6    ' F  Dumpy
+Private Const TH_COL_NOTES      As Long = 8    ' H  Point Notes
 
 ' ── Named tolerances and sentinel values ─────────────────────
 Private Const Z_TOLERANCE        As Double = 0.0001
@@ -496,7 +519,77 @@ Sub PopulateElevationTH(wsThis As Worksheet, wsPI As Worksheet, _
 End Sub
 
 ' ============================================================
-' PopulateAllElevationsTH
+' PopulateGpsDipDumpyOneTH
+' Sets TH cols C (GPS), E (Dip), F (Dumpy) from Point Index
+' for one config row.  Does NOT overwrite existing non-zero
+' numeric values (same guard as PopulateElevationTH for Z).
+' Accepts optional pre-loaded PI arrays for batch use.
+' ============================================================
+Sub PopulateGpsDipDumpyOneTH(wsThis As Worksheet, cfgRow As Long, _
+                              Optional piRefs  As Variant = Empty, _
+                              Optional piGps   As Variant = Empty, _
+                              Optional piDip   As Variant = Empty, _
+                              Optional piDumpy As Variant = Empty, _
+                              Optional piCount As Long = 0)
+    Dim ptRef As String
+    ptRef = Trim(CStr(wsThis.Cells(cfgRow, 1).Value))
+    If ptRef = "" Then Exit Sub
+
+    If piCount > 0 Then
+        Dim i As Long
+        For i = 1 To piCount
+            If piRefs(i) = ptRef Then
+                Dim gv As Variant : gv = piGps(i)
+                Dim dv As Variant : dv = piDip(i)
+                Dim dumpyV As Variant : dumpyV = piDumpy(i)
+                ' GPS
+                Dim exG As Variant : exG = wsThis.Cells(cfgRow, TH_COL_GPS).Value
+                If IsEmpty(exG) Or Not IsNumeric(exG) Or CDbl(exG) = 0 Then
+                    If Not IsEmpty(gv) And IsNumeric(gv) Then wsThis.Cells(cfgRow, TH_COL_GPS).Value = CDbl(gv)
+                End If
+                ' Dip
+                Dim exD As Variant : exD = wsThis.Cells(cfgRow, TH_COL_DIP).Value
+                If IsEmpty(exD) Or Not IsNumeric(exD) Or CDbl(exD) = 0 Then
+                    If Not IsEmpty(dv) And IsNumeric(dv) Then wsThis.Cells(cfgRow, TH_COL_DIP).Value = CDbl(dv)
+                End If
+                ' Dumpy
+                Dim exDump As Variant : exDump = wsThis.Cells(cfgRow, TH_COL_DUMPY).Value
+                If IsEmpty(exDump) Or Not IsNumeric(exDump) Or CDbl(exDump) = 0 Then
+                    If Not IsEmpty(dumpyV) And IsNumeric(dumpyV) Then wsThis.Cells(cfgRow, TH_COL_DUMPY).Value = CDbl(dumpyV)
+                End If
+                Exit Sub
+            End If
+        Next i
+    Else
+        Dim wsPI As Worksheet
+        Set wsPI = ThisWorkbook.Sheets("Point Index")
+        Dim lr As Long
+        lr = wsPI.Cells(wsPI.Rows.Count, PI_COL_PTREF).End(xlUp).Row
+        Dim r As Long
+        For r = PI_DATA_FIRST_ROW To lr
+            If Trim(CStr(wsPI.Cells(r, PI_COL_PTREF).Value)) = ptRef Then
+                Dim pgv As Variant : pgv = wsPI.Cells(r, PI_COL_GPS).Value
+                Dim pdv As Variant : pdv = wsPI.Cells(r, PI_COL_DIP).Value
+                Dim pdumpyV As Variant : pdumpyV = wsPI.Cells(r, PI_COL_DUMPY).Value
+                Dim exG2 As Variant : exG2 = wsThis.Cells(cfgRow, TH_COL_GPS).Value
+                If IsEmpty(exG2) Or Not IsNumeric(exG2) Or CDbl(exG2) = 0 Then
+                    If Not IsEmpty(pgv) And IsNumeric(pgv) Then wsThis.Cells(cfgRow, TH_COL_GPS).Value = CDbl(pgv)
+                End If
+                Dim exD2 As Variant : exD2 = wsThis.Cells(cfgRow, TH_COL_DIP).Value
+                If IsEmpty(exD2) Or Not IsNumeric(exD2) Or CDbl(exD2) = 0 Then
+                    If Not IsEmpty(pdv) And IsNumeric(pdv) Then wsThis.Cells(cfgRow, TH_COL_DIP).Value = CDbl(pdv)
+                End If
+                Dim exDump2 As Variant : exDump2 = wsThis.Cells(cfgRow, TH_COL_DUMPY).Value
+                If IsEmpty(exDump2) Or Not IsNumeric(exDump2) Or CDbl(exDump2) = 0 Then
+                    If Not IsEmpty(pdumpyV) And IsNumeric(pdumpyV) Then wsThis.Cells(cfgRow, TH_COL_DUMPY).Value = CDbl(pdumpyV)
+                End If
+                Exit Sub
+            End If
+        Next r
+    End If
+End Sub
+
+
 ' Fills col D for all config rows with a Point Ref but no Z.
 ' Pre-loads PI data once for all 35 sensors.
 ' ============================================================
@@ -506,14 +599,20 @@ Sub PopulateAllElevationsTH()
     Set wsThis = ThisWorkbook.Sheets("Total Head")
     Set wsPI   = ThisWorkbook.Sheets("Point Index")
 
-    ' Pre-load PI Point Ref + Z columns into Variant arrays
+    ' Pre-load PI columns into Variant arrays (one pass)
     Dim piLastRow As Long
     piLastRow = wsPI.Cells(wsPI.Rows.Count, PI_COL_PTREF).End(xlUp).Row
 
-    Dim piRefsV As Variant   ' (1..n) String
-    Dim piZV    As Variant   ' (1..n) Variant
+    Dim piRefsV  As Variant
+    Dim piZV     As Variant
+    Dim piGpsV   As Variant
+    Dim piDipV   As Variant
+    Dim piDumpyV As Variant
     ReDim piRefsV(1 To piLastRow - PI_DATA_FIRST_ROW + 1)
     ReDim piZV(1 To piLastRow - PI_DATA_FIRST_ROW + 1)
+    ReDim piGpsV(1 To piLastRow - PI_DATA_FIRST_ROW + 1)
+    ReDim piDipV(1 To piLastRow - PI_DATA_FIRST_ROW + 1)
+    ReDim piDumpyV(1 To piLastRow - PI_DATA_FIRST_ROW + 1)
 
     Dim piCount As Long
     Dim r As Long
@@ -522,14 +621,18 @@ Sub PopulateAllElevationsTH()
         pref = Trim(CStr(wsPI.Cells(r, PI_COL_PTREF).Value))
         If pref <> "" Then
             piCount = piCount + 1
-            piRefsV(piCount) = pref
-            piZV(piCount) = wsPI.Cells(r, PI_COL_FINAL_Z).Value
+            piRefsV(piCount)  = pref
+            piZV(piCount)     = wsPI.Cells(r, PI_COL_FINAL_Z).Value
+            piGpsV(piCount)   = wsPI.Cells(r, PI_COL_GPS).Value
+            piDipV(piCount)   = wsPI.Cells(r, PI_COL_DIP).Value
+            piDumpyV(piCount) = wsPI.Cells(r, PI_COL_DUMPY).Value
         End If
     Next r
 
     Dim cfg As Long
     For cfg = CFG_FIRST To CFG_LAST
         Call PopulateElevationTH(wsThis, wsPI, cfg, piRefsV, piZV, piCount)
+        Call PopulateGpsDipDumpyOneTH(wsThis, cfg, piRefsV, piGpsV, piDipV, piDumpyV, piCount)
     Next cfg
 End Sub
 
@@ -561,7 +664,93 @@ Sub WriteElevationToPointIndex(ptRef As String, zVal As Double, _
 End Sub
 
 ' ============================================================
-' SyncZToTotalHead
+' WriteFieldToPI  (private generic helper)
+' Writes any numeric field to a PI column and appends a note.
+' ============================================================
+Private Sub WriteFieldToPI(ptRef As String, piCol As Long, _
+                            val As Double, noteText As String)
+    Dim wsPI As Worksheet
+    Set wsPI = ThisWorkbook.Sheets("Point Index")
+
+    Dim lr As Long
+    lr = wsPI.Cells(wsPI.Rows.Count, PI_COL_PTREF).End(xlUp).Row
+
+    Dim r As Long
+    For r = PI_DATA_FIRST_ROW To lr
+        If Trim(CStr(wsPI.Cells(r, PI_COL_PTREF).Value)) = ptRef Then
+            wsPI.Cells(r, piCol).Value = val
+            If noteText <> "" Then
+                Dim existing As String
+                existing = CStr(wsPI.Cells(r, PI_COL_NOTES).Value)
+                If existing <> "" Then existing = existing & Chr(10)
+                wsPI.Cells(r, PI_COL_NOTES).Value = existing & noteText & " (from TH)"
+            End If
+            Exit Sub
+        End If
+    Next r
+End Sub
+
+' ============================================================
+' WriteGpsToPointIndex / WriteDipToPointIndex /
+' WriteDumpyToPointIndex
+' Write GPS/Dip/Dumpy values back to Point Index.
+' Called from TotalHead Worksheet_Change (cols C, E, F).
+' ============================================================
+Public Sub WriteGpsToPointIndex(ptRef As String, val As Double, noteText As String)
+    Call WriteFieldToPI(ptRef, PI_COL_GPS, val, noteText)
+End Sub
+
+Public Sub WriteDipToPointIndex(ptRef As String, val As Double, noteText As String)
+    Call WriteFieldToPI(ptRef, PI_COL_DIP, val, noteText)
+End Sub
+
+Public Sub WriteDumpyToPointIndex(ptRef As String, val As Double, noteText As String)
+    Call WriteFieldToPI(ptRef, PI_COL_DUMPY, val, noteText)
+End Sub
+
+' ============================================================
+' SyncPIFieldToTH  (private generic helper)
+' Updates every matching TH config row when a PI field changes.
+' ============================================================
+Private Sub SyncPIFieldToTH(ptRef As String, thCol As Long, newVal As Double, _
+                             noteLabel As String)
+    Dim wsThis As Worksheet
+    Set wsThis = ThisWorkbook.Sheets("Total Head")
+
+    Dim cfg As Long
+    For cfg = CFG_FIRST To CFG_LAST
+        If Trim(CStr(wsThis.Cells(cfg, 1).Value)) = ptRef Then
+            wsThis.Cells(cfg, thCol).Value = newVal
+            Dim existing As String
+            existing = CStr(wsThis.Cells(cfg, TH_COL_NOTES).Value)
+            Dim label As String
+            label = "(from PI - " & noteLabel & ")"
+            If InStr(LCase(existing), LCase(label)) = 0 Then
+                If existing <> "" Then existing = existing & " | "
+                wsThis.Cells(cfg, TH_COL_NOTES).Value = existing & label
+            End If
+        End If
+    Next cfg
+End Sub
+
+' ============================================================
+' SyncGpsToTotalHead / SyncDipToTotalHead /
+' SyncDumpyToTotalHead
+' Called from Point Index Worksheet_Change (cols L, J, K).
+' ============================================================
+Public Sub SyncGpsToTotalHead(ptRef As String, newVal As Double)
+    Call SyncPIFieldToTH(ptRef, TH_COL_GPS, newVal, "GPS")
+End Sub
+
+Public Sub SyncDipToTotalHead(ptRef As String, newVal As Double)
+    Call SyncPIFieldToTH(ptRef, TH_COL_DIP, newVal, "Dip")
+End Sub
+
+Public Sub SyncDumpyToTotalHead(ptRef As String, newVal As Double)
+    Call SyncPIFieldToTH(ptRef, TH_COL_DUMPY, newVal, "Dumpy")
+End Sub
+
+
 ' Called from Point Index Worksheet_Change when col M changes.
 ' Updates every matching config row in Total Head.
 ' ============================================================
@@ -574,10 +763,10 @@ Sub SyncZToTotalHead(ptRef As String, newZ As Double)
         If Trim(CStr(wsThis.Cells(cfg, 1).Value)) = ptRef Then
             wsThis.Cells(cfg, 4).Value = newZ
             Dim existing As String
-            existing = CStr(wsThis.Cells(cfg, 7).Value)
+            existing = CStr(wsThis.Cells(cfg, TH_COL_NOTES).Value)
             If InStr(LCase(existing), "(from pi)") = 0 Then
                 If existing <> "" Then existing = existing & " | "
-                wsThis.Cells(cfg, 7).Value = existing & "(from PI)"
+                wsThis.Cells(cfg, TH_COL_NOTES).Value = existing & "(from PI)"
             End If
         End If
     Next cfg
@@ -607,7 +796,7 @@ Sub RecordSensorNote(wsThis As Worksheet, cfgRow As Long, _
     ofsStr = IIf(Not IsEmpty(ofsVal) And IsNumeric(ofsVal), CStr(CDbl(ofsVal)), "0")
 
     Dim noteCell As String
-    noteCell = CStr(wsThis.Cells(cfgRow, 7).Value)
+    noteCell = CStr(wsThis.Cells(cfgRow, TH_COL_NOTES).Value)
 
     Dim noteStr As String
     noteStr = Format(Now(), DATE_FMT) & " | Z: " & zStr & _
@@ -677,7 +866,7 @@ Sub RestorePointNotesTH()
                     Dim zpPos As Long
                     zpPos = InStr(LCase(fragment), LCase(ZPI_SUFFIX))
                     If zpPos > 0 Then fragment = Left(fragment, zpPos - 1)
-                    wsThis.Cells(cfg, 7).Value = fragment
+                    wsThis.Cells(cfg, TH_COL_NOTES).Value = fragment
                 End If
 FoundPI:
                 Exit For
@@ -899,8 +1088,18 @@ Sub PopulateOneSensor(wsThis As Worksheet, wsPD As Worksheet, _
 
     Dim offset As Double
     Dim thOfs As Variant
-    thOfs = wsThis.Cells(cfgRow, 2).Value
+    thOfs = wsThis.Cells(cfgRow, TH_COL_OFFSET).Value
     If IsNumeric(thOfs) Then offset = CDbl(thOfs)
+
+    ' Final Z scaling factor: converts raw pressure to Total Head
+    Dim finalZ As Double
+    finalZ = 1  ' default: no scaling if Z is missing or zero
+    Dim thZRaw As Variant
+    thZRaw = wsThis.Cells(cfgRow, TH_COL_FINAL_Z).Value
+    If IsNumeric(thZRaw) Then
+        Dim thZd As Double : thZd = CDbl(thZRaw)
+        If thZd <> 0 Then finalZ = thZd
+    End If
 
     ' Pre-load PD data column in one bulk read (1 crossing vs ~3000)
     Dim pdDataRaw As Variant
@@ -955,7 +1154,7 @@ Sub PopulateOneSensor(wsThis As Worksheet, wsPD As Worksheet, _
             Dim v As Variant
             v = pdDataRaw(jj - mBatch_pdFirstDataRow + 1, 1)
             If IsNumeric(v) And CDbl(v) <> PD_MISSING_VALUE Then
-                outArr(thRow - DATA_FIRST_ROW + 1, 1) = CDbl(v) + offset
+                outArr(thRow - DATA_FIRST_ROW + 1, 1) = (CDbl(v) + offset) * finalZ
             End If
         End If
 NextThRow:
@@ -1051,8 +1250,14 @@ Sub LoadTotalHeadByName(zoneName As String)
 
     Dim piRefs As Variant
     Dim piZArr As Variant
+    Dim piGpsArr As Variant
+    Dim piDipArr As Variant
+    Dim piDumpyArr As Variant
     ReDim piRefs(1 To piLastRow - PI_DATA_FIRST_ROW + 1)
     ReDim piZArr(1 To piLastRow - PI_DATA_FIRST_ROW + 1)
+    ReDim piGpsArr(1 To piLastRow - PI_DATA_FIRST_ROW + 1)
+    ReDim piDipArr(1 To piLastRow - PI_DATA_FIRST_ROW + 1)
+    ReDim piDumpyArr(1 To piLastRow - PI_DATA_FIRST_ROW + 1)
 
     Dim piCount As Long
     For r = PI_DATA_FIRST_ROW To piLastRow
@@ -1060,8 +1265,11 @@ Sub LoadTotalHeadByName(zoneName As String)
         pref = Trim(CStr(wsPI.Cells(r, PI_COL_PTREF).Value))
         If pref <> "" Then
             piCount = piCount + 1
-            piRefs(piCount) = pref
-            piZArr(piCount) = wsPI.Cells(r, PI_COL_FINAL_Z).Value
+            piRefs(piCount)    = pref
+            piZArr(piCount)    = wsPI.Cells(r, PI_COL_FINAL_Z).Value
+            piGpsArr(piCount)  = wsPI.Cells(r, PI_COL_GPS).Value
+            piDipArr(piCount)  = wsPI.Cells(r, PI_COL_DIP).Value
+            piDumpyArr(piCount) = wsPI.Cells(r, PI_COL_DUMPY).Value
         End If
     Next r
 
@@ -1074,9 +1282,12 @@ Sub LoadTotalHeadByName(zoneName As String)
     Dim cfg As Long
     For cfg = CFG_FIRST To CFG_LAST
         wsThis.Cells(cfg, 1).Value = ""  ' Point Ref
-        wsThis.Cells(cfg, 2).Value = 0   ' Offset
-        wsThis.Cells(cfg, 4).Value = ""  ' Z
-        wsThis.Cells(cfg, 7).Value = ""  ' Notes
+        wsThis.Cells(cfg, TH_COL_OFFSET).Value = 0   ' Offset
+        wsThis.Cells(cfg, TH_COL_GPS).Value   = ""   ' GPS
+        wsThis.Cells(cfg, TH_COL_FINAL_Z).Value = "" ' Z
+        wsThis.Cells(cfg, TH_COL_DIP).Value   = ""   ' Dip
+        wsThis.Cells(cfg, TH_COL_DUMPY).Value = ""   ' Dumpy
+        wsThis.Cells(cfg, TH_COL_NOTES).Value = ""   ' Notes
     Next cfg
 
     ' ── Restore sensors using pre-loaded arrays ───────────
@@ -1095,20 +1306,26 @@ Sub LoadTotalHeadByName(zoneName As String)
         ' Offset: scan pre-loaded PD header array
         For c = 2 To pdLastCol
             If LCase(pdHdr(c)) = LCase(ptRef) Then
-                wsThis.Cells(cfg, 2).Value = pdOfs(c)
+                wsThis.Cells(cfg, TH_COL_OFFSET).Value = pdOfs(c)
                 Exit For
             End If
         Next c
 
-        ' Z: scan pre-loaded PI array
+        ' Z / GPS / Dip / Dumpy: scan pre-loaded PI array
         Dim pi As Long
         For pi = 1 To piCount
             If piRefs(pi) = ptRef Then
                 Dim zv As Variant
                 zv = piZArr(pi)
                 If Not IsEmpty(zv) And IsNumeric(zv) Then
-                    wsThis.Cells(cfg, 4).Value = CDbl(zv)
+                    wsThis.Cells(cfg, TH_COL_FINAL_Z).Value = CDbl(zv)
                 End If
+                Dim gpsV As Variant : gpsV = piGpsArr(pi)
+                Dim dipV As Variant : dipV = piDipArr(pi)
+                Dim dumpyV As Variant : dumpyV = piDumpyArr(pi)
+                If Not IsEmpty(gpsV)   And IsNumeric(gpsV)   Then wsThis.Cells(cfg, TH_COL_GPS).Value   = CDbl(gpsV)
+                If Not IsEmpty(dipV)   And IsNumeric(dipV)   Then wsThis.Cells(cfg, TH_COL_DIP).Value   = CDbl(dipV)
+                If Not IsEmpty(dumpyV) And IsNumeric(dumpyV) Then wsThis.Cells(cfg, TH_COL_DUMPY).Value = CDbl(dumpyV)
                 Exit For
             End If
         Next pi

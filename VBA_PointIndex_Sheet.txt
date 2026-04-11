@@ -1,14 +1,15 @@
 ' ============================================================
 ' VBA_PointIndex_Sheet.txt  -  Sheet module for "Point Index"
-' v1.66
+' v1.67
 '
 ' Paste this entire file into the Sheet module for the
 ' "Point Index" worksheet in the VBA editor (Alt+F11,
 ' double-click "Point Index" in the project tree).
 '
-' Handles bidirectional Z sync: when the user edits
-' FINAL Z / BWL (col M) in Point Index, the matching
-' Total Head config row(s) are updated automatically.
+' Handles bidirectional sync: when the user edits
+' FINAL Z / BWL (col M), GPS (col L), DIP (col J), or
+' DUMPY (col K) in Point Index, the matching Total Head
+' config row(s) are updated automatically.
 ' ============================================================
 Option Explicit
 
@@ -38,6 +39,55 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         Call SyncZToTotalHead(ptRef, CDbl(newZ))
         Application.EnableEvents = True
     End If
+
+    ' ── Col L (GPS) in data rows ────────────────────────────
+    If c = 12 And r >= 4 Then
+        Dim ptRefG As String
+        ptRefG = Trim(CStr(Me.Cells(r, 1).Value))
+        If ptRefG = "" Then Exit Sub
+
+        Dim newGps As Variant
+        newGps = Me.Cells(r, 12).Value
+        If IsEmpty(newGps) Or Not IsNumeric(newGps) Then Exit Sub
+
+        On Error GoTo EH
+        Application.EnableEvents = False
+        Call SyncGpsToTotalHead(ptRefG, CDbl(newGps))
+        Application.EnableEvents = True
+    End If
+
+    ' ── Col J (DIP / TOTAL DEPTH) in data rows ──────────────
+    If c = 10 And r >= 4 Then
+        Dim ptRefD As String
+        ptRefD = Trim(CStr(Me.Cells(r, 1).Value))
+        If ptRefD = "" Then Exit Sub
+
+        Dim newDip As Variant
+        newDip = Me.Cells(r, 10).Value
+        If IsEmpty(newDip) Or Not IsNumeric(newDip) Then Exit Sub
+
+        On Error GoTo EH
+        Application.EnableEvents = False
+        Call SyncDipToTotalHead(ptRefD, CDbl(newDip))
+        Application.EnableEvents = True
+    End If
+
+    ' ── Col K (DUMPY) in data rows ───────────────────────────
+    If c = 11 And r >= 4 Then
+        Dim ptRefDump As String
+        ptRefDump = Trim(CStr(Me.Cells(r, 1).Value))
+        If ptRefDump = "" Then Exit Sub
+
+        Dim newDumpy As Variant
+        newDumpy = Me.Cells(r, 11).Value
+        If IsEmpty(newDumpy) Or Not IsNumeric(newDumpy) Then Exit Sub
+
+        On Error GoTo EH
+        Application.EnableEvents = False
+        Call SyncDumpyToTotalHead(ptRefDump, CDbl(newDumpy))
+        Application.EnableEvents = True
+    End If
+
     Exit Sub
 
 EH:

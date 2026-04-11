@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_TotalHead_Sheet.txt  -  Sheet module for "Total Head"
-' v1.74
+' v1.77
 '
 ' Paste this entire file into the Sheet module for the
 ' "Total Head" worksheet in the VBA editor (Alt+F11,
@@ -10,10 +10,13 @@
 '   D3  (Zone Name)   – auto-load from archive if name matches;
 '                       clear zone notes on new name; update chart
 '   D5:D6 (dates)     – rebuild data table + refresh chart
-'   Col A (Point Ref) – record old note, populate Z from PI,
-'                       sync offset from PD, rebuild data
+'   Col A (Point Ref) – record old note, populate Z/GPS/Dip/Dumpy
+'                       from PI, sync offset from PD, rebuild data
 '   Col B (Offset)    – sync offset back to PD row 5, rebuild
+'   Col C (GPS)       – write GPS back to Point Index, record note
 '   Col D (Z)         – write elevation back to Point Index
+'   Col E (Dip)       – write Dip back to Point Index, record note
+'   Col F (Dumpy)     – write Dumpy back to Point Index, record note
 '
 ' SELECTION HANDLER
 '   I5  (Save button) – call ArchiveTotalHeadData
@@ -153,8 +156,11 @@ Private Sub Worksheet_Change(ByVal Target As Range)
 
             Application.EnableEvents = False
             Me.Cells(r, 2).Value = 0    ' Offset
+            Me.Cells(r, 3).Value = ""   ' GPS
             Me.Cells(r, 4).Value = ""   ' Z
-            Me.Cells(r, 7).Value = ""   ' Notes
+            Me.Cells(r, 5).Value = ""   ' Dip
+            Me.Cells(r, 6).Value = ""   ' Dumpy
+            Me.Cells(r, 8).Value = ""   ' Notes
             ' Clear data column header and data
             Dim dataCol As Long
             dataCol = r - 7
@@ -185,6 +191,9 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         Set wsPI = ThisWorkbook.Sheets("Point Index")
         Call PopulateElevationTH(Me, wsPI, r)
 
+        ' Populate GPS / Dip / Dumpy from Point Index
+        Call PopulateGpsDipDumpyOneTH(Me, r)
+
         ' Sync offset from Pressure Data row 5
         Call SyncOffsetToTotalHead(ptRef, r)
 
@@ -211,7 +220,43 @@ Private Sub Worksheet_Change(ByVal Target As Range)
             noteTimestamp = Format(Now(), DATE_FMT) & " | Elevation Change"
             Call WriteElevationToPointIndex(ptD, CDbl(Me.Cells(r, 4).Value), noteTimestamp)
         End If
-        Exit Sub   ' Z change alone does not need a full rebuild
+        GoTo RebuildAndExit  ' Z change needs rebuild (Final Z affects data table values)
+    End If
+
+    ' ── Col C: GPS ───────────────────────────────────────────
+    If c = 3 And r >= 9 And r <= 43 Then
+        Dim ptC As String
+        ptC = Trim(CStr(Me.Cells(r, 1).Value))
+        If ptC <> "" And IsNumeric(Me.Cells(r, 3).Value) Then
+            Dim noteC As String
+            noteC = Format(Now(), DATE_FMT) & " | GPS Change"
+            Call WriteGpsToPointIndex(ptC, CDbl(Me.Cells(r, 3).Value), noteC)
+        End If
+        Exit Sub
+    End If
+
+    ' ── Col E: Dip ───────────────────────────────────────────
+    If c = 5 And r >= 9 And r <= 43 Then
+        Dim ptE As String
+        ptE = Trim(CStr(Me.Cells(r, 1).Value))
+        If ptE <> "" And IsNumeric(Me.Cells(r, 5).Value) Then
+            Dim noteE As String
+            noteE = Format(Now(), DATE_FMT) & " | Dip Change"
+            Call WriteDipToPointIndex(ptE, CDbl(Me.Cells(r, 5).Value), noteE)
+        End If
+        Exit Sub
+    End If
+
+    ' ── Col F: Dumpy ─────────────────────────────────────────
+    If c = 6 And r >= 9 And r <= 43 Then
+        Dim ptF As String
+        ptF = Trim(CStr(Me.Cells(r, 1).Value))
+        If ptF <> "" And IsNumeric(Me.Cells(r, 6).Value) Then
+            Dim noteF As String
+            noteF = Format(Now(), DATE_FMT) & " | Dumpy Change"
+            Call WriteDumpyToPointIndex(ptF, CDbl(Me.Cells(r, 6).Value), noteF)
+        End If
+        Exit Sub
     End If
 
     Exit Sub
