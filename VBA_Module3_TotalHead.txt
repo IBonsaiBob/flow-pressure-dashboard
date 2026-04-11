@@ -1,6 +1,6 @@
 ' ============================================================
 ' VBA_Module3_TotalHead.txt  -  Module3  (Total Head logic)
-' v1.73
+' v1.74
 '
 ' KEY FIXES vs. previous broken version:
 '   1. ArchiveTotalHeadData – rewrote to use the correct archive
@@ -20,6 +20,12 @@
 '      producing headers in the data table but empty data columns.
 '      Also added a status-bar message after RebuildDataTable
 '      reporting how many sensors were matched vs missed.
+'   4. (v1.74) RebuildDataTable – when ALL configured sensors fail
+'      to match (sensorsFound=0, sensorsTotal>0) a MsgBox now shows
+'      which Point Refs were expected and what headers exist in PD
+'      row 7.  This replaces the silent status-bar-only feedback
+'      that was easy to miss, making the mismatch immediately
+'      obvious so the user can fix the PD headers or Point Refs.
 '
 ' SHEET LAYOUT (Total Head)
 '   D3  row 3, col 4   Zone Name   (merged D3:I4)
@@ -810,12 +816,47 @@ Sub RebuildDataTable()
 NextSensor:
     Next cfg
 
-    ' ── Status bar: tell user how many sensors were matched ──
+    ' ── Status bar + alert: tell user how many sensors were matched ──
     If sensorsTotal > 0 Then
-        If sensorsFound < sensorsTotal Then
+        If sensorsFound = 0 Then
+            ' ── ALL sensors missed: show a diagnostic MsgBox so the
+            '    user cannot miss the mismatch. ──────────────────────
+            Dim missedList  As String
+            Dim pdHdrList   As String
+            Dim mm As Long
+            For mm = CFG_FIRST To CFG_LAST
+                Dim mRef As String
+                mRef = Trim(CStr(wsThis.Cells(mm, 1).Value))
+                If mRef <> "" Then
+                    missedList = missedList & "  • " & mRef & vbNewLine
+                End If
+            Next mm
+            ' Build a short list of what IS in PD row 7
+            Dim pdCount As Long
+            pdCount = 0
+            Dim hh As Long
+            For hh = 2 To mBatch_pdLastCol
+                If mBatch_pdHdr(hh) <> "" Then
+                    pdHdrList = pdHdrList & "  " & mBatch_pdHdr(hh)
+                    pdCount = pdCount + 1
+                    If pdCount = 8 Then
+                        pdHdrList = pdHdrList & " …"
+                        Exit For
+                    End If
+                End If
+            Next hh
+            If pdHdrList = "" Then pdHdrList = "  (none found in row 7)"
+            MsgBox "No sensor data was populated." & vbNewLine & vbNewLine & _
+                   "Your configured Point Refs:" & vbNewLine & missedList & vbNewLine & _
+                   "Headers found in Pressure Data row 7:" & vbNewLine & pdHdrList & vbNewLine & vbNewLine & _
+                   "Check that the Point Ref names match the Pressure Data column" & vbNewLine & _
+                   "headers exactly (names are compared case-insensitively).", _
+                   vbExclamation, "Total Head – Sensor Mismatch"
+            Application.StatusBar = "Total Head: 0/" & sensorsTotal & _
+                " sensor(s) matched. Check Pressure Data headers."
+        ElseIf sensorsFound < sensorsTotal Then
             Application.StatusBar = "Total Head: " & sensorsFound & "/" & sensorsTotal & _
-                " sensor(s) matched in Pressure Data." & _
-                IIf(sensorsFound = 0, " Check PD header row has correct sensor names.", "")
+                " sensor(s) matched in Pressure Data."
         Else
             Application.StatusBar = "Total Head: " & sensorsFound & "/" & sensorsTotal & _
                 " sensor(s) populated."
