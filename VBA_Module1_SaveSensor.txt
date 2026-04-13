@@ -1,0 +1,116 @@
+' ===========================================================================
+' STANDARD MODULE CODE
+' Paste into a new Module (Alt+F11 -> Insert -> Module)
+' ===========================================================================
+' SaveOneSensor  - applies Scale / Offset / Dt for ONE sensor and writes the
+'                  adjusted values back into the corresponding Raw data tab,
+'                  overwriting that sensor column in place.
+'
+' isFlow : True  -> Flow sensor   (Raw Flow Data,     Scale * value,  col D Dt)
+'          False -> Pressure      (Raw Pressure Data, value + Offset, col I Dt)
+' sRow   : selector row index 1-20
+'
+' Dashboard selector rows 3-22:
+'   Col B (2) = Flow name    Col C (3) = Scale    Col D (4) = Flow Dt
+'   Col G (7) = Pres name    Col H (8) = Offset   Col I (9) = Pres Dt
+' ===========================================================================
+Sub SaveOneSensor(isFlow As Boolean, sRow As Long)
+
+    Const SEL_START  As Long = 3
+    Const FLOW_NAME  As Long = 2   ' B
+    Const FLOW_SCALE As Long = 3   ' C
+    Const FLOW_DT    As Long = 4   ' D
+    Const PRES_NAME  As Long = 7   ' G
+    Const PRES_OFF   As Long = 8   ' H
+    Const PRES_DT    As Long = 9   ' I
+
+    Dim wsDash  As Worksheet
+    Dim wsRaw   As Worksheet
+    Set wsDash = Worksheets("Dashboard")
+
+    Dim sensorName  As String
+    Dim scaleFactor As Double
+    Dim offset      As Double
+    Dim dt          As Long
+    Dim dashRow     As Long
+    dashRow = SEL_START + sRow - 1
+
+    If isFlow Then
+        sensorName = Trim(wsDash.Cells(dashRow, FLOW_NAME).Value)
+        If sensorName = "" Then
+            MsgBox "No sensor selected in Flow row " & sRow, vbExclamation
+            Exit Sub
+        End If
+        scaleFactor = ToDouble(wsDash.Cells(dashRow, FLOW_SCALE).Value)
+        If scaleFactor = 0 Then scaleFactor = 1
+        dt = ToLong(wsDash.Cells(dashRow, FLOW_DT).Value)
+        Set wsRaw = Worksheets("Raw Flow Data")
+    Else
+        sensorName = Trim(wsDash.Cells(dashRow, PRES_NAME).Value)
+        If sensorName = "" Then
+            MsgBox "No sensor selected in Pressure row " & sRow, vbExclamation
+            Exit Sub
+        End If
+        offset = ToDouble(wsDash.Cells(dashRow, PRES_OFF).Value)
+        dt = ToLong(wsDash.Cells(dashRow, PRES_DT).Value)
+        Set wsRaw = Worksheets("Raw Pressure Data")
+    End If
+
+    ' --- Find sensor column in raw sheet ---
+    Dim lastHdrCol As Long
+    lastHdrCol = wsRaw.Cells(1, wsRaw.Columns.Count).End(xlToLeft).Column
+    Dim sensorCol As Long: sensorCol = 0
+    Dim k As Long
+    For k = 2 To lastHdrCol
+        If Trim(wsRaw.Cells(1, k).Value) = sensorName Then
+            sensorCol = k
+            Exit For
+        End If
+    Next k
+    If sensorCol = 0 Then
+        MsgBox "Sensor '" & sensorName & "' not found in " & wsRaw.Name, _
+               vbExclamation, "Sensor Not Found"
+        Exit Sub
+    End If
+
+    Dim lastRow As Long
+    lastRow = wsRaw.Cells(wsRaw.Rows.Count, 1).End(xlUp).Row
+
+    ' --- Apply transformation and write back into the Raw tab ---
+    Application.ScreenUpdating = False
+    Dim totalSaved As Long: totalSaved = 0
+    Dim rawVal As Variant
+    Dim srcRow As Long
+    Dim j As Long
+
+    For j = 2 To lastRow
+        srcRow = j - dt
+        If srcRow >= 2 And srcRow <= lastRow Then
+            rawVal = wsRaw.Cells(srcRow, sensorCol).Value
+            If IsNumeric(rawVal) And CDbl(rawVal) <> -999 Then
+                If isFlow Then
+                    wsRaw.Cells(j, sensorCol).Value = CDbl(rawVal) * scaleFactor
+                Else
+                    wsRaw.Cells(j, sensorCol).Value = CDbl(rawVal) + offset
+                End If
+                wsRaw.Cells(j, sensorCol).NumberFormat = "0.000"
+                totalSaved = totalSaved + 1
+            End If
+        End If
+    Next j
+
+    Application.ScreenUpdating = True
+    MsgBox "Saved " & totalSaved & " values for '" & sensorName & _
+           "' into " & wsRaw.Name & ".", vbInformation, "Save Complete"
+End Sub
+
+' ===========================================================================
+' Safe numeric helpers
+' ===========================================================================
+Private Function ToDouble(v As Variant) As Double
+    If IsNumeric(v) Then ToDouble = CDbl(v)
+End Function
+
+Private Function ToLong(v As Variant) As Long
+    If IsNumeric(v) Then ToLong = CLng(v)
+End Function
